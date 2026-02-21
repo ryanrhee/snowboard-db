@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { ScoreBar } from "./ScoreBar";
+import { ScoreExplanation } from "./ScoreExplanation";
 
 interface BoardDetailProps {
   board: BoardData;
@@ -135,6 +135,15 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
             <ScoreBar score={board.valueScore} label="Val" size="md" />
             <ScoreBar score={board.finalScore} label="Tot" size="md" />
           </div>
+
+          {board.scoreNotes && (
+            <div className="border-t border-gray-800 pt-3">
+              <h3 className="text-sm font-medium text-gray-300 mb-2">
+                Score Breakdown
+              </h3>
+              <ScoreExplanation scoreNotes={board.scoreNotes} />
+            </div>
+          )}
 
           {board.description && (
             <div className="border-t border-gray-800 pt-3">

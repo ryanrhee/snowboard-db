@@ -209,10 +209,10 @@ export async function refreshPipeline(
           availability,
         };
 
-        const valueScore = calcValueScore(updatedBoard);
-        const finalScore = calcFinalScore(updatedBoard.beginnerScore, valueScore);
+        const valueResult = calcValueScore(updatedBoard);
+        const finalScore = calcFinalScore(updatedBoard.beginnerScore, valueResult.score);
 
-        updatedBoard.valueScore = valueScore;
+        updatedBoard.valueScore = valueResult.score;
         updatedBoard.finalScore = finalScore;
 
         updateBoardPriceAndStock(board.id, runId, {
@@ -222,7 +222,7 @@ export async function refreshPipeline(
           originalPriceUsd,
           discountPercent,
           availability,
-          valueScore,
+          valueScore: valueResult.score,
           finalScore,
         });
 

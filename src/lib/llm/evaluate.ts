@@ -101,7 +101,7 @@ function parseEvaluationResponse(
 export async function scoreBoardWithLlm(
   board: CanonicalBoard
 ): Promise<CanonicalBoard> {
-  const heuristicScore = calcBeginnerScore(board);
+  const heuristicResult = calcBeginnerScore(board);
 
   const llmResult = await llmEvaluateBoard(board);
 
@@ -111,10 +111,10 @@ export async function scoreBoardWithLlm(
   if (llmResult) {
     // Blend 50/50
     beginnerScore =
-      Math.round((0.5 * heuristicScore + 0.5 * llmResult.beginnerScore) * 100) / 100;
-    scoreNotes = `heuristic=${heuristicScore}, llm=${llmResult.beginnerScore}: ${llmResult.reasoning}`;
+      Math.round((0.5 * heuristicResult.score + 0.5 * llmResult.beginnerScore) * 100) / 100;
+    scoreNotes = `heuristic=${heuristicResult.score}, llm=${llmResult.beginnerScore}: ${llmResult.reasoning}`;
   } else {
-    beginnerScore = heuristicScore;
+    beginnerScore = heuristicResult.score;
     scoreNotes = `heuristic only (llm unavailable)`;
   }
 
