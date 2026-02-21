@@ -73,6 +73,15 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_boards_run_id ON boards(run_id);
     CREATE INDEX IF NOT EXISTS idx_boards_final_score ON boards(final_score);
     CREATE INDEX IF NOT EXISTS idx_boards_retailer ON boards(retailer);
+
+    CREATE TABLE IF NOT EXISTS spec_cache (
+      brand_model TEXT PRIMARY KEY,
+      flex REAL,
+      profile TEXT,
+      shape TEXT,
+      category TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
 }
 
@@ -254,4 +263,42 @@ function mapRowToBoard(row: Record<string, unknown>): CanonicalBoard {
     scoreNotes: (row.score_notes as string) || null,
     scrapedAt: row.scraped_at as string,
   } as CanonicalBoard;
+}
+
+// ===== Spec Cache CRUD =====
+
+export interface CachedSpecs {
+  flex: number | null;
+  profile: string | null;
+  shape: string | null;
+  category: string | null;
+}
+
+export function getCachedSpecs(brandModel: string): CachedSpecs | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT flex, profile, shape, category FROM spec_cache WHERE brand_model = ?")
+    .get(brandModel) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    flex: (row.flex as number) ?? null,
+    profile: (row.profile as string) ?? null,
+    shape: (row.shape as string) ?? null,
+    category: (row.category as string) ?? null,
+  };
+}
+
+export function setCachedSpecs(brandModel: string, specs: CachedSpecs): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO spec_cache (brand_model, flex, profile, shape, category, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    brandModel,
+    specs.flex,
+    specs.profile,
+    specs.shape,
+    specs.category,
+    new Date().toISOString()
+  );
 }

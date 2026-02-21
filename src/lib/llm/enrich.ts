@@ -1,0 +1,246 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { config } from "../config";
+import { getCachedSpecs, setCachedSpecs } from "../db";
+import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "../types";
+
+let client: Anthropic | null = null;
+
+function getClient(): Anthropic | null {
+  if (!config.anthropicApiKey) return null;
+  if (!client) {
+    client = new Anthropic({ apiKey: config.anthropicApiKey });
+  }
+  return client;
+}
+
+interface EnrichedSpecs {
+  flex: number | null;
+  profile: BoardProfile | null;
+  shape: BoardShape | null;
+  category: BoardCategory | null;
+}
+
+// In-memory cache keyed by "brand|model" (lowercased)
+const specCache = new Map<string, EnrichedSpecs | null>();
+
+function modelKey(brand: string, model: string): string {
+  return `${brand.toLowerCase()}|${model.toLowerCase()}`;
+}
+
+function needsEnrichment(board: CanonicalBoard): boolean {
+  return (
+    board.flex === null ||
+    board.profile === null ||
+    board.shape === null ||
+    board.category === null
+  );
+}
+
+const REPORT_SPECS_TOOL: Anthropic.Tool = {
+  name: "report_specs",
+  description:
+    "Report the snowboard specs you found. Use null for any spec you could not determine.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      flex: {
+        type: ["number", "null"],
+        description: "Flex rating on a 1-10 scale (1=softest, 10=stiffest). null if unknown.",
+      },
+      profile: {
+        type: ["string", "null"],
+        enum: [
+          "camber",
+          "rocker",
+          "flat",
+          "hybrid_camber",
+          "hybrid_rocker",
+          null,
+        ],
+        description: "Board profile/bend type. null if unknown.",
+      },
+      shape: {
+        type: ["string", "null"],
+        enum: ["true_twin", "directional_twin", "directional", "tapered", null],
+        description: "Board shape. null if unknown.",
+      },
+      category: {
+        type: ["string", "null"],
+        enum: ["all_mountain", "freestyle", "freeride", "powder", "park", null],
+        description: "Primary riding category. null if unknown.",
+      },
+    },
+    required: ["flex", "profile", "shape", "category"],
+  },
+};
+
+async function lookupSpecs(
+  brand: string,
+  model: string,
+  year: number | null
+): Promise<EnrichedSpecs | null> {
+  const anthropic = getClient();
+  if (!anthropic) return null;
+
+  const yearStr = year ? ` ${year}` : "";
+  const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. Search the web, then report using the report_specs tool.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-20250414",
+      max_tokens: 1024,
+      tools: [
+        REPORT_SPECS_TOOL,
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 3,
+        },
+      ],
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    // Extract the report_specs tool call from the response
+    for (const block of response.content) {
+      if (block.type === "tool_use" && block.name === "report_specs") {
+        const input = block.input as {
+          flex: number | null;
+          profile: string | null;
+          shape: string | null;
+          category: string | null;
+        };
+
+        return {
+          flex:
+            input.flex !== null &&
+            input.flex >= 1 &&
+            input.flex <= 10
+              ? Math.round(input.flex)
+              : null,
+          profile: input.profile as BoardProfile | null,
+          shape: input.shape as BoardShape | null,
+          category: input.category as BoardCategory | null,
+        };
+      }
+    }
+
+    // Model didn't call report_specs — treat as failure
+    console.warn(`[enrich] No report_specs call for ${brand} ${model}`);
+    return null;
+  } catch (error) {
+    console.error(`[enrich] LLM lookup failed for ${brand} ${model}:`, error);
+    return null;
+  }
+}
+
+function applySpecs(board: CanonicalBoard, specs: EnrichedSpecs): CanonicalBoard {
+  return {
+    ...board,
+    flex: board.flex ?? specs.flex,
+    profile: board.profile ?? specs.profile,
+    shape: board.shape ?? specs.shape,
+    category: board.category ?? specs.category,
+  };
+}
+
+/**
+ * Enrich boards that are missing specs (flex, profile, shape, category)
+ * by looking them up via Claude + web search.
+ * Groups by brand+model so one lookup covers all size variants.
+ */
+export async function enrichBoardSpecs(
+  boards: CanonicalBoard[]
+): Promise<CanonicalBoard[]> {
+  if (!config.enableSpecEnrichment) {
+    console.log("[enrich] Spec enrichment disabled, skipping");
+    return boards;
+  }
+
+  if (!config.anthropicApiKey) {
+    console.log("[enrich] No API key, skipping enrichment");
+    return boards;
+  }
+
+  // Group boards that need enrichment by brand|model
+  const groups = new Map<string, CanonicalBoard[]>();
+  for (const board of boards) {
+    if (!needsEnrichment(board)) continue;
+    const key = modelKey(board.brand, board.model);
+    const group = groups.get(key);
+    if (group) {
+      group.push(board);
+    } else {
+      groups.set(key, [board]);
+    }
+  }
+
+  if (groups.size === 0) {
+    console.log("[enrich] All boards already have specs, skipping");
+    return boards;
+  }
+
+  console.log(
+    `[enrich] ${groups.size} unique models need spec lookup (${boards.filter(needsEnrichment).length} boards total)`
+  );
+
+  // Look up specs with concurrency limit of 3
+  const CONCURRENCY = 3;
+  const keys = Array.from(groups.keys());
+
+  for (let i = 0; i < keys.length; i += CONCURRENCY) {
+    const batch = keys.slice(i, i + CONCURRENCY);
+    const lookups = batch.map(async (key) => {
+      // Fast path: in-memory cache
+      if (specCache.has(key)) {
+        return { key, specs: specCache.get(key)! };
+      }
+
+      // Check persistent DB cache
+      const dbHit = getCachedSpecs(key);
+      if (dbHit) {
+        console.log(`[enrich] DB cache hit: ${key}`);
+        const specs = dbHit as EnrichedSpecs;
+        specCache.set(key, specs);
+        return { key, specs };
+      }
+
+      const boardSample = groups.get(key)![0];
+      console.log(
+        `[enrich] Looking up: ${boardSample.brand} ${boardSample.model}${boardSample.year ? ` ${boardSample.year}` : ""}`
+      );
+
+      const specs = await lookupSpecs(
+        boardSample.brand,
+        boardSample.model,
+        boardSample.year
+      );
+
+      specCache.set(key, specs);
+
+      // Persist successful lookups to DB
+      if (specs) {
+        setCachedSpecs(key, specs);
+      }
+
+      return { key, specs };
+    });
+
+    const results = await Promise.allSettled(lookups);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("[enrich] Batch lookup failed:", result.reason);
+      }
+    }
+  }
+
+  // Apply enriched specs to boards
+  return boards.map((board) => {
+    if (!needsEnrichment(board)) return board;
+
+    const key = modelKey(board.brand, board.model);
+    const specs = specCache.get(key);
+    if (!specs) return board;
+
+    return applySpecs(board, specs);
+  });
+}
