@@ -10,7 +10,7 @@ const ALL_RETAILERS: RetailerModule[] = [tactics, evo, backcountry, rei, bestsno
 
 // Retailers that are actually working (not blocked by Cloudflare/bot protection)
 // evo, backcountry, rei are blocked by Cloudflare — kept for future Playwright support
-const ACTIVE_RETAILERS = new Set(["tactics"]);
+const ACTIVE_RETAILERS = new Set(["tactics", "evo", "backcountry"]);
 
 export function getRetailers(regions?: Region[] | null): RetailerModule[] {
   let retailers = ALL_RETAILERS.filter((r) => ACTIVE_RETAILERS.has(r.name));

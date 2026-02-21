@@ -19,6 +19,7 @@ import {
   updateBoardPriceAndStock,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
+import { fetchPageWithBrowser } from "./scraping/browser";
 import { SEED_BOARDS } from "./seed-data";
 import * as cheerio from "cheerio";
 
@@ -135,7 +136,11 @@ export async function refreshPipeline(
 
   for (const board of boards) {
     try {
-      const html = await fetchPage(board.url, { retries: 1, timeoutMs: 10000 });
+      const browserRetailers = new Set(["evo", "backcountry"]);
+      const fetchFn = browserRetailers.has(board.retailer)
+        ? fetchPageWithBrowser
+        : fetchPage;
+      const html = await fetchFn(board.url, { retries: 1, timeoutMs: 10000 });
       const $ = cheerio.load(html);
 
       // Try to extract current price

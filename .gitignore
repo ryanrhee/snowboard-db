@@ -36,6 +36,7 @@ yarn-error.log*
 
 # data
 /data/
+/.scrape-cache/
 
 # vercel
 .vercel

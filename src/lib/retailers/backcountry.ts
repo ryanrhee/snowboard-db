@@ -2,32 +2,58 @@ import * as cheerio from "cheerio";
 import { config } from "../config";
 import { RawBoard, SearchConstraints, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
-import { fetchPage, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
+import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const BC_BASE_URL = "https://www.backcountry.com";
 
-function buildSearchUrl(constraints: SearchConstraints): string {
-  const params = new URLSearchParams();
-  params.set("q", "snowboard");
-  params.set("p", "sale"); // sale items
-  if (constraints.maxPriceUsd) {
-    params.set("priceMax", String(constraints.maxPriceUsd));
-  }
-  return `${BC_BASE_URL}/rc/snowboards?${params}`;
+function buildSearchUrl(_constraints: SearchConstraints): string {
+  return `${BC_BASE_URL}/snowboards`;
 }
 
 function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
   const $ = cheerio.load(html);
   const boards: Partial<RawBoard>[] = [];
 
-  // Try __NEXT_DATA__ JSON first (Next.js app)
+  // Parse from __NEXT_DATA__ Apollo state (primary method)
   const nextDataScript = $("#__NEXT_DATA__");
   if (nextDataScript.length > 0) {
     try {
       const nextData = JSON.parse(nextDataScript.text());
+      const pageProps = nextData?.props?.pageProps || {};
+
+      // Products are in the Apollo cache as "Product:ID" keys
+      const apollo = pageProps.__APOLLO_STATE__;
+      if (apollo) {
+        for (const [key, value] of Object.entries(apollo)) {
+          if (!key.startsWith("Product:")) continue;
+          const product = value as Record<string, unknown>;
+          if (product.__typename !== "Product") continue;
+
+          const aggregates = product.aggregates as Record<string, unknown> | undefined;
+          const brand = product.brand as Record<string, string> | undefined;
+          const url = product.url as string | undefined;
+
+          boards.push({
+            retailer: "backcountry",
+            region: Region.US,
+            url: url
+              ? (url.startsWith("http") ? url : `${BC_BASE_URL}${url}`)
+              : undefined,
+            brand: brand?.name,
+            model: product.name as string,
+            salePrice: aggregates?.minSalePrice as number | undefined,
+            originalPrice: aggregates?.minListPrice as number | undefined,
+            currency: Currency.USD,
+          });
+        }
+      }
+
+      if (boards.length > 0) return boards;
+
+      // Fallback: try older data shapes
       const products =
-        nextData?.props?.pageProps?.initialState?.products?.items ||
-        nextData?.props?.pageProps?.products ||
+        pageProps.initialState?.products?.items ||
+        pageProps.products ||
         [];
 
       for (const product of products) {
@@ -145,7 +171,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
 
   try {
     await delay(config.scrapeDelayMs);
-    const html = await fetchPage(partial.url);
+    const html = await fetchPageWithBrowser(partial.url);
     const $ = cheerio.load(html);
 
     let brand = partial.brand;
@@ -257,7 +283,7 @@ export const backcountry: RetailerModule = {
     const searchUrl = buildSearchUrl(constraints);
     console.log(`[backcountry] Fetching search results from ${searchUrl}`);
 
-    const html = await fetchPage(searchUrl);
+    const html = await fetchPageWithBrowser(searchUrl);
     const partials = parseProductsFromHtml(html);
     console.log(`[backcountry] Found ${partials.length} product cards`);
 
@@ -266,13 +292,31 @@ export const backcountry: RetailerModule = {
       ? partials.filter((b) => !b.salePrice || b.salePrice <= maxPrice)
       : partials;
 
-    console.log(`[backcountry] Fetching details for ${filtered.length} boards`);
-
-    const boards: RawBoard[] = [];
-    for (const partial of filtered) {
-      const board = await fetchBoardDetails(partial);
-      if (board) boards.push(board);
-    }
+    // Convert listing data directly to RawBoard (skip detail pages for speed)
+    const boards: RawBoard[] = filtered
+      .filter((p) => p.salePrice && p.url)
+      .map((p) => ({
+        retailer: "backcountry",
+        region: Region.US,
+        url: p.url!,
+        imageUrl: p.imageUrl,
+        brand: p.brand ? normalizeBrand(p.brand) : "Unknown",
+        model: p.model || "Unknown",
+        year: undefined,
+        lengthCm: undefined,
+        widthMm: undefined,
+        flex: undefined,
+        profile: undefined,
+        shape: undefined,
+        category: undefined,
+        originalPrice: p.originalPrice,
+        salePrice: p.salePrice!,
+        currency: Currency.USD,
+        availability: "in_stock",
+        description: undefined,
+        specs: {},
+        scrapedAt: new Date().toISOString(),
+      }));
 
     console.log(`[backcountry] Successfully scraped ${boards.length} boards`);
     return boards;
