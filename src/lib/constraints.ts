@@ -12,6 +12,7 @@ export const DEFAULT_CONSTRAINTS: SearchConstraints = {
   preferredProfiles: null,
   preferredCategories: null,
   excludeKids: true,
+  excludeWomens: true,
   regions: [Region.US, Region.KR],
   retailers: null,
 };
@@ -65,6 +66,19 @@ export function applyConstraints(
       }
       // Kids boards are usually under 140cm
       if (board.lengthCm !== null && board.lengthCm < 130) {
+        return false;
+      }
+    }
+
+    // Exclude women's boards
+    if (constraints.excludeWomens) {
+      const lower = `${board.brand} ${board.model} ${board.description || ""}`.toLowerCase();
+      if (
+        lower.includes("women") ||
+        lower.includes("woman") ||
+        lower.includes("wmns") ||
+        lower.includes("wms")
+      ) {
         return false;
       }
     }

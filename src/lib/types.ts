@@ -108,6 +108,7 @@ export interface SearchConstraints {
   preferredProfiles?: BoardProfile[] | null;
   preferredCategories?: BoardCategory[] | null;
   excludeKids?: boolean;
+  excludeWomens?: boolean;
   regions?: Region[] | null;
   retailers?: string[] | null;
 }
