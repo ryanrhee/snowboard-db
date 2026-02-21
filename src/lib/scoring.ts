@@ -140,20 +140,20 @@ export function calcValueScore(board: CanonicalBoard): ScoreResult {
     factors.push({ name: "Discount", value: `${board.discountPercent}% off`, score: discountScore, reason });
   }
 
-  // Absolute price: lower is better value (weight: 0.35)
-  if (board.salePriceUsd > 0) {
-    let priceScore: number;
+  // Board premium tier based on original MSRP — higher-end boards are better deals when discounted (weight: 0.35)
+  const msrp = board.originalPriceUsd ?? board.salePriceUsd;
+  if (msrp > 0) {
+    let premiumScore: number;
     let reason: string;
-    if (board.salePriceUsd <= 150) { priceScore = 1.0; reason = "Very affordable price point"; }
-    else if (board.salePriceUsd <= 250) { priceScore = 0.85; reason = "Budget-friendly price"; }
-    else if (board.salePriceUsd <= 350) { priceScore = 0.65; reason = "Mid-range price"; }
-    else if (board.salePriceUsd <= 450) { priceScore = 0.45; reason = "Higher price point"; }
-    else if (board.salePriceUsd <= 550) { priceScore = 0.3; reason = "Premium price"; }
-    else { priceScore = 0.15; reason = "Expensive — lower value score"; }
+    if (msrp >= 600) { premiumScore = 1.0; reason = "Top-tier board — premium construction and materials"; }
+    else if (msrp >= 500) { premiumScore = 0.85; reason = "High-end board — quality build"; }
+    else if (msrp >= 400) { premiumScore = 0.65; reason = "Mid-range board — solid quality"; }
+    else if (msrp >= 300) { premiumScore = 0.45; reason = "Budget-friendly board — basic construction"; }
+    else { premiumScore = 0.25; reason = "Entry-level board — minimal features"; }
 
-    total += priceScore * 0.35;
+    total += premiumScore * 0.35;
     weights += 0.35;
-    factors.push({ name: "Price", value: `$${board.salePriceUsd.toFixed(0)}`, score: priceScore, reason });
+    factors.push({ name: "Premium", value: `$${msrp.toFixed(0)} MSRP`, score: premiumScore, reason });
   }
 
   // Year: newer boards lose less value; older clearance = good value (weight: 0.15)

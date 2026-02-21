@@ -45,7 +45,7 @@ const REPORT_SPECS_TOOL: Anthropic.Tool = {
     properties: {
       flex: {
         type: ["number", "null"],
-        description: "Flex rating on a 1-10 scale (1=softest, 10=stiffest). null if unknown.",
+        description: "Flex rating normalized to a 1-10 scale (1=softest, 10=stiffest). If the source uses a different scale (e.g. 1-5), convert it (e.g. 3/5 → 6/10). null if unknown.",
       },
       profile: {
         type: ["string", "null"],
@@ -83,7 +83,7 @@ async function lookupSpecs(
   if (!anthropic) return null;
 
   const yearStr = year ? ` ${year}` : "";
-  const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. Search the web, then report using the report_specs tool.`;
+  const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. IMPORTANT: Different retailers use different flex scales (e.g. Evo uses 1-5, Burton uses 1-10). You MUST normalize flex to a 1-10 scale — for example, a 3/5 from Evo should be reported as 6/10. Search the web, then report using the report_specs tool.`;
 
   // API/network errors intentionally propagate to stop the batch loop.
   // Only "model not found" (no report_specs call) returns null.
