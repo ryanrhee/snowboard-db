@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config";
-import { getCachedSpecs, setCachedSpecs } from "../db";
+import { getCachedSpecs, setCachedSpecs, CachedSpecs } from "../db";
 import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "../types";
 
 let client: Anthropic | null = null;
@@ -18,13 +18,36 @@ interface EnrichedSpecs {
   profile: BoardProfile | null;
   shape: BoardShape | null;
   category: BoardCategory | null;
+  msrpUsd: number | null;
 }
 
 // In-memory cache keyed by "brand|model" (lowercased)
 const specCache = new Map<string, EnrichedSpecs | null>();
 
 function modelKey(brand: string, model: string): string {
-  return `${brand.toLowerCase()}|${model.toLowerCase()}`;
+  return `${brand.toLowerCase()}|${cleanModelForKey(model)}`;
+}
+
+/**
+ * Strip "Snowboard", year, profile suffixes, leading brand, trailing dashes etc.
+ * from model name so manufacturer and retailer keys align.
+ */
+function cleanModelForKey(model: string): string {
+  return model
+    .toLowerCase()
+    .replace(/\bsnowboard\b/gi, "")
+    .replace(/\b20[1-2]\d\b/g, "")
+    .replace(/\bmen'?s\b/gi, "")
+    .replace(/\bwomen'?s\b/gi, "")
+    // Strip profile terms that retailers sometimes append
+    .replace(/\b(?:camber|rocker|flat|c2x?|c3|btx)\b/gi, "")
+    // "Flat Top" → "top" after stripping "flat" — clean up the orphan
+    .replace(/\b(?:top)\b/gi, "")
+    // Normalize abbreviation dots: "t. rice" -> "t.rice"
+    .replace(/(\w)\.\s+/g, "$1.")
+    .replace(/[-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function needsEnrichment(board: CanonicalBoard): boolean {
@@ -121,6 +144,7 @@ async function lookupSpecs(
         profile: input.profile as BoardProfile | null,
         shape: input.shape as BoardShape | null,
         category: input.category as BoardCategory | null,
+        msrpUsd: null,
       };
     }
   }
@@ -137,6 +161,7 @@ function applySpecs(board: CanonicalBoard, specs: EnrichedSpecs): CanonicalBoard
     profile: board.profile ?? specs.profile,
     shape: board.shape ?? specs.shape,
     category: board.category ?? specs.category,
+    originalPriceUsd: board.originalPriceUsd ?? specs.msrpUsd,
   };
 }
 
@@ -201,7 +226,13 @@ export async function enrichBoardSpecs(
       const dbHit = getCachedSpecs(key);
       if (dbHit) {
         console.log(`[enrich] DB cache hit: ${key}`);
-        const specs = dbHit as EnrichedSpecs;
+        const specs: EnrichedSpecs = {
+          flex: dbHit.flex,
+          profile: dbHit.profile as BoardProfile | null,
+          shape: dbHit.shape as BoardShape | null,
+          category: dbHit.category as BoardCategory | null,
+          msrpUsd: dbHit.msrpUsd,
+        };
         specCache.set(key, specs);
         return { key, specs };
       }
@@ -222,9 +253,21 @@ export async function enrichBoardSpecs(
 
         specCache.set(key, specs);
 
-        // Persist successful lookups to DB
+        // Persist successful lookups to DB (don't overwrite manufacturer data)
         if (specs) {
-          setCachedSpecs(key, specs);
+          const cached: CachedSpecs = {
+            flex: specs.flex,
+            profile: specs.profile,
+            shape: specs.shape,
+            category: specs.category,
+            msrpUsd: null,
+            source: "llm",
+            sourceUrl: null,
+          };
+          const existing = getCachedSpecs(key);
+          if (!existing || existing.source !== "manufacturer") {
+            setCachedSpecs(key, cached);
+          }
         }
 
         return { key, specs };

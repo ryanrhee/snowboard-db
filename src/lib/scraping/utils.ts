@@ -94,12 +94,33 @@ export function parseLengthCm(raw: string): number | null {
   return isNaN(num) ? null : num;
 }
 
+const BRAND_ALIASES: Record<string, string> = {
+  "yes": "Yes.",
+  "yes.": "Yes.",
+  "dinosaurs": "Dinosaurs Will Die",
+  "dwd": "Dinosaurs Will Die",
+  "dinosaurs will die": "Dinosaurs Will Die",
+  "sims": "Sims",
+  "lib": "Lib Tech",
+  "libtech": "Lib Tech",
+  "lib tech": "Lib Tech",
+  "lib technologies": "Lib Tech",
+  "capita": "CAPiTA",
+  "capita snowboarding": "CAPiTA",
+};
+
+export function canonicalizeBrand(brand: string): string {
+  const key = brand.toLowerCase().trim();
+  return BRAND_ALIASES[key] ?? brand;
+}
+
 export function normalizeBrand(raw: string): string {
   if (!raw) return "Unknown";
-  return raw
+  const cleaned = raw
     .replace(/\s*snowboards?\s*/gi, "")
     .replace(/\s*snowboard\s*co\.?\s*/gi, "")
     .trim();
+  return canonicalizeBrand(cleaned);
 }
 
 export { fetchPageWithBrowser } from "./browser";

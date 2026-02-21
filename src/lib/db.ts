@@ -83,6 +83,14 @@ function initSchema(db: Database.Database): void {
       created_at TEXT NOT NULL
     );
   `);
+
+  // Migrate spec_cache: add columns if missing
+  const cols = db.pragma("table_info(spec_cache)") as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has("msrp_usd")) db.exec("ALTER TABLE spec_cache ADD COLUMN msrp_usd REAL");
+  if (!colNames.has("source")) db.exec("ALTER TABLE spec_cache ADD COLUMN source TEXT");
+  if (!colNames.has("source_url")) db.exec("ALTER TABLE spec_cache ADD COLUMN source_url TEXT");
+  if (!colNames.has("updated_at")) db.exec("ALTER TABLE spec_cache ADD COLUMN updated_at TEXT");
 }
 
 // ===== Board ID Generation =====
@@ -272,12 +280,15 @@ export interface CachedSpecs {
   profile: string | null;
   shape: string | null;
   category: string | null;
+  msrpUsd: number | null;
+  source: string | null;
+  sourceUrl: string | null;
 }
 
 export function getCachedSpecs(brandModel: string): CachedSpecs | null {
   const db = getDb();
   const row = db
-    .prepare("SELECT flex, profile, shape, category FROM spec_cache WHERE brand_model = ?")
+    .prepare("SELECT flex, profile, shape, category, msrp_usd, source, source_url FROM spec_cache WHERE brand_model = ?")
     .get(brandModel) as Record<string, unknown> | undefined;
   if (!row) return null;
   return {
@@ -285,20 +296,44 @@ export function getCachedSpecs(brandModel: string): CachedSpecs | null {
     profile: (row.profile as string) ?? null,
     shape: (row.shape as string) ?? null,
     category: (row.category as string) ?? null,
+    msrpUsd: (row.msrp_usd as number) ?? null,
+    source: (row.source as string) ?? null,
+    sourceUrl: (row.source_url as string) ?? null,
   };
 }
 
-export function setCachedSpecs(brandModel: string, specs: CachedSpecs): void {
+export function setCachedSpecs(
+  brandModel: string,
+  specs: CachedSpecs
+): void {
   const db = getDb();
+  const now = new Date().toISOString();
   db.prepare(`
-    INSERT OR REPLACE INTO spec_cache (brand_model, flex, profile, shape, category, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO spec_cache (brand_model, flex, profile, shape, category, msrp_usd, source, source_url, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     brandModel,
     specs.flex,
     specs.profile,
     specs.shape,
     specs.category,
-    new Date().toISOString()
+    specs.msrpUsd,
+    specs.source,
+    specs.sourceUrl,
+    now,
+    now
   );
+}
+
+/**
+ * Set cached specs only if no manufacturer-sourced entry already exists.
+ * Manufacturer data takes priority over LLM data.
+ */
+export function setCachedSpecsIfNotManufacturer(
+  brandModel: string,
+  specs: CachedSpecs
+): void {
+  const existing = getCachedSpecs(brandModel);
+  if (existing && existing.source === "manufacturer") return;
+  setCachedSpecs(brandModel, specs);
 }

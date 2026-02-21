@@ -95,8 +95,26 @@ export async function runSearchPipeline(
   // Enrich boards missing specs via LLM + web search
   const enrichedBoards = await enrichBoardSpecs(filteredBoards);
 
+  // Fill in discount percent for boards that got MSRP from spec cache
+  const boardsWithDiscount = enrichedBoards.map((board) => {
+    if (
+      board.discountPercent === null &&
+      board.originalPriceUsd &&
+      board.salePriceUsd &&
+      board.originalPriceUsd > board.salePriceUsd
+    ) {
+      return {
+        ...board,
+        discountPercent: Math.round(
+          ((board.originalPriceUsd - board.salePriceUsd) / board.originalPriceUsd) * 100
+        ),
+      };
+    }
+    return board;
+  });
+
   // Score each board
-  const scoredBoards = enrichedBoards.map(scoreBoard);
+  const scoredBoards = boardsWithDiscount.map(scoreBoard);
 
   // Sort by finalScore descending
   scoredBoards.sort((a, b) => b.finalScore - a.finalScore);
