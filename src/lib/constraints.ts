@@ -1,0 +1,92 @@
+import {
+  SearchConstraints,
+  CanonicalBoard,
+  Region,
+} from "./types";
+
+export const DEFAULT_CONSTRAINTS: SearchConstraints = {
+  minLengthCm: 155,
+  maxLengthCm: 161,
+  maxPriceUsd: 650,
+  minPriceUsd: null,
+  preferredProfiles: null,
+  preferredCategories: null,
+  excludeKids: true,
+  regions: [Region.US, Region.KR],
+  retailers: null,
+};
+
+export function applyConstraints(
+  boards: CanonicalBoard[],
+  constraints: SearchConstraints
+): CanonicalBoard[] {
+  return boards.filter((board) => {
+    // Length filter — null length does NOT disqualify
+    if (board.lengthCm !== null) {
+      if (
+        constraints.minLengthCm &&
+        board.lengthCm < constraints.minLengthCm
+      ) {
+        return false;
+      }
+      if (
+        constraints.maxLengthCm &&
+        board.lengthCm > constraints.maxLengthCm
+      ) {
+        return false;
+      }
+    }
+
+    // Price filter
+    if (
+      constraints.maxPriceUsd &&
+      board.salePriceUsd > constraints.maxPriceUsd
+    ) {
+      return false;
+    }
+    if (
+      constraints.minPriceUsd &&
+      board.salePriceUsd < constraints.minPriceUsd
+    ) {
+      return false;
+    }
+
+    // Exclude kids boards
+    if (constraints.excludeKids) {
+      const lower = `${board.model} ${board.description || ""}`.toLowerCase();
+      if (
+        lower.includes("kids") ||
+        lower.includes("youth") ||
+        lower.includes("junior") ||
+        lower.includes("grom") ||
+        lower.includes("children")
+      ) {
+        return false;
+      }
+      // Kids boards are usually under 140cm
+      if (board.lengthCm !== null && board.lengthCm < 130) {
+        return false;
+      }
+    }
+
+    // Region filter
+    if (
+      constraints.regions &&
+      constraints.regions.length > 0 &&
+      !constraints.regions.includes(board.region)
+    ) {
+      return false;
+    }
+
+    // Retailer filter
+    if (
+      constraints.retailers &&
+      constraints.retailers.length > 0 &&
+      !constraints.retailers.includes(board.retailer)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
