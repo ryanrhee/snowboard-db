@@ -22,6 +22,12 @@ export function SearchResults({ boards }: SearchResultsProps) {
   const [sortAsc, setSortAsc] = useState(false);
   const [selectedBoard, setSelectedBoard] = useState<BoardData | null>(null);
 
+  const hasSpecs = (b: BoardData) =>
+    b.flex !== null && b.profile !== null && b.shape !== null && b.category !== null;
+
+  const completeBoards = boards.filter(hasSpecs);
+  const incompleteBoards = boards.filter((b) => !hasSpecs(b));
+
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
       setSortAsc(!sortAsc);
@@ -31,7 +37,7 @@ export function SearchResults({ boards }: SearchResultsProps) {
     }
   };
 
-  const sorted = [...boards].sort((a, b) => {
+  const sorted = [...completeBoards].sort((a, b) => {
     let cmp: number;
     switch (sortKey) {
       case "brand":
@@ -90,6 +96,11 @@ export function SearchResults({ boards }: SearchResultsProps) {
       </div>
     );
   }
+
+  const sortedIncomplete = [...incompleteBoards].sort((a, b) => {
+    const cmp = a.salePriceUsd - b.salePriceUsd;
+    return cmp;
+  });
 
   return (
     <>
@@ -202,6 +213,99 @@ export function SearchResults({ boards }: SearchResultsProps) {
           </tbody>
         </table>
       </div>
+
+      {incompleteBoards.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-sm font-medium text-yellow-400/80">
+              Missing Spec Data
+            </h3>
+            <span className="text-xs text-gray-500">
+              {incompleteBoards.length} board{incompleteBoards.length !== 1 ? "s" : ""} &mdash; scores may be inaccurate
+            </span>
+          </div>
+          <div className="overflow-x-auto opacity-70">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-900">
+                <tr className="border-b border-gray-800">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Board</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Length</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Flex</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profile</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Off</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedIncomplete.map((board, idx) => (
+                  <tr
+                    key={board.id}
+                    className="border-b border-gray-800/50 hover:bg-gray-800/50 cursor-pointer transition-colors"
+                    onClick={() => setSelectedBoard(board)}
+                  >
+                    <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
+                    <td className="px-3 py-2">
+                      <a
+                        href={board.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400/70 hover:text-blue-300 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="font-medium">{board.brand}</span>{" "}
+                        <span className="text-gray-400">{board.model}</span>
+                      </a>
+                    </td>
+                    <td className="px-3 py-2 text-gray-500">{board.year || "-"}</td>
+                    <td className="px-3 py-2 text-gray-400">
+                      {board.lengthCm ? `${board.lengthCm}cm` : "-"}
+                    </td>
+                    <td className="px-3 py-2 text-gray-400">
+                      {board.flex ? `${board.flex}/10` : "-"}
+                    </td>
+                    <td className="px-3 py-2 text-gray-500 capitalize text-xs">
+                      {board.profile?.replace(/_/g, " ") || "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-green-400/70 font-medium">
+                          ${board.salePriceUsd.toFixed(0)}
+                        </span>
+                        {board.originalPriceUsd && (
+                          <span className="text-gray-600 line-through text-xs">
+                            ${board.originalPriceUsd.toFixed(0)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {board.discountPercent ? (
+                        <span className="text-red-400/70 text-xs">
+                          -{board.discountPercent}%
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${retailerBadgeColor(
+                          board.retailer
+                        )}`}
+                      >
+                        {board.retailer}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {selectedBoard && (
         <BoardDetail

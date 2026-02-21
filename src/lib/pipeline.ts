@@ -21,6 +21,7 @@ import {
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
 import { SEED_BOARDS } from "./seed-data";
+import { enrichBoardSpecs } from "./llm/enrich";
 import * as cheerio from "cheerio";
 
 export async function runSearchPipeline(
@@ -91,8 +92,11 @@ export async function runSearchPipeline(
     `[pipeline] ${filteredBoards.length} boards after constraint filtering`
   );
 
+  // Enrich boards missing specs via LLM + web search
+  const enrichedBoards = await enrichBoardSpecs(filteredBoards);
+
   // Score each board
-  const scoredBoards = filteredBoards.map(scoreBoard);
+  const scoredBoards = enrichedBoards.map(scoreBoard);
 
   // Sort by finalScore descending
   scoredBoards.sort((a, b) => b.finalScore - a.finalScore);

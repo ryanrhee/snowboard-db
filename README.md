@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Snowboard Deal Finder
 
-## Getting Started
+Find the best beginner snowboard deals across retailers (Tactics, Evo, Backcountry). Scrapes live listings, enriches specs via Claude, and scores boards for beginner-friendliness and value.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npx playwright install chromium
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Copy `.env.local.example` to `.env.local` and set your `ANTHROPIC_API_KEY`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Running the dev server
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Important:** The dev server must be run from a regular terminal, not from within Claude Code. Meta's sandbox on the Claude process blocks Chromium's mach port bootstrap calls, causing Playwright to crash with `SIGSEGV` on launch.
 
-## Learn More
+```bash
+# Run from a regular terminal:
+npx next dev -p 3099
+```
 
-To learn more about Next.js, take a look at the following resources:
+Claude Code can still be used for editing, searching, and committing -- just run the server separately.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Scraping:** Tactics (fetch), Evo & Backcountry (Playwright headless browser)
+- **Enrichment:** Missing specs (flex, profile, shape, category) are looked up via Claude Haiku + web search. Results are cached in SQLite across restarts.
+- **Scoring:** Boards are scored on beginner-friendliness and value. Boards missing spec data are shown in a separate "Missing Spec Data" section in the UI.

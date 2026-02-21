@@ -85,52 +85,49 @@ async function lookupSpecs(
   const yearStr = year ? ` ${year}` : "";
   const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. Search the web, then report using the report_specs tool.`;
 
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-20250414",
-      max_tokens: 1024,
-      tools: [
-        REPORT_SPECS_TOOL,
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: 3,
-        },
-      ],
-      messages: [{ role: "user", content: prompt }],
-    });
+  // API/network errors intentionally propagate to stop the batch loop.
+  // Only "model not found" (no report_specs call) returns null.
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1024,
+    tools: [
+      REPORT_SPECS_TOOL,
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 3,
+      },
+    ],
+    messages: [{ role: "user", content: prompt }],
+  });
 
-    // Extract the report_specs tool call from the response
-    for (const block of response.content) {
-      if (block.type === "tool_use" && block.name === "report_specs") {
-        const input = block.input as {
-          flex: number | null;
-          profile: string | null;
-          shape: string | null;
-          category: string | null;
-        };
+  // Extract the report_specs tool call from the response
+  for (const block of response.content) {
+    if (block.type === "tool_use" && block.name === "report_specs") {
+      const input = block.input as {
+        flex: number | null;
+        profile: string | null;
+        shape: string | null;
+        category: string | null;
+      };
 
-        return {
-          flex:
-            input.flex !== null &&
-            input.flex >= 1 &&
-            input.flex <= 10
-              ? Math.round(input.flex)
-              : null,
-          profile: input.profile as BoardProfile | null,
-          shape: input.shape as BoardShape | null,
-          category: input.category as BoardCategory | null,
-        };
-      }
+      return {
+        flex:
+          input.flex !== null &&
+          input.flex >= 1 &&
+          input.flex <= 10
+            ? Math.round(input.flex)
+            : null,
+        profile: input.profile as BoardProfile | null,
+        shape: input.shape as BoardShape | null,
+        category: input.category as BoardCategory | null,
+      };
     }
-
-    // Model didn't call report_specs — treat as failure
-    console.warn(`[enrich] No report_specs call for ${brand} ${model}`);
-    return null;
-  } catch (error) {
-    console.error(`[enrich] LLM lookup failed for ${brand} ${model}:`, error);
-    return null;
   }
+
+  // Model didn't call report_specs — treat as lookup miss (resumable)
+  console.warn(`[enrich] No report_specs call for ${brand} ${model}`);
+  return null;
 }
 
 function applySpecs(board: CanonicalBoard, specs: EnrichedSpecs): CanonicalBoard {
@@ -186,10 +183,15 @@ export async function enrichBoardSpecs(
   // Look up specs with concurrency limit of 3
   const CONCURRENCY = 3;
   const keys = Array.from(groups.keys());
+  let aborted = false;
 
   for (let i = 0; i < keys.length; i += CONCURRENCY) {
+    if (aborted) break;
+
     const batch = keys.slice(i, i + CONCURRENCY);
     const lookups = batch.map(async (key) => {
+      if (aborted) return { key, specs: null };
+
       // Fast path: in-memory cache
       if (specCache.has(key)) {
         return { key, specs: specCache.get(key)! };
@@ -204,33 +206,36 @@ export async function enrichBoardSpecs(
         return { key, specs };
       }
 
+      if (aborted) return { key, specs: null };
+
       const boardSample = groups.get(key)![0];
       console.log(
         `[enrich] Looking up: ${boardSample.brand} ${boardSample.model}${boardSample.year ? ` ${boardSample.year}` : ""}`
       );
 
-      const specs = await lookupSpecs(
-        boardSample.brand,
-        boardSample.model,
-        boardSample.year
-      );
+      try {
+        const specs = await lookupSpecs(
+          boardSample.brand,
+          boardSample.model,
+          boardSample.year
+        );
 
-      specCache.set(key, specs);
+        specCache.set(key, specs);
 
-      // Persist successful lookups to DB
-      if (specs) {
-        setCachedSpecs(key, specs);
+        // Persist successful lookups to DB
+        if (specs) {
+          setCachedSpecs(key, specs);
+        }
+
+        return { key, specs };
+      } catch (error) {
+        aborted = true;
+        console.error("[enrich] LLM call failed, stopping enrichment:", error);
+        return { key, specs: null };
       }
-
-      return { key, specs };
     });
 
-    const results = await Promise.allSettled(lookups);
-    for (const result of results) {
-      if (result.status === "rejected") {
-        console.error("[enrich] Batch lookup failed:", result.reason);
-      }
-    }
+    await Promise.all(lookups);
   }
 
   // Apply enriched specs to boards
