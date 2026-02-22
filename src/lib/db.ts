@@ -107,6 +107,14 @@ function initSchema(db: Database.Database): void {
       review_url TEXT,
       resolved_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS http_cache (
+      url_hash     TEXT PRIMARY KEY,
+      url          TEXT NOT NULL,
+      body         TEXT NOT NULL,
+      fetched_at   INTEGER NOT NULL,
+      ttl_ms       INTEGER NOT NULL
+    );
   `);
 }
 

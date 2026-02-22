@@ -20,6 +20,7 @@ import {
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
+import { pruneHttpCache } from "./scraping/http-cache";
 import { SEED_BOARDS } from "./seed-data";
 import { enrichBoardSpecs } from "./llm/enrich";
 import * as cheerio from "cheerio";
@@ -132,6 +133,7 @@ export async function runSearchPipeline(
 
   insertSearchRun(run);
   insertBoards(scoredBoards);
+  pruneHttpCache();
 
   console.log(
     `[pipeline] Search complete: ${scoredBoards.length} boards in ${durationMs}ms`
@@ -162,7 +164,7 @@ export async function refreshPipeline(
       const fetchFn = browserRetailers.has(board.retailer)
         ? fetchPageWithBrowser
         : fetchPage;
-      const html = await fetchFn(board.url, { retries: 1, timeoutMs: 10000 });
+      const html = await fetchFn(board.url, { retries: 1, timeoutMs: 10000, cacheTtlMs: 0 });
       const $ = cheerio.load(html);
 
       // Try to extract current price

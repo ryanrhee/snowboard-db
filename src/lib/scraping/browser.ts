@@ -1,8 +1,6 @@
 import { chromium, Browser, BrowserContext } from "playwright";
-import { createHash } from "crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "fs";
-import { join } from "path";
 import { delay } from "./utils";
+import { getHttpCache, setHttpCache } from "./http-cache";
 
 let browser: Browser | null = null;
 const contexts = new Map<string, BrowserContext>();
@@ -12,31 +10,6 @@ const LAUNCH_ARGS = [
   "--no-sandbox",
   "--disable-setuid-sandbox",
 ];
-
-const isDev = process.env.NODE_ENV !== "production";
-const CACHE_DIR = join(process.cwd(), ".scrape-cache");
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-function getCachePath(url: string): string {
-  const hash = createHash("md5").update(url).digest("hex");
-  return join(CACHE_DIR, `${hash}.html`);
-}
-
-function readCache(url: string): string | null {
-  if (!isDev) return null;
-  const path = getCachePath(url);
-  if (!existsSync(path)) return null;
-  const stat = statSync(path);
-  if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) return null;
-  console.log(`[browser] Cache hit for ${url}`);
-  return readFileSync(path, "utf-8");
-}
-
-function writeCache(url: string, html: string): void {
-  if (!isDev) return;
-  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(getCachePath(url), html, "utf-8");
-}
 
 async function getBrowser(): Promise<Browser> {
   if (!browser || !browser.isConnected()) {
@@ -73,18 +46,20 @@ export async function fetchPageWithBrowser(
     retryDelayMs?: number;
     timeoutMs?: number;
     waitUntil?: "load" | "domcontentloaded" | "networkidle";
+    cacheTtlMs?: number;
   } = {}
 ): Promise<string> {
-  // Check cache first (dev only)
-  const cached = readCache(url);
-  if (cached) return cached;
-
   const {
     retries = 3,
     retryDelayMs = 2000,
     timeoutMs = 45000,
     waitUntil = "load",
+    cacheTtlMs,
   } = options;
+
+  // Check SQLite cache
+  const cached = getHttpCache(url, cacheTtlMs);
+  if (cached) return cached;
 
   const domain = getDomain(url);
 
@@ -111,8 +86,7 @@ export async function fetchPageWithBrowser(
       const content = await page.content();
       await page.close();
 
-      // Cache the response (dev only)
-      writeCache(url, content);
+      setHttpCache(url, content, { ttlMs: cacheTtlMs });
 
       return content;
     } catch (error) {

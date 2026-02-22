@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { getHttpCache, setHttpCache } from "./http-cache";
 
 export async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,9 +22,15 @@ export async function fetchPage(
     retries?: number;
     retryDelayMs?: number;
     timeoutMs?: number;
+    cacheTtlMs?: number;
   } = {}
 ): Promise<string> {
-  const { retries = 3, retryDelayMs = 2000, timeoutMs = 15000 } = options;
+  const { retries = 3, retryDelayMs = 2000, timeoutMs = 15000, cacheTtlMs } = options;
+
+  // Check cache (cacheTtlMs=0 skips, undefined uses default 24h)
+  const cached = getHttpCache(url, cacheTtlMs);
+  if (cached) return cached;
+
   const dispatcher = getProxyDispatcher();
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -63,7 +70,9 @@ export async function fetchPage(
         throw new Error(`HTTP ${response.status} for ${url}`);
       }
 
-      return await response.text();
+      const body = await response.text();
+      setHttpCache(url, body, { ttlMs: cacheTtlMs });
+      return body;
     } catch (error: unknown) {
       if (attempt < retries && error instanceof Error && error.name === "AbortError") {
         const backoff = retryDelayMs * Math.pow(2, attempt);
