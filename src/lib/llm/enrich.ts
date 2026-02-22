@@ -1,7 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config";
-import { getCachedSpecs, setCachedSpecs, CachedSpecs } from "../db";
+import { getCachedSpecs, setCachedSpecsWithPriority } from "../db";
 import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "../types";
+import { normalizeProfile, normalizeShape, normalizeCategory, normalizeFlex } from "../normalization";
+import { tryReviewSiteLookup } from "../review-sites/the-good-ride";
 
 let client: Anthropic | null = null;
 
@@ -240,6 +242,35 @@ export async function enrichBoardSpecs(
       if (aborted) return { key, specs: null };
 
       const boardSample = groups.get(key)![0];
+
+      // Try review site before LLM
+      try {
+        const reviewSpec = await tryReviewSiteLookup(boardSample.brand, boardSample.model);
+        if (reviewSpec) {
+          const specs: EnrichedSpecs = {
+            flex: reviewSpec.flex ? normalizeFlex(reviewSpec.flex) : null,
+            profile: reviewSpec.profile ? normalizeProfile(reviewSpec.profile) as BoardProfile | null : null,
+            shape: reviewSpec.shape ? normalizeShape(reviewSpec.shape) as BoardShape | null : null,
+            category: reviewSpec.category ? normalizeCategory(reviewSpec.category) as BoardCategory | null : null,
+            msrpUsd: reviewSpec.msrpUsd,
+          };
+          specCache.set(key, specs);
+          setCachedSpecsWithPriority(key, {
+            flex: specs.flex,
+            profile: specs.profile,
+            shape: specs.shape,
+            category: specs.category,
+            msrpUsd: specs.msrpUsd,
+            source: "review-site",
+            sourceUrl: reviewSpec.sourceUrl,
+          });
+          console.log(`[enrich] Review site hit: ${key}`);
+          return { key, specs };
+        }
+      } catch (err) {
+        console.warn("[enrich] Review site lookup failed:", (err as Error).message);
+      }
+
       console.log(
         `[enrich] Looking up: ${boardSample.brand} ${boardSample.model}${boardSample.year ? ` ${boardSample.year}` : ""}`
       );
@@ -253,9 +284,9 @@ export async function enrichBoardSpecs(
 
         specCache.set(key, specs);
 
-        // Persist successful lookups to DB (don't overwrite manufacturer data)
+        // Persist successful lookups to DB (respects source priority)
         if (specs) {
-          const cached: CachedSpecs = {
+          setCachedSpecsWithPriority(key, {
             flex: specs.flex,
             profile: specs.profile,
             shape: specs.shape,
@@ -263,11 +294,7 @@ export async function enrichBoardSpecs(
             msrpUsd: null,
             source: "llm",
             sourceUrl: null,
-          };
-          const existing = getCachedSpecs(key);
-          if (!existing || existing.source !== "manufacturer") {
-            setCachedSpecs(key, cached);
-          }
+          });
         }
 
         return { key, specs };

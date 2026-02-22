@@ -91,6 +91,23 @@ function initSchema(db: Database.Database): void {
   if (!colNames.has("source")) db.exec("ALTER TABLE spec_cache ADD COLUMN source TEXT");
   if (!colNames.has("source_url")) db.exec("ALTER TABLE spec_cache ADD COLUMN source_url TEXT");
   if (!colNames.has("updated_at")) db.exec("ALTER TABLE spec_cache ADD COLUMN updated_at TEXT");
+
+  // Review site tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_sitemap_cache (
+      url TEXT PRIMARY KEY,
+      slug TEXT,
+      brand TEXT,
+      model TEXT,
+      fetched_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS review_url_map (
+      brand_model TEXT PRIMARY KEY,
+      review_url TEXT,
+      resolved_at TEXT
+    );
+  `);
 }
 
 // ===== Board ID Generation =====
@@ -337,3 +354,105 @@ export function setCachedSpecsIfNotManufacturer(
   if (existing && existing.source === "manufacturer") return;
   setCachedSpecs(brandModel, specs);
 }
+
+// ===== Source Priority =====
+
+const SOURCE_PRIORITY: Record<string, number> = {
+  manufacturer: 3,
+  "review-site": 2,
+  llm: 1,
+};
+
+/**
+ * Set cached specs only if the new source has equal or higher priority
+ * than the existing entry. Priority: manufacturer > review-site > llm.
+ */
+export function setCachedSpecsWithPriority(
+  brandModel: string,
+  specs: CachedSpecs
+): void {
+  const existing = getCachedSpecs(brandModel);
+  if (existing && existing.source) {
+    const existingPriority = SOURCE_PRIORITY[existing.source] ?? 0;
+    const newPriority = SOURCE_PRIORITY[specs.source ?? ""] ?? 0;
+    if (newPriority < existingPriority) return;
+  }
+  setCachedSpecs(brandModel, specs);
+}
+
+// ===== Review Sitemap Cache =====
+
+export interface SitemapEntry {
+  url: string;
+  slug: string;
+  brand: string;
+  model: string;
+  fetchedAt: string;
+}
+
+export function getSitemapCache(): SitemapEntry[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT url, slug, brand, model, fetched_at FROM review_sitemap_cache")
+    .all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    url: r.url as string,
+    slug: r.slug as string,
+    brand: r.brand as string,
+    model: r.model as string,
+    fetchedAt: r.fetched_at as string,
+  }));
+}
+
+export function setSitemapCache(entries: SitemapEntry[]): void {
+  const db = getDb();
+  // Clear old entries and insert new ones
+  const clear = db.prepare("DELETE FROM review_sitemap_cache");
+  const insert = db.prepare(
+    "INSERT OR REPLACE INTO review_sitemap_cache (url, slug, brand, model, fetched_at) VALUES (?, ?, ?, ?, ?)"
+  );
+
+  db.transaction(() => {
+    clear.run();
+    for (const e of entries) {
+      insert.run(e.url, e.slug, e.brand, e.model, e.fetchedAt);
+    }
+  })();
+}
+
+// ===== Review URL Map =====
+
+const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * Get cached review URL for a brand|model key.
+ * Returns: string (hit), null (cached miss), undefined (not cached / expired).
+ */
+export function getReviewUrlMap(brandModel: string): string | null | undefined {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT review_url, resolved_at FROM review_url_map WHERE brand_model = ?")
+    .get(brandModel) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+
+  // If it's a miss (null URL), check TTL
+  if (row.review_url === null) {
+    const age = Date.now() - new Date(row.resolved_at as string).getTime();
+    if (age > MISS_TTL_MS) {
+      // Expired miss — delete and return undefined
+      db.prepare("DELETE FROM review_url_map WHERE brand_model = ?").run(brandModel);
+      return undefined;
+    }
+    return null;
+  }
+
+  return row.review_url as string;
+}
+
+export function setReviewUrlMap(brandModel: string, reviewUrl: string | null): void {
+  const db = getDb();
+  db.prepare(
+    "INSERT OR REPLACE INTO review_url_map (brand_model, review_url, resolved_at) VALUES (?, ?, ?)"
+  ).run(brandModel, reviewUrl, new Date().toISOString());
+}
+
