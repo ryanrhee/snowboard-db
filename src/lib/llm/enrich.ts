@@ -94,59 +94,11 @@ const REPORT_SPECS_TOOL: Anthropic.Tool = {
 };
 
 async function lookupSpecs(
-  brand: string,
-  model: string,
-  year: number | null
+  _brand: string,
+  _model: string,
+  _year: number | null
 ): Promise<EnrichedSpecs | null> {
   // LLM enrichment disabled to avoid API spend
-  return null;
-
-  const yearStr = year ? ` ${year}` : "";
-  const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. IMPORTANT: Different retailers use different flex scales (e.g. Evo uses 1-5, Burton uses 1-10). You MUST normalize flex to a 1-10 scale — for example, a 3/5 from Evo should be reported as 6/10. Search the web, then report using the report_specs tool.`;
-
-  // API/network errors intentionally propagate to stop the batch loop.
-  // Only "model not found" (no report_specs call) returns null.
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 1024,
-    tools: [
-      REPORT_SPECS_TOOL,
-      {
-        type: "web_search_20250305",
-        name: "web_search",
-        max_uses: 3,
-      },
-    ],
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  // Extract the report_specs tool call from the response
-  for (const block of response.content) {
-    if (block.type === "tool_use" && block.name === "report_specs") {
-      const input = block.input as {
-        flex: number | null;
-        profile: string | null;
-        shape: string | null;
-        category: string | null;
-      };
-
-      return {
-        flex:
-          input.flex !== null &&
-          input.flex >= 1 &&
-          input.flex <= 10
-            ? Math.round(input.flex)
-            : null,
-        profile: input.profile as BoardProfile | null,
-        shape: input.shape as BoardShape | null,
-        category: input.category as BoardCategory | null,
-        msrpUsd: null,
-      };
-    }
-  }
-
-  // Model didn't call report_specs — treat as lookup miss (resumable)
-  console.warn(`[enrich] No report_specs call for ${brand} ${model}`);
   return null;
 }
 

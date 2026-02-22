@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ScoreBar } from "./ScoreBar";
-import { BoardDetail, BoardData } from "./BoardDetail";
+import { BoardDetail, BoardData, specSourceSummary } from "./BoardDetail";
 
 interface SearchResultsProps {
   boards: BoardData[];
@@ -16,6 +16,31 @@ type SortKey =
   | "discountPercent"
   | "lengthCm"
   | "brand";
+
+const SOURCE_SHORT: Record<string, string> = {
+  manufacturer: "Mfgr",
+  "review-site": "Review",
+  llm: "AI",
+  judgment: "Judged",
+  none: "",
+};
+
+const SOURCE_DOT_COLOR: Record<string, string> = {
+  manufacturer: "text-emerald-400",
+  "review-site": "text-blue-400",
+  llm: "text-purple-400",
+  judgment: "text-amber-400",
+};
+
+function specSourceShort(source: string): string {
+  if (source.startsWith("retailer:")) return source.replace("retailer:", "");
+  return SOURCE_SHORT[source] || source;
+}
+
+function specSourceDotColor(source: string): string {
+  if (source.startsWith("retailer:")) return "text-gray-400";
+  return SOURCE_DOT_COLOR[source] || "text-gray-500";
+}
 
 export function SearchResults({ boards }: SearchResultsProps) {
   const [sortKey, setSortKey] = useState<SortKey>("finalScore");
@@ -130,11 +155,15 @@ export function SearchResults({ boards }: SearchResultsProps) {
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Source
               </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider" title="Spec data source">
+                Specs
+              </th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((board, idx) => {
               const isHighScore = board.finalScore >= 0.7;
+              const summary = specSourceSummary(board.specSources);
               return (
                 <tr
                   key={board.id}
@@ -206,6 +235,21 @@ export function SearchResults({ boards }: SearchResultsProps) {
                     >
                       {board.retailer}
                     </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {summary.sourceCount > 0 ? (
+                      <span className="flex items-center gap-1" title={`Best source: ${specSourceShort(summary.topSource)}${summary.sourceCount > 1 ? `, ${summary.sourceCount} sources` : ""}`}>
+                        <span className={`text-sm ${specSourceDotColor(summary.topSource)}`}>&#9679;</span>
+                        <span className="text-[10px] text-gray-400">
+                          {specSourceShort(summary.topSource)}
+                        </span>
+                        {summary.hasDisagreement && (
+                          <span className="text-amber-500 text-xs" title="Sources disagree on some specs">!</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 text-xs">-</span>
+                    )}
                   </td>
                 </tr>
               );
