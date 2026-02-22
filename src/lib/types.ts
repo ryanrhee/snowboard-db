@@ -96,6 +96,7 @@ export interface CanonicalBoard {
   finalScore: number; // 0-1
   scoreNotes: string | null; // human-readable scoring explanation
   scrapedAt: string;
+  specSources: string | null; // JSON: Record<string, SpecFieldInfo>
 }
 
 // ===== Search Types =====

@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
 import { CanonicalBoard, SearchRun } from "./types";
+import { normalizeModel } from "./normalization";
 
 let db: Database.Database | null = null;
 
@@ -115,7 +116,24 @@ function initSchema(db: Database.Database): void {
       fetched_at   INTEGER NOT NULL,
       ttl_ms       INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS spec_sources (
+      brand_model TEXT NOT NULL,
+      field       TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      value       TEXT NOT NULL,
+      source_url  TEXT,
+      updated_at  TEXT NOT NULL,
+      PRIMARY KEY (brand_model, field, source)
+    );
   `);
+
+  // Migrate boards: add spec_sources column if missing
+  const boardCols = db.pragma("table_info(boards)") as { name: string }[];
+  const boardColNames = new Set(boardCols.map((c) => c.name));
+  if (!boardColNames.has("spec_sources")) {
+    db.exec("ALTER TABLE boards ADD COLUMN spec_sources TEXT");
+  }
 }
 
 // ===== Board ID Generation =====
@@ -127,6 +145,12 @@ export function generateBoardId(
 ): string {
   const input = `${retailer}|${url}|${lengthCm ?? ""}`;
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+// ===== Spec Key =====
+
+export function specKey(brand: string, model: string): string {
+  return `${brand.toLowerCase()}|${normalizeModel(model, brand).toLowerCase()}`;
 }
 
 // ===== Search Run CRUD =====
@@ -194,13 +218,15 @@ export function insertBoards(boards: CanonicalBoard[]): void {
       length_cm, width_mm, flex, profile, shape, category,
       original_price_usd, sale_price_usd, discount_percent,
       currency, original_price, sale_price, availability,
-      description, beginner_score, value_score, final_score, score_notes, scraped_at
+      description, beginner_score, value_score, final_score, score_notes, scraped_at,
+      spec_sources
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?,
+      ?
     )
   `);
 
@@ -213,7 +239,8 @@ export function insertBoards(boards: CanonicalBoard[]): void {
         b.originalPriceUsd, b.salePriceUsd, b.discountPercent,
         b.currency, b.originalPrice, b.salePrice, b.availability,
         b.description, b.beginnerScore, b.valueScore, b.finalScore,
-        b.scoreNotes, b.scrapedAt
+        b.scoreNotes, b.scrapedAt,
+        b.specSources ?? null
       );
     }
   });
@@ -295,6 +322,7 @@ function mapRowToBoard(row: Record<string, unknown>): CanonicalBoard {
     finalScore: row.final_score as number,
     scoreNotes: (row.score_notes as string) || null,
     scrapedAt: row.scraped_at as string,
+    specSources: (row.spec_sources as string) || null,
   } as CanonicalBoard;
 }
 
@@ -462,5 +490,47 @@ export function setReviewUrlMap(brandModel: string, reviewUrl: string | null): v
   db.prepare(
     "INSERT OR REPLACE INTO review_url_map (brand_model, review_url, resolved_at) VALUES (?, ?, ?)"
   ).run(brandModel, reviewUrl, new Date().toISOString());
+}
+
+// ===== Spec Sources CRUD =====
+
+export interface SpecSourceEntry {
+  source: string;
+  value: string;
+  sourceUrl: string | null;
+}
+
+export function setSpecSource(
+  brandModel: string,
+  field: string,
+  source: string,
+  value: string,
+  sourceUrl?: string | null
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO spec_sources (brand_model, field, source, value, source_url, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(brandModel, field, source, value, sourceUrl ?? null, new Date().toISOString());
+}
+
+export function getSpecSources(
+  brandModel: string
+): Record<string, SpecSourceEntry[]> {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT field, source, value, source_url FROM spec_sources WHERE brand_model = ?")
+    .all(brandModel) as { field: string; source: string; value: string; source_url: string | null }[];
+
+  const result: Record<string, SpecSourceEntry[]> = {};
+  for (const row of rows) {
+    if (!result[row.field]) result[row.field] = [];
+    result[row.field].push({
+      source: row.source,
+      value: row.value,
+      sourceUrl: row.source_url,
+    });
+  }
+  return result;
 }
 

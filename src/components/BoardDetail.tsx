@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ScoreBar } from "./ScoreBar";
 import { ScoreExplanation } from "./ScoreExplanation";
 
@@ -32,9 +33,111 @@ export interface BoardData {
   valueScore: number;
   finalScore: number;
   scoreNotes: string | null;
+  specSources: string | null;
+}
+
+interface SpecFieldInfo {
+  resolved: string | number | null;
+  resolvedSource: string;
+  agreement: boolean;
+  sources: { source: string; value: string; sourceUrl?: string }[];
+  judgment?: {
+    chosenValue: string;
+    reasoning: string;
+  };
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  manufacturer: "Mfgr",
+  "review-site": "Review",
+  llm: "AI",
+  judgment: "Judged",
+};
+
+function sourceLabel(source: string): string {
+  if (source.startsWith("retailer:")) {
+    return source.replace("retailer:", "");
+  }
+  return SOURCE_LABELS[source] || source;
+}
+
+function formatSpecValue(field: string, value: string | number | null): string {
+  if (value === null) return "unknown";
+  const str = String(value);
+  if (field === "flex") return `${str}/10`;
+  return str.replace(/_/g, " ");
+}
+
+function SpecField({
+  field,
+  displayValue,
+  fieldInfo,
+}: {
+  field: string;
+  displayValue: string | number | null;
+  fieldInfo: SpecFieldInfo | undefined;
+}) {
+  const [showJudgment, setShowJudgment] = useState(false);
+  const label = field.charAt(0).toUpperCase() + field.slice(1);
+
+  if (!fieldInfo || fieldInfo.sources.length <= 1) {
+    // Single source or no source info — show value normally
+    if (displayValue === null) return null;
+    return (
+      <div>
+        <span className="text-gray-400">{label}:</span>{" "}
+        {formatSpecValue(field, displayValue)}
+      </div>
+    );
+  }
+
+  const resolved = formatSpecValue(field, fieldInfo.resolved);
+  const disagreeing = fieldInfo.sources.filter(
+    (s) => s.source !== fieldInfo.resolvedSource && s.source !== "judgment" &&
+    s.value !== String(fieldInfo.resolved)
+  );
+
+  return (
+    <div className="col-span-2">
+      <div className="flex items-center gap-2">
+        <span className="text-gray-400">{label}:</span>{" "}
+        <span>{resolved}</span>
+        {fieldInfo.judgment && (
+          <button
+            onClick={() => setShowJudgment(!showJudgment)}
+            className="text-xs text-amber-400 hover:text-amber-300 underline"
+          >
+            (judged)
+          </button>
+        )}
+      </div>
+      {!fieldInfo.agreement && disagreeing.length > 0 && (
+        <div className="mt-0.5 space-y-0.5">
+          {disagreeing.map((s) => (
+            <div key={s.source} className="text-xs text-amber-400/70">
+              {sourceLabel(s.source)} says {formatSpecValue(field, s.value)}
+            </div>
+          ))}
+        </div>
+      )}
+      {showJudgment && fieldInfo.judgment && (
+        <div className="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2">
+          {fieldInfo.judgment.reasoning}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function BoardDetail({ board, onClose }: BoardDetailProps) {
+  const specSources: Record<string, SpecFieldInfo> | null = board.specSources
+    ? JSON.parse(board.specSources)
+    : null;
+
+  const hasSpecSourceData = specSources && Object.values(specSources).some(
+    (info) => info.sources.length > 0
+  );
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -82,29 +185,42 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                 <span className="text-gray-400">Width:</span> {board.widthMm}mm
               </div>
             )}
-            {board.flex && (
-              <div>
-                <span className="text-gray-400">Flex:</span> {board.flex}/10
-              </div>
+
+            {hasSpecSourceData ? (
+              <>
+                <SpecField field="flex" displayValue={board.flex} fieldInfo={specSources?.flex} />
+                <SpecField field="profile" displayValue={board.profile} fieldInfo={specSources?.profile} />
+                <SpecField field="shape" displayValue={board.shape} fieldInfo={specSources?.shape} />
+                <SpecField field="category" displayValue={board.category} fieldInfo={specSources?.category} />
+              </>
+            ) : (
+              <>
+                {board.flex && (
+                  <div>
+                    <span className="text-gray-400">Flex:</span> {board.flex}/10
+                  </div>
+                )}
+                {board.profile && (
+                  <div>
+                    <span className="text-gray-400">Profile:</span>{" "}
+                    {board.profile.replace(/_/g, " ")}
+                  </div>
+                )}
+                {board.shape && (
+                  <div>
+                    <span className="text-gray-400">Shape:</span>{" "}
+                    {board.shape.replace(/_/g, " ")}
+                  </div>
+                )}
+                {board.category && (
+                  <div>
+                    <span className="text-gray-400">Category:</span>{" "}
+                    {board.category.replace(/_/g, " ")}
+                  </div>
+                )}
+              </>
             )}
-            {board.profile && (
-              <div>
-                <span className="text-gray-400">Profile:</span>{" "}
-                {board.profile.replace(/_/g, " ")}
-              </div>
-            )}
-            {board.shape && (
-              <div>
-                <span className="text-gray-400">Shape:</span>{" "}
-                {board.shape.replace(/_/g, " ")}
-              </div>
-            )}
-            {board.category && (
-              <div>
-                <span className="text-gray-400">Category:</span>{" "}
-                {board.category.replace(/_/g, " ")}
-              </div>
-            )}
+
             <div>
               <span className="text-gray-400">Availability:</span>{" "}
               {board.availability.replace(/_/g, " ")}

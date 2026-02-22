@@ -63,6 +63,7 @@ export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
     finalScore: 0,
     scoreNotes: null,
     scrapedAt: raw.scrapedAt,
+    specSources: null,
   };
 }
 

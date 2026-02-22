@@ -17,13 +17,27 @@ import {
   getBoardsByRunId,
   getRunById,
   updateBoardPriceAndStock,
+  specKey,
+  setSpecSource,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
 import { pruneHttpCache } from "./scraping/http-cache";
 import { SEED_BOARDS } from "./seed-data";
 import { enrichBoardSpecs } from "./llm/enrich";
+import { resolveSpecSources } from "./spec-resolution";
 import * as cheerio from "cheerio";
+
+function saveRetailerSpecs(boards: CanonicalBoard[]): void {
+  for (const board of boards) {
+    const key = specKey(board.brand, board.model);
+    const source = `retailer:${board.retailer}`;
+    if (board.flex !== null) setSpecSource(key, "flex", source, String(board.flex), board.url);
+    if (board.profile !== null) setSpecSource(key, "profile", source, board.profile, board.url);
+    if (board.shape !== null) setSpecSource(key, "shape", source, board.shape, board.url);
+    if (board.category !== null) setSpecSource(key, "category", source, board.category, board.url);
+  }
+}
 
 export async function runSearchPipeline(
   constraints?: Partial<SearchConstraints>
@@ -93,13 +107,19 @@ export async function runSearchPipeline(
     `[pipeline] ${filteredBoards.length} boards after constraint filtering`
   );
 
+  // Save retailer-provided specs to spec_sources before enrichment
+  saveRetailerSpecs(filteredBoards);
+
   // Enrich boards missing specs via LLM + web search
   const enrichedBoards = mergedConstraints.skipEnrichment
     ? filteredBoards
     : await enrichBoardSpecs(filteredBoards);
 
+  // Resolve spec sources: priority-based resolution + disagreement detection
+  const resolvedBoards = await resolveSpecSources(enrichedBoards);
+
   // Fill in discount percent for boards that got MSRP from spec cache
-  const boardsWithDiscount = enrichedBoards.map((board) => {
+  const boardsWithDiscount = resolvedBoards.map((board) => {
     if (
       board.discountPercent === null &&
       board.originalPriceUsd &&

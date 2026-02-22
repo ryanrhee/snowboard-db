@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "crypto";
 import { config } from "../config";
-import { getCachedSpecs, setCachedSpecsWithPriority } from "../db";
+import { getCachedSpecs, setCachedSpecsWithPriority, specKey, setSpecSource } from "../db";
 import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "../types";
 import { normalizeProfile, normalizeShape, normalizeCategory, normalizeFlex } from "../normalization";
 import { tryReviewSiteLookup } from "../review-sites/the-good-ride";
@@ -260,6 +260,12 @@ export async function enrichBoardSpecs(
             source: "review-site",
             sourceUrl: reviewSpec.sourceUrl,
           });
+          // Write individual fields to spec_sources
+          const sk = specKey(boardSample.brand, boardSample.model);
+          if (specs.flex !== null) setSpecSource(sk, 'flex', 'review-site', String(specs.flex), reviewSpec.sourceUrl);
+          if (specs.profile !== null) setSpecSource(sk, 'profile', 'review-site', specs.profile, reviewSpec.sourceUrl);
+          if (specs.shape !== null) setSpecSource(sk, 'shape', 'review-site', specs.shape, reviewSpec.sourceUrl);
+          if (specs.category !== null) setSpecSource(sk, 'category', 'review-site', specs.category, reviewSpec.sourceUrl);
           console.log(`[enrich] Review site hit: ${boardSample.brand} ${boardSample.model}`);
           return { hash, specs };
         }
@@ -291,6 +297,12 @@ export async function enrichBoardSpecs(
             source: "llm",
             sourceUrl: null,
           });
+          // Write individual fields to spec_sources
+          const sk = specKey(boardSample.brand, boardSample.model);
+          if (specs.flex !== null) setSpecSource(sk, 'flex', 'llm', String(specs.flex));
+          if (specs.profile !== null) setSpecSource(sk, 'profile', 'llm', specs.profile);
+          if (specs.shape !== null) setSpecSource(sk, 'shape', 'llm', specs.shape);
+          if (specs.category !== null) setSpecSource(sk, 'category', 'llm', specs.category);
         }
 
         return { hash, specs };
