@@ -116,6 +116,7 @@ const BRAND_ALIASES: Record<string, string> = {
   "lib technologies": "Lib Tech",
   "capita": "CAPiTA",
   "capita snowboarding": "CAPiTA",
+  "gnu": "GNU",
 };
 
 export function canonicalizeBrand(brand: string): string {
@@ -126,8 +127,10 @@ export function canonicalizeBrand(brand: string): string {
 export function normalizeBrand(raw: string): string {
   if (!raw) return "Unknown";
   const cleaned = raw
-    .replace(/\s*snowboards?\s*/gi, "")
+    // "Snowboard Co." must be checked before bare "Snowboard(s)"
     .replace(/\s*snowboard\s*co\.?\s*/gi, "")
+    .replace(/\s*snowboarding\b/gi, "")
+    .replace(/\s*snowboards?\b/gi, "")
     .trim();
   return canonicalizeBrand(cleaned);
 }

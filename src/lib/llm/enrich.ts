@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createHash } from "crypto";
 import { config } from "../config";
 import { getCachedSpecs, setCachedSpecsWithPriority } from "../db";
 import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "../types";
@@ -23,33 +24,26 @@ interface EnrichedSpecs {
   msrpUsd: number | null;
 }
 
-// In-memory cache keyed by "brand|model" (lowercased)
+// In-memory cache keyed by input hash
 const specCache = new Map<string, EnrichedSpecs | null>();
 
-function modelKey(brand: string, model: string): string {
-  return `${brand.toLowerCase()}|${cleanModelForKey(model)}`;
-}
-
 /**
- * Strip "Snowboard", year, profile suffixes, leading brand, trailing dashes etc.
- * from model name so manufacturer and retailer keys align.
+ * Hash all scraper-provided fields for a board.  This is the cache key
+ * for enrichment: if any scraper output changes the hash changes and
+ * we re-enrich.
  */
-function cleanModelForKey(model: string): string {
-  return model
-    .toLowerCase()
-    .replace(/\bsnowboard\b/gi, "")
-    .replace(/\b20[1-2]\d\b/g, "")
-    .replace(/\bmen'?s\b/gi, "")
-    .replace(/\bwomen'?s\b/gi, "")
-    // Strip profile terms that retailers sometimes append
-    .replace(/\b(?:camber|rocker|flat|c2x?|c3|btx)\b/gi, "")
-    // "Flat Top" → "top" after stripping "flat" — clean up the orphan
-    .replace(/\b(?:top)\b/gi, "")
-    // Normalize abbreviation dots: "t. rice" -> "t.rice"
-    .replace(/(\w)\.\s+/g, "$1.")
-    .replace(/[-–—]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function inputHash(board: CanonicalBoard): string {
+  const data = [
+    board.brand,
+    board.model,
+    String(board.year ?? ""),
+    String(board.flex ?? ""),
+    board.profile ?? "",
+    board.shape ?? "",
+    board.category ?? "",
+    board.description ?? "",
+  ].join("\0");
+  return createHash("sha256").update(data).digest("hex").slice(0, 16);
 }
 
 function needsEnrichment(board: CanonicalBoard): boolean {
@@ -170,7 +164,8 @@ function applySpecs(board: CanonicalBoard, specs: EnrichedSpecs): CanonicalBoard
 /**
  * Enrich boards that are missing specs (flex, profile, shape, category)
  * by looking them up via Claude + web search.
- * Groups by brand+model so one lookup covers all size variants.
+ * Groups by input hash so one lookup covers all size variants with
+ * identical scraper output.
  */
 export async function enrichBoardSpecs(
   boards: CanonicalBoard[]
@@ -185,16 +180,17 @@ export async function enrichBoardSpecs(
     return boards;
   }
 
-  // Group boards that need enrichment by brand|model
+  // Group boards that need enrichment by input hash
+  // (boards with identical scraper output share one lookup)
   const groups = new Map<string, CanonicalBoard[]>();
   for (const board of boards) {
     if (!needsEnrichment(board)) continue;
-    const key = modelKey(board.brand, board.model);
-    const group = groups.get(key);
+    const hash = inputHash(board);
+    const group = groups.get(hash);
     if (group) {
       group.push(board);
     } else {
-      groups.set(key, [board]);
+      groups.set(hash, [board]);
     }
   }
 
@@ -209,25 +205,27 @@ export async function enrichBoardSpecs(
 
   // Look up specs with concurrency limit of 3
   const CONCURRENCY = 3;
-  const keys = Array.from(groups.keys());
+  const hashes = Array.from(groups.keys());
   let aborted = false;
 
-  for (let i = 0; i < keys.length; i += CONCURRENCY) {
+  for (let i = 0; i < hashes.length; i += CONCURRENCY) {
     if (aborted) break;
 
-    const batch = keys.slice(i, i + CONCURRENCY);
-    const lookups = batch.map(async (key) => {
-      if (aborted) return { key, specs: null };
+    const batch = hashes.slice(i, i + CONCURRENCY);
+    const lookups = batch.map(async (hash) => {
+      if (aborted) return { hash, specs: null };
 
       // Fast path: in-memory cache
-      if (specCache.has(key)) {
-        return { key, specs: specCache.get(key)! };
+      if (specCache.has(hash)) {
+        return { hash, specs: specCache.get(hash)! };
       }
 
-      // Check persistent DB cache
-      const dbHit = getCachedSpecs(key);
+      const boardSample = groups.get(hash)![0];
+
+      // Check persistent DB cache (keyed by hash of scraper output)
+      const dbHit = getCachedSpecs(hash);
       if (dbHit) {
-        console.log(`[enrich] DB cache hit: ${key}`);
+        console.log(`[enrich] DB cache hit: ${boardSample.brand} ${boardSample.model}`);
         const specs: EnrichedSpecs = {
           flex: dbHit.flex,
           profile: dbHit.profile as BoardProfile | null,
@@ -235,13 +233,11 @@ export async function enrichBoardSpecs(
           category: dbHit.category as BoardCategory | null,
           msrpUsd: dbHit.msrpUsd,
         };
-        specCache.set(key, specs);
-        return { key, specs };
+        specCache.set(hash, specs);
+        return { hash, specs };
       }
 
-      if (aborted) return { key, specs: null };
-
-      const boardSample = groups.get(key)![0];
+      if (aborted) return { hash, specs: null };
 
       // Try review site before LLM
       try {
@@ -254,8 +250,8 @@ export async function enrichBoardSpecs(
             category: reviewSpec.category ? normalizeCategory(reviewSpec.category) as BoardCategory | null : null,
             msrpUsd: reviewSpec.msrpUsd,
           };
-          specCache.set(key, specs);
-          setCachedSpecsWithPriority(key, {
+          specCache.set(hash, specs);
+          setCachedSpecsWithPriority(hash, {
             flex: specs.flex,
             profile: specs.profile,
             shape: specs.shape,
@@ -264,8 +260,8 @@ export async function enrichBoardSpecs(
             source: "review-site",
             sourceUrl: reviewSpec.sourceUrl,
           });
-          console.log(`[enrich] Review site hit: ${key}`);
-          return { key, specs };
+          console.log(`[enrich] Review site hit: ${boardSample.brand} ${boardSample.model}`);
+          return { hash, specs };
         }
       } catch (err) {
         console.warn("[enrich] Review site lookup failed:", (err as Error).message);
@@ -282,11 +278,11 @@ export async function enrichBoardSpecs(
           boardSample.year
         );
 
-        specCache.set(key, specs);
+        specCache.set(hash, specs);
 
-        // Persist successful lookups to DB (respects source priority)
+        // Persist successful lookups to DB
         if (specs) {
-          setCachedSpecsWithPriority(key, {
+          setCachedSpecsWithPriority(hash, {
             flex: specs.flex,
             profile: specs.profile,
             shape: specs.shape,
@@ -297,11 +293,11 @@ export async function enrichBoardSpecs(
           });
         }
 
-        return { key, specs };
+        return { hash, specs };
       } catch (error) {
         aborted = true;
         console.error("[enrich] LLM call failed, stopping enrichment:", error);
-        return { key, specs: null };
+        return { hash, specs: null };
       }
     });
 
@@ -312,8 +308,8 @@ export async function enrichBoardSpecs(
   return boards.map((board) => {
     if (!needsEnrichment(board)) return board;
 
-    const key = modelKey(board.brand, board.model);
-    const specs = specCache.get(key);
+    const hash = inputHash(board);
+    const specs = specCache.get(hash);
     if (!specs) return board;
 
     return applySpecs(board, specs);
