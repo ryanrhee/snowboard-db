@@ -909,5 +909,30 @@ describe("normalizeModel", () => {
         "Dream Weaver 2.0"
       );
     });
+
+    // REI season year format
+    it("REI: Flagship Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Flagship Snowboard - 2025/2026", "Jones")).toBe("Flagship");
+    });
+
+    it("REI: Mountain Twin Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Mountain Twin Snowboard - 2025/2026", "Jones")).toBe("Mountain Twin");
+    });
+
+    it("REI: Mind Expander Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Mind Expander Snowboard - 2025/2026", "Jones")).toBe("Mind Expander");
+    });
+
+    it("REI: Stratos Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Stratos Snowboard - 2025/2026", "Jones")).toBe("Stratos");
+    });
+
+    it("REI: Frontier 2.0 Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Frontier 2.0 Snowboard - 2025/2026", "Jones")).toBe("Frontier 2.0");
+    });
+
+    it("REI: Process Camber Snowboard - 2025/2026", () => {
+      expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process Camber");
+    });
   });
 });

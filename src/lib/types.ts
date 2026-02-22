@@ -111,6 +111,7 @@ export interface SearchConstraints {
   excludeWomens?: boolean;
   regions?: Region[] | null;
   retailers?: string[] | null;
+  skipEnrichment?: boolean;
 }
 
 export interface SearchRun {

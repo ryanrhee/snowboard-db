@@ -37,7 +37,7 @@ export async function runSearchPipeline(
   const runId = randomUUID();
 
   // Get relevant retailers
-  const retailers = getRetailers(mergedConstraints.regions);
+  const retailers = getRetailers(mergedConstraints.regions, mergedConstraints.retailers);
   const errors: RetailerError[] = [];
 
   // Query all retailers in parallel
@@ -94,7 +94,9 @@ export async function runSearchPipeline(
   );
 
   // Enrich boards missing specs via LLM + web search
-  const enrichedBoards = await enrichBoardSpecs(filteredBoards);
+  const enrichedBoards = mergedConstraints.skipEnrichment
+    ? filteredBoards
+    : await enrichBoardSpecs(filteredBoards);
 
   // Fill in discount percent for boards that got MSRP from spec cache
   const boardsWithDiscount = enrichedBoards.map((board) => {
@@ -160,7 +162,7 @@ export async function refreshPipeline(
 
   for (const board of boards) {
     try {
-      const browserRetailers = new Set(["evo", "backcountry"]);
+      const browserRetailers = new Set(["evo", "backcountry", "rei"]);
       const fetchFn = browserRetailers.has(board.retailer)
         ? fetchPageWithBrowser
         : fetchPage;

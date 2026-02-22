@@ -182,7 +182,8 @@ export function normalizeModel(raw: string, brand?: string): string {
   // Strip "Snowboard" (but not from model names like "Snowboard Addiction")
   model = model.replace(/\s+Snowboard\b/gi, "");
 
-  // Strip year: " - 2026", " 2025", leading "2025 "
+  // Strip year: "2025/2026", " - 2026", " 2025", leading "2025 "
+  model = model.replace(/\s*-?\s*\b20[1-2]\d\s*\/\s*20[1-2]\d\b/g, "");
   model = model.replace(/\s*-?\s*\b20[1-2]\d\b/g, "");
 
   // Strip gendered suffixes: " - Men's", " - Women's", " - Kids'", " - Boys'", " - Girls'"
@@ -201,8 +202,8 @@ export function normalizeModel(raw: string, brand?: string): string {
     model = model.replace(/^(?:Will Die|Dinosaurs)\s+/i, "");
   }
 
-  // Clean up leftover dashes and whitespace: " - " at start/end, double spaces
-  model = model.replace(/^\s*-\s*/, "").replace(/\s*-\s*$/, "");
+  // Clean up leftover dashes, slashes, and whitespace
+  model = model.replace(/^\s*[-/]\s*/, "").replace(/\s*[-/]\s*$/, "");
   model = model.replace(/\s{2,}/g, " ").trim();
 
   return model || raw;

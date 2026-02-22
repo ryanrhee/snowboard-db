@@ -9,17 +9,21 @@ import { bestsnowboard } from "./bestsnowboard";
 const ALL_RETAILERS: RetailerModule[] = [tactics, evo, backcountry, rei, bestsnowboard];
 
 // Retailers that are actually working (not blocked by Cloudflare/bot protection)
-// evo, backcountry, rei are blocked by Cloudflare — kept for future Playwright support
-const ACTIVE_RETAILERS = new Set(["tactics", "evo", "backcountry"]);
+// bestsnowboard is blocked by Cloudflare — kept for future Playwright support
+const ACTIVE_RETAILERS = new Set(["tactics", "evo", "backcountry", "rei"]);
 
-export function getRetailers(regions?: Region[] | null): RetailerModule[] {
-  let retailers = ALL_RETAILERS.filter((r) => ACTIVE_RETAILERS.has(r.name));
+export function getRetailers(regions?: Region[] | null, retailers?: string[] | null): RetailerModule[] {
+  let result = ALL_RETAILERS.filter((r) => ACTIVE_RETAILERS.has(r.name));
 
-  if (regions && regions.length > 0) {
-    retailers = retailers.filter((r) => regions.includes(r.region));
+  if (retailers && retailers.length > 0) {
+    result = result.filter((r) => retailers.includes(r.name));
   }
 
-  return retailers;
+  if (regions && regions.length > 0) {
+    result = result.filter((r) => regions.includes(r.region));
+  }
+
+  return result;
 }
 
 export function getAllRetailerNames(): string[] {

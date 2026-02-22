@@ -2,7 +2,8 @@ import { chromium, Browser, BrowserContext } from "playwright";
 import { delay } from "./utils";
 import { getHttpCache, setHttpCache } from "./http-cache";
 
-let browser: Browser | null = null;
+// Per-channel browser + context pools
+const browsers = new Map<string, Browser>();
 const contexts = new Map<string, BrowserContext>();
 
 const LAUNCH_ARGS = [
@@ -11,13 +12,17 @@ const LAUNCH_ARGS = [
   "--disable-setuid-sandbox",
 ];
 
-async function getBrowser(): Promise<Browser> {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({
-      headless: true,
-      args: LAUNCH_ARGS,
-    });
-  }
+async function getBrowser(channel?: string): Promise<Browser> {
+  const key = channel || "_default";
+  let browser = browsers.get(key);
+  if (browser && browser.isConnected()) return browser;
+
+  browser = await chromium.launch({
+    headless: true,
+    args: LAUNCH_ARGS,
+    channel,
+  });
+  browsers.set(key, browser);
   return browser;
 }
 
@@ -25,17 +30,23 @@ function getDomain(url: string): string {
   return new URL(url).hostname;
 }
 
-async function getContext(domain: string): Promise<BrowserContext> {
-  let ctx = contexts.get(domain);
+function contextKey(domain: string, channel?: string): string {
+  return channel ? `${channel}:${domain}` : domain;
+}
+
+async function getContext(domain: string, channel?: string): Promise<BrowserContext> {
+  const key = contextKey(domain, channel);
+  let ctx = contexts.get(key);
   if (ctx) return ctx;
 
-  const b = await getBrowser();
+  const b = await getBrowser(channel);
   ctx = await b.newContext({
     userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     viewport: { width: 1280, height: 720 },
+    ignoreHTTPSErrors: true,
   });
-  contexts.set(domain, ctx);
+  contexts.set(key, ctx);
   return ctx;
 }
 
@@ -47,6 +58,7 @@ export async function fetchPageWithBrowser(
     timeoutMs?: number;
     waitUntil?: "load" | "domcontentloaded" | "networkidle";
     cacheTtlMs?: number;
+    channel?: string;
   } = {}
 ): Promise<string> {
   const {
@@ -55,6 +67,7 @@ export async function fetchPageWithBrowser(
     timeoutMs = 45000,
     waitUntil = "load",
     cacheTtlMs,
+    channel,
   } = options;
 
   // Check SQLite cache
@@ -66,7 +79,7 @@ export async function fetchPageWithBrowser(
   for (let attempt = 0; attempt <= retries; attempt++) {
     let page = null;
     try {
-      const ctx = await getContext(domain);
+      const ctx = await getContext(domain, channel);
       page = await ctx.newPage();
 
       // Block images, fonts, media for speed (keep CSS — Cloudflare may need it)
@@ -111,13 +124,13 @@ export async function fetchPageWithBrowser(
 }
 
 export async function closeBrowser(): Promise<void> {
-  for (const [domain, ctx] of contexts) {
+  for (const [key, ctx] of contexts) {
     await ctx.close().catch(() => {});
-    contexts.delete(domain);
+    contexts.delete(key);
   }
-  if (browser) {
+  for (const [key, browser] of browsers) {
     await browser.close().catch(() => {});
-    browser = null;
+    browsers.delete(key);
   }
 }
 
