@@ -98,8 +98,8 @@ async function lookupSpecs(
   model: string,
   year: number | null
 ): Promise<EnrichedSpecs | null> {
-  const anthropic = getClient();
-  if (!anthropic) return null;
+  // LLM enrichment disabled to avoid API spend
+  return null;
 
   const yearStr = year ? ` ${year}` : "";
   const prompt = `Look up the specs for the ${brand} ${model}${yearStr} snowboard. I need: flex rating (1-10 scale), profile/bend type, shape, and riding category. IMPORTANT: Different retailers use different flex scales (e.g. Evo uses 1-5, Burton uses 1-10). You MUST normalize flex to a 1-10 scale — for example, a 3/5 from Evo should be reported as 6/10. Search the web, then report using the report_specs tool.`;
