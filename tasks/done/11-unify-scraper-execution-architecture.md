@@ -1,5 +1,35 @@
 # Task 11: Unify scraper execution architecture
 
+**Completed: 2026-02-24**
+
+## Summary of Changes
+
+Replaced the two-family scraper system (retailers return `RawBoard[]`, manufacturers return `ManufacturerSpec[]`, run independently) with a single unified pipeline where all scrapers return `ScrapedBoard[]` and a coalescence stage merges everything.
+
+### New Files
+- `src/lib/scrapers/types.ts` — `ScrapedBoard`, `ScrapedListing`, `ScraperModule` interfaces
+- `src/lib/scrapers/adapters.ts` — `adaptRetailerOutput()` and `adaptManufacturerOutput()` wrap existing scrapers
+- `src/lib/scrapers/registry.ts` — `getScrapers()` returns unified `ScraperModule[]` from both retailers and manufacturers
+- `src/lib/scrapers/coalesce.ts` — `coalesce()` groups by board identity, writes spec_sources, builds Board + Listing entities
+- `src/__tests__/adapters.test.ts` — 9 tests for adapter functions
+- `src/__tests__/coalesce.test.ts` — 8 tests for coalescence layer
+
+### Modified Files
+- `src/lib/pipeline.ts` — Rewritten to use unified flow: getScrapers → scrape all → coalesce → resolveSpecSources → persist
+- `src/lib/spec-resolution.ts` — Generic `resolveSpecSources<T>()` works with both `Board[]` and `CanonicalBoard[]`
+- `src/lib/types.ts` — Added `skipManufacturers` and `manufacturers` to `ScrapeScope`
+- `src/lib/db.ts` — Removed unused `CanonicalBoard` import
+- `src/app/api/debug/route.ts` — Updated `metadata-check`, `full-pipeline`, `scrape-specs` actions
+- `src/app/api/scrape-specs/route.ts` — Rewired to use `runSearchPipeline()` with manufacturers-only
+- `src/scripts/scrape-specs.ts` — Rewired to use `runSearchPipeline()` with manufacturers-only
+
+### Architecture
+- Existing scraper files (`retailers/*.ts`, `manufacturers/*.ts`) unchanged — adapters handle the conversion
+- `CanonicalBoard` kept in types for backward compat with LLM modules (disabled)
+- `normalizeBoard()` kept for debug routes
+- Default `metadata-check` action sets `skipManufacturers: true` for fast re-runs
+- `full-pipeline` action sets `skipManufacturers: false` to include manufacturer scraping
+
 ## Problem
 
 The current pipeline has a rigid two-phase architecture:

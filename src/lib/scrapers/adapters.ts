@@ -1,0 +1,115 @@
+import { RawBoard, Currency, Region } from "../types";
+import { ManufacturerSpec } from "../manufacturers/types";
+import { ScrapedBoard, ScrapedListing } from "./types";
+import { normalizeBrand } from "../scraping/utils";
+import { normalizeModel } from "../normalization";
+
+/**
+ * Group RawBoard[] (one per size/listing) from a retailer into ScrapedBoard[]
+ * (one per board model, with listings array).
+ */
+export function adaptRetailerOutput(
+  rawBoards: RawBoard[],
+  retailerName: string
+): ScrapedBoard[] {
+  // Group by normalized brand|model to merge size variants
+  const groups = new Map<string, { board: Partial<ScrapedBoard>; listings: ScrapedListing[] }>();
+
+  for (const raw of rawBoards) {
+    const brand = normalizeBrand(raw.brand || "Unknown");
+    const model = normalizeModel(raw.model || "Unknown", brand);
+    const groupKey = `${brand.toLowerCase()}|${model.toLowerCase()}`;
+
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        board: {
+          source: `retailer:${retailerName}`,
+          brand,
+          model,
+          year: raw.year ?? undefined,
+          sourceUrl: raw.url,
+          region: raw.region,
+          flex: raw.flex ?? undefined,
+          profile: raw.profile ?? undefined,
+          shape: raw.shape ?? undefined,
+          category: raw.category ?? undefined,
+          abilityLevel: raw.abilityLevel ?? undefined,
+          gender: raw.gender ?? undefined,
+          description: raw.description ?? undefined,
+          extras: raw.specs ?? {},
+        },
+        listings: [],
+      });
+    }
+
+    const group = groups.get(groupKey)!;
+
+    // Merge specs from subsequent raw boards if the first one lacked them
+    const board = group.board;
+    if (!board.flex && raw.flex) board.flex = raw.flex;
+    if (!board.profile && raw.profile) board.profile = raw.profile;
+    if (!board.shape && raw.shape) board.shape = raw.shape;
+    if (!board.category && raw.category) board.category = raw.category;
+    if (!board.abilityLevel && raw.abilityLevel) board.abilityLevel = raw.abilityLevel;
+    if (!board.description && raw.description) board.description = raw.description;
+    if (raw.specs) {
+      board.extras = { ...board.extras, ...raw.specs };
+    }
+
+    group.listings.push({
+      url: raw.url,
+      imageUrl: raw.imageUrl,
+      lengthCm: raw.lengthCm,
+      widthMm: raw.widthMm,
+      originalPrice: raw.originalPrice,
+      salePrice: raw.salePrice ?? 0,
+      currency: raw.currency,
+      availability: raw.availability,
+      condition: raw.condition,
+      stockCount: raw.stockCount,
+      scrapedAt: raw.scrapedAt,
+      gender: raw.gender,
+    });
+  }
+
+  return Array.from(groups.values()).map(({ board, listings }) => ({
+    source: board.source!,
+    brand: board.brand!,
+    model: board.model!,
+    year: board.year,
+    sourceUrl: board.sourceUrl!,
+    region: board.region,
+    flex: board.flex,
+    profile: board.profile,
+    shape: board.shape,
+    category: board.category,
+    abilityLevel: board.abilityLevel,
+    gender: board.gender,
+    description: board.description,
+    extras: board.extras ?? {},
+    listings,
+  }));
+}
+
+/**
+ * Map ManufacturerSpec[] to ScrapedBoard[] (listings always empty).
+ */
+export function adaptManufacturerOutput(
+  specs: ManufacturerSpec[],
+  brand: string
+): ScrapedBoard[] {
+  return specs.map((spec) => ({
+    source: `manufacturer:${brand.toLowerCase()}`,
+    brand: spec.brand,
+    model: spec.model,
+    year: spec.year ?? undefined,
+    sourceUrl: spec.sourceUrl,
+    flex: spec.flex ?? undefined,
+    profile: spec.profile ?? undefined,
+    shape: spec.shape ?? undefined,
+    category: spec.category ?? undefined,
+    msrpUsd: spec.msrpUsd ?? undefined,
+    extras: spec.extras,
+    listings: [],
+  }));
+}

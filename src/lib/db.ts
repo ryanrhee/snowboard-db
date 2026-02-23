@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
-import { CanonicalBoard, SearchRun, Board, Listing, BoardWithListings } from "./types";
+import { SearchRun, Board, Listing, BoardWithListings } from "./types";
 import { normalizeModel } from "./normalization";
 import { canonicalizeBrand } from "./scraping/utils";
 

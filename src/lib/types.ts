@@ -182,7 +182,9 @@ export interface BoardWithListings extends Board {
 export interface ScrapeScope {
   regions?: Region[] | null;
   retailers?: string[] | null;
+  manufacturers?: string[] | null;
   skipEnrichment?: boolean;
+  skipManufacturers?: boolean;
 }
 
 // ===== Search Types =====

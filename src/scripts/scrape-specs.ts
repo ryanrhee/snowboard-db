@@ -1,5 +1,5 @@
-import { getManufacturers, getAllManufacturerBrands } from "../lib/manufacturers/registry";
-import { ingestManufacturerSpecs } from "../lib/manufacturers/ingest";
+import { runSearchPipeline } from "../lib/pipeline";
+import { getAllManufacturerBrands } from "../lib/manufacturers/registry";
 import { closeBrowser } from "../lib/scraping/browser";
 
 async function main() {
@@ -20,39 +20,21 @@ async function main() {
     console.log(`Scraping manufacturers: ${brands.join(", ")}`);
   }
 
-  const manufacturers = getManufacturers(brands.length > 0 ? brands : undefined);
-
-  if (manufacturers.length === 0) {
-    console.error(`No matching manufacturers found. Available: ${getAllManufacturerBrands().join(", ")}`);
-    process.exit(1);
-  }
-
-  let totalInserted = 0;
-  let totalUpdated = 0;
-  let totalSkipped = 0;
-
-  for (const mfr of manufacturers) {
-    console.log(`\n=== ${mfr.brand} ===`);
-    try {
-      const specs = await mfr.scrapeSpecs();
-      console.log(`[${mfr.brand}] Scraped ${specs.length} board specs`);
-
-      const stats = ingestManufacturerSpecs(specs);
-      console.log(`[${mfr.brand}] Ingested: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped`);
-
-      totalInserted += stats.inserted;
-      totalUpdated += stats.updated;
-      totalSkipped += stats.skipped;
-    } catch (err) {
-      console.error(`[${mfr.brand}] Failed:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await runSearchPipeline({
+    skipEnrichment: true,
+    skipManufacturers: false,
+    manufacturers: brands.length > 0 ? brands : undefined,
+    retailers: [], // manufacturers only
+  });
 
   console.log(`\n=== Summary ===`);
-  console.log(`Inserted: ${totalInserted}`);
-  console.log(`Updated: ${totalUpdated}`);
-  console.log(`Skipped: ${totalSkipped}`);
-  console.log(`Total: ${totalInserted + totalUpdated + totalSkipped}`);
+  console.log(`Boards: ${result.boards.length}`);
+  console.log(`Errors: ${result.errors.length}`);
+  if (result.errors.length > 0) {
+    for (const err of result.errors) {
+      console.error(`  [${err.retailer}] ${err.error}`);
+    }
+  }
 
   await closeBrowser();
   process.exit(0);

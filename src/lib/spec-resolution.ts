@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
-import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "./types";
+import { CanonicalBoard, Board, BoardProfile, BoardShape, BoardCategory } from "./types";
 import { specKey, getSpecSources, setSpecSource, SpecSourceEntry } from "./db";
 import { normalizeAbilityRange } from "./normalization";
 
@@ -165,9 +165,22 @@ function valuesMatch(a: string, b: string, field: string): boolean {
 // Test exports
 export { getSourcePriority, findConsensus, valuesMatch };
 
-export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<CanonicalBoard[]> {
+/** Minimal interface for boards that can be resolved — works with both Board and CanonicalBoard */
+interface Resolvable {
+  brand: string;
+  model: string;
+  year: number | null;
+  flex: number | null;
+  profile: BoardProfile | string | null;
+  shape: BoardShape | string | null;
+  category: BoardCategory | string | null;
+  abilityLevelMin: string | null;
+  abilityLevelMax: string | null;
+}
+
+export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Promise<T[]> {
   // Group boards by specKey to avoid redundant resolution
-  const keyToBoards = new Map<string, CanonicalBoard[]>();
+  const keyToBoards = new Map<string, T[]>();
   for (const board of boards) {
     const key = specKey(board.brand, board.model);
     const group = keyToBoards.get(key);
@@ -321,19 +334,19 @@ export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<Cano
     // Apply resolved profile
     const profileInfo = fieldInfoMap.profile;
     if (profileInfo && profileInfo.resolved !== null) {
-      updated.profile = profileInfo.resolved as BoardProfile;
+      updated.profile = profileInfo.resolved as string;
     }
 
     // Apply resolved shape
     const shapeInfo = fieldInfoMap.shape;
     if (shapeInfo && shapeInfo.resolved !== null) {
-      updated.shape = shapeInfo.resolved as BoardShape;
+      updated.shape = shapeInfo.resolved as string;
     }
 
     // Apply resolved category
     const categoryInfo = fieldInfoMap.category;
     if (categoryInfo && categoryInfo.resolved !== null) {
-      updated.category = categoryInfo.resolved as BoardCategory;
+      updated.category = categoryInfo.resolved as string;
     }
 
     // Apply resolved abilityLevel → split into min/max range
@@ -344,7 +357,9 @@ export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<Cano
       updated.abilityLevelMax = range.max;
     }
 
-    updated.specSources = null; // provenance is in spec_sources table, not on the board
+    if ("specSources" in updated) {
+      (updated as Record<string, unknown>).specSources = null; // provenance is in spec_sources table, not on the board
+    }
 
     return updated;
   });

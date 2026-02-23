@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { getManufacturers } from "@/lib/manufacturers/registry";
-import { ingestManufacturerSpecs } from "@/lib/manufacturers/ingest";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
@@ -960,21 +958,21 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "scrape-specs") {
-    const manufacturers = getManufacturers();
-    const results: Record<string, unknown> = {};
-    for (const mfr of manufacturers) {
-      try {
-        const specs = await mfr.scrapeSpecs();
-        const stats = ingestManufacturerSpecs(specs);
-        results[mfr.brand] = { scraped: specs.length, ...stats };
-      } catch (err) {
-        results[mfr.brand] = { error: err instanceof Error ? err.message : String(err) };
-      }
-    }
+    // Run manufacturer scrapers through unified pipeline (manufacturers only, no retailers)
+    const { runSearchPipeline } = await import("@/lib/pipeline");
+    const result = await runSearchPipeline({
+      skipEnrichment: true,
+      skipManufacturers: false,
+      retailers: [], // no retailers, only manufacturers
+    });
     // Show updated ability level entries
     const db = getDb();
     const abilityRows = db.prepare("SELECT brand_model, field, value, source FROM spec_sources WHERE field = 'ability level' AND source = 'manufacturer'").all();
-    return NextResponse.json({ action, results, abilityLevelEntries: abilityRows });
+    return NextResponse.json({
+      action,
+      boardCount: result.boards.length,
+      abilityLevelEntries: abilityRows,
+    });
   }
 
   if (action === "brand-coverage") {
@@ -1076,7 +1074,7 @@ export async function POST(request: NextRequest) {
     const { runSearchPipeline } = await import("@/lib/pipeline");
     const db = getDb();
 
-    const result = await runSearchPipeline({ skipEnrichment: true });
+    const result = await runSearchPipeline({ skipEnrichment: true, skipManufacturers: true });
 
     // Query DB for distributions
     const conditionDist = db.prepare("SELECT condition, COUNT(*) as cnt FROM listings WHERE run_id = ? GROUP BY condition ORDER BY cnt DESC").all(result.run.id) as { condition: string; cnt: number }[];
@@ -1157,7 +1155,7 @@ export async function POST(request: NextRequest) {
 
   if (action === "full-pipeline") {
     const { runSearchPipeline } = await import("@/lib/pipeline");
-    const result = await runSearchPipeline({ skipEnrichment: false });
+    const result = await runSearchPipeline({ skipEnrichment: false, skipManufacturers: false });
     return NextResponse.json({
       action,
       runId: result.run.id,
