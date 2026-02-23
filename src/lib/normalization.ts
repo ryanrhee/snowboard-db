@@ -8,18 +8,63 @@ import {
   BoardCategory,
   Availability,
   Currency,
+  ListingCondition,
+  GenderTarget,
 } from "./types";
 import { PROFILE_MAP, SHAPE_MAP, CATEGORY_MAP, CATEGORY_KEYWORDS } from "./normalization-maps";
 import { normalizeBrand } from "./scraping/utils";
+import { BoardIdentifier } from "./board-identifier";
+
+export function detectCondition(rawModel: string, url?: string): ListingCondition {
+  if (/\(blem\)|- blem\b/i.test(rawModel)) return ListingCondition.BLEMISHED;
+  if (/\(closeout\)|- closeout\b/i.test(rawModel)) return ListingCondition.CLOSEOUT;
+  if (url) {
+    if (/-blem\b/i.test(url)) return ListingCondition.BLEMISHED;
+    if (/\/outlet\//i.test(url) || /-closeout\b/i.test(url)) return ListingCondition.CLOSEOUT;
+  }
+  return ListingCondition.NEW;
+}
+
+export function normalizeConditionString(raw: string): ListingCondition {
+  const lower = raw.toLowerCase();
+  if (lower === "blemished" || lower === "blem") return ListingCondition.BLEMISHED;
+  if (lower === "closeout" || lower === "outlet") return ListingCondition.CLOSEOUT;
+  if (lower === "used") return ListingCondition.USED;
+  if (lower === "new") return ListingCondition.NEW;
+  return ListingCondition.UNKNOWN;
+}
+
+export function detectGender(rawModel: string, url?: string): GenderTarget {
+  const lower = rawModel.toLowerCase();
+  if (/women's|wmns/i.test(rawModel) || (url && /-womens\b|-women-/i.test(url)))
+    return GenderTarget.WOMENS;
+  if (/men's/i.test(rawModel) || (url && /-mens\b|-men-/i.test(url)))
+    return GenderTarget.MENS;
+  if (/kids'|boys'|girls'|youth|junior/i.test(rawModel))
+    return GenderTarget.KIDS;
+  return GenderTarget.UNISEX;
+}
 
 export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
-  const brand = normalizeBrand(raw.brand || "Unknown");
-  const model = normalizeModel(raw.model || "Unknown", brand);
+  const identifier = new BoardIdentifier({
+    rawModel: raw.model || "Unknown",
+    rawBrand: raw.brand || "Unknown",
+    url: raw.url,
+    conditionHint: raw.condition,
+    genderHint: raw.gender,
+    yearHint: raw.year ?? undefined,
+  });
+
+  const brand = identifier.brand;
+  const model = identifier.model;
+  const condition = identifier.condition;
+  const gender = identifier.gender;
+  const year = identifier.year;
+
   const profile = raw.profile ? normalizeProfile(raw.profile) : null;
   const shape = raw.shape ? normalizeShape(raw.shape) : null;
   const category = normalizeCategory(raw.category, raw.description);
   const flex = raw.flex ? normalizeFlex(raw.flex) : null;
-  const year = raw.year || inferYear(raw.model || "");
   const abilityRange = normalizeAbilityRange(raw.abilityLevel);
 
   const salePriceUsd = convertToUsd(raw.salePrice || 0, raw.currency);
@@ -68,6 +113,9 @@ export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
     scoreNotes: null,
     scrapedAt: raw.scrapedAt,
     specSources: null,
+    condition,
+    gender,
+    stockCount: raw.stockCount ?? null,
   };
 }
 

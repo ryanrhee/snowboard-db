@@ -175,6 +175,7 @@ export const rei: RetailerModule = {
           description: (p.benefit || p.description || "").slice(0, 1000) || undefined,
           specs,
           scrapedAt: new Date().toISOString(),
+          condition: p.clearance ? "closeout" : undefined,
         };
       });
 

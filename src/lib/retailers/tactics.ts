@@ -242,6 +242,7 @@ async function fetchBoardDetails(
           description,
           specs,
           scrapedAt: new Date().toISOString(),
+          stockCount: s.stock,
         });
       }
 

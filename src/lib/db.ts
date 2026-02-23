@@ -170,6 +170,21 @@ function createListingsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_listings_board ON listings(board_key);
     CREATE INDEX IF NOT EXISTS idx_listings_run   ON listings(run_id);
   `);
+
+  // Idempotent migrations for new columns
+  const listingCols = db.pragma("table_info(listings)") as { name: string }[];
+  const listingColNames = new Set(listingCols.map((c) => c.name));
+  if (!listingColNames.has("condition"))
+    db.exec("ALTER TABLE listings ADD COLUMN condition TEXT NOT NULL DEFAULT 'unknown'");
+  if (!listingColNames.has("gender"))
+    db.exec("ALTER TABLE listings ADD COLUMN gender TEXT NOT NULL DEFAULT 'unisex'");
+  if (!listingColNames.has("stock_count"))
+    db.exec("ALTER TABLE listings ADD COLUMN stock_count INTEGER");
+
+  const boardCols2 = db.pragma("table_info(boards)") as { name: string }[];
+  const boardColNames2 = new Set(boardCols2.map((c) => c.name));
+  if (!boardColNames2.has("gender"))
+    db.exec("ALTER TABLE boards ADD COLUMN gender TEXT NOT NULL DEFAULT 'unisex'");
 }
 
 function populateFromLegacy(db: Database.Database): void {
@@ -351,8 +366,8 @@ export function upsertBoard(board: Board): void {
     INSERT INTO boards (
       board_key, brand, model, year, flex, profile, shape, category,
       ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
-      description, beginner_score, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      description, beginner_score, gender, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(board_key) DO UPDATE SET
       year = COALESCE(excluded.year, boards.year),
       flex = COALESCE(excluded.flex, boards.flex),
@@ -365,6 +380,7 @@ export function upsertBoard(board: Board): void {
       manufacturer_url = COALESCE(excluded.manufacturer_url, boards.manufacturer_url),
       description = COALESCE(excluded.description, boards.description),
       beginner_score = excluded.beginner_score,
+      gender = excluded.gender,
       updated_at = excluded.updated_at
   `).run(
     board.boardKey, board.brand, board.model, board.year,
@@ -372,6 +388,7 @@ export function upsertBoard(board: Board): void {
     board.abilityLevelMin, board.abilityLevelMax,
     board.msrpUsd, board.manufacturerUrl,
     board.description, board.beginnerScore,
+    board.gender,
     board.createdAt, board.updatedAt
   );
 }
@@ -394,8 +411,8 @@ export function insertListings(listings: Listing[]): void {
       id, board_key, run_id, retailer, region, url, image_url,
       length_cm, width_mm, currency, original_price, sale_price,
       original_price_usd, sale_price_usd, discount_percent,
-      availability, scraped_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      availability, scraped_at, condition, gender, stock_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   db.transaction(() => {
@@ -406,7 +423,8 @@ export function insertListings(listings: Listing[]): void {
         l.lengthCm, l.widthMm, l.currency,
         l.originalPrice, l.salePrice,
         l.originalPriceUsd, l.salePriceUsd, l.discountPercent,
-        l.availability, l.scrapedAt
+        l.availability, l.scrapedAt,
+        l.condition, l.gender, l.stockCount
       );
     }
   })();
@@ -457,7 +475,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.gender AS board_gender, b.created_at, b.updated_at
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -470,7 +488,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.gender AS board_gender, b.created_at, b.updated_at
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -500,6 +518,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
           manufacturerUrl: (row.manufacturer_url as string) || null,
           description: (row.description as string) || null,
           beginnerScore: (row.beginner_score as number) || 0,
+          gender: (row.board_gender as string) || null,
           createdAt: row.created_at as string,
           updatedAt: row.updated_at as string,
         },
@@ -525,6 +544,9 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
       discountPercent: (row.discount_percent as number) || null,
       availability: row.availability as string,
       scrapedAt: row.scraped_at as string,
+      condition: (row.condition as string) || "unknown",
+      gender: (row.gender as string) || "unisex",
+      stockCount: (row.stock_count as number) ?? null,
     });
   }
 
@@ -625,6 +647,7 @@ function mapRowToNewBoard(row: Record<string, unknown>): Board {
     manufacturerUrl: (row.manufacturer_url as string) || null,
     description: (row.description as string) || null,
     beginnerScore: (row.beginner_score as number) || 0,
+    gender: (row.gender as string) || null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -649,6 +672,9 @@ function mapRowToListing(row: Record<string, unknown>): Listing {
     discountPercent: (row.discount_percent as number) || null,
     availability: row.availability as string,
     scrapedAt: row.scraped_at as string,
+    condition: (row.condition as string) || "unknown",
+    gender: (row.gender as string) || "unisex",
+    stockCount: (row.stock_count as number) ?? null,
   };
 }
 

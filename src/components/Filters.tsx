@@ -11,6 +11,7 @@ export interface FilterState {
   maxPrice: string;
   minLength: string;
   maxLength: string;
+  gender: string;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -18,6 +19,7 @@ export const DEFAULT_FILTERS: FilterState = {
   maxPrice: "",
   minLength: "",
   maxLength: "",
+  gender: "",
 };
 
 export function Filters({ onFilterChange }: FiltersProps) {
@@ -82,6 +84,20 @@ export function Filters({ onFilterChange }: FiltersProps) {
           onChange={(e) => updateFilter("maxLength", e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 w-24 focus:outline-none focus:border-blue-500"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">Gender</label>
+        <select
+          value={filters.gender}
+          onChange={(e) => updateFilter("gender", e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">All Genders</option>
+          <option value="mens">Men&apos;s</option>
+          <option value="womens">Women&apos;s</option>
+          <option value="kids">Kids&apos;</option>
+        </select>
       </div>
 
       {hasActiveFilters && (

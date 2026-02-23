@@ -19,6 +19,9 @@ interface Listing {
   discountPercent: number | null;
   availability: string;
   scrapedAt: string;
+  condition: string;
+  gender: string;
+  stockCount: number | null;
 }
 
 export interface BoardData {
@@ -36,6 +39,7 @@ export interface BoardData {
   manufacturerUrl: string | null;
   description: string | null;
   beginnerScore: number;
+  gender: string | null;
   listings: Listing[];
   bestPrice: number;
   valueScore: number;
@@ -210,6 +214,12 @@ const RETAILER_BADGE_COLOR: Record<string, string> = {
   bestsnowboard: "bg-orange-900/50 text-orange-300",
 };
 
+const CONDITION_BADGE: Record<string, string> = {
+  blemished: "bg-yellow-900/50 text-yellow-300",
+  closeout: "bg-orange-900/50 text-orange-300",
+  used: "bg-red-900/50 text-red-300",
+};
+
 export function BoardDetail({ board, onClose }: BoardDetailProps) {
   const specSources = board.specSources;
 
@@ -379,6 +389,8 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                   <th className="px-2 py-1.5 text-left text-xs text-gray-400">Size</th>
                   <th className="px-2 py-1.5 text-left text-xs text-gray-400">Price</th>
                   <th className="px-2 py-1.5 text-left text-xs text-gray-400">Off</th>
+                  <th className="px-2 py-1.5 text-left text-xs text-gray-400">Cond</th>
+                  <th className="px-2 py-1.5 text-left text-xs text-gray-400">Stock</th>
                   <th className="px-2 py-1.5 text-left text-xs text-gray-400">Status</th>
                 </tr>
               </thead>
@@ -414,6 +426,16 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                       {listing.discountPercent ? (
                         <span className="text-red-400 text-xs">-{listing.discountPercent}%</span>
                       ) : "-"}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {listing.condition && listing.condition !== "new" && listing.condition !== "unknown" ? (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${CONDITION_BADGE[listing.condition] || "bg-gray-800 text-gray-300"}`}>
+                          {listing.condition}
+                        </span>
+                      ) : "-"}
+                    </td>
+                    <td className="px-2 py-1.5 text-xs text-gray-400">
+                      {listing.stockCount != null ? `${listing.stockCount} left` : "-"}
                     </td>
                     <td className="px-2 py-1.5 text-xs text-gray-400 capitalize">
                       {listing.availability.replace(/_/g, " ")}

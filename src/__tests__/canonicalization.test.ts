@@ -7,8 +7,10 @@ import {
   normalizeFlex,
   normalizeModel,
   inferYear,
+  detectCondition,
+  detectGender,
 } from "../lib/normalization";
-import { BoardProfile, BoardShape, BoardCategory } from "../lib/types";
+import { BoardProfile, BoardShape, BoardCategory, ListingCondition, GenderTarget } from "../lib/types";
 
 // =============================================================================
 // canonicalizeBrand
@@ -1012,5 +1014,73 @@ describe("normalizeModel", () => {
     it("REI: Process Camber Snowboard - 2025/2026", () => {
       expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process");
     });
+  });
+});
+
+// =============================================================================
+// detectCondition
+// =============================================================================
+
+describe("detectCondition", () => {
+  it("detects (Blem) in model → BLEMISHED", () => {
+    expect(detectCondition("Burton Custom Snowboard (Blem) 2025")).toBe(ListingCondition.BLEMISHED);
+  });
+
+  it("detects - Blem in model → BLEMISHED", () => {
+    expect(detectCondition("Jones Flagship - Blem")).toBe(ListingCondition.BLEMISHED);
+  });
+
+  it("detects (Closeout) in model → CLOSEOUT", () => {
+    expect(detectCondition("Lib Tech Skate Banana (Closeout) 2024")).toBe(ListingCondition.CLOSEOUT);
+  });
+
+  it("detects /outlet/ in URL → CLOSEOUT", () => {
+    expect(detectCondition("regular model", "https://example.com/outlet/board")).toBe(ListingCondition.CLOSEOUT);
+  });
+
+  it("regular model name → NEW", () => {
+    expect(detectCondition("regular model name")).toBe(ListingCondition.NEW);
+  });
+
+  it("(Sale) is NOT a condition → NEW", () => {
+    expect(detectCondition("model (Sale)")).toBe(ListingCondition.NEW);
+  });
+
+  it("detects -closeout in URL → CLOSEOUT", () => {
+    expect(detectCondition("model", "https://tactics.com/ride/psychocandy-snowboard-closeout")).toBe(ListingCondition.CLOSEOUT);
+  });
+
+  it("detects -blem in URL → BLEMISHED", () => {
+    expect(detectCondition("model", "https://evo.com/lib-tech-t-rice-apex-orca-blem")).toBe(ListingCondition.BLEMISHED);
+  });
+});
+
+// =============================================================================
+// detectGender
+// =============================================================================
+
+describe("detectGender", () => {
+  it("detects Women's suffix → WOMENS", () => {
+    expect(detectGender("Burton Feelgood Snowboard - Women's")).toBe(GenderTarget.WOMENS);
+  });
+
+  it("detects Women's prefix → WOMENS", () => {
+    expect(detectGender("Women's Frosting C2 Snowboard")).toBe(GenderTarget.WOMENS);
+  });
+
+  it("detects Men's prefix → MENS", () => {
+    expect(detectGender("Men's Custom Camber Snowboard")).toBe(GenderTarget.MENS);
+  });
+
+  it("detects Kids' suffix → KIDS", () => {
+    expect(detectGender("Burton Process Snowboard - Kids'")).toBe(GenderTarget.KIDS);
+  });
+
+  it("plain model → UNISEX", () => {
+    expect(detectGender("Jones Flagship")).toBe(GenderTarget.UNISEX);
+  });
+
+  it("detects -womens in URL → WOMENS", () => {
+    expect(detectGender("model", "https://www.backcountry.com/some-board-womens")).toBe(GenderTarget.WOMENS);
   });
 });

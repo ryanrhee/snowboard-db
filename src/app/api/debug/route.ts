@@ -1071,5 +1071,89 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  if (action === "metadata-check") {
+    // Re-run search pipeline with skipEnrichment to test condition/gender/stockCount detection
+    const { runSearchPipeline } = await import("@/lib/pipeline");
+    const db = getDb();
+
+    const result = await runSearchPipeline({ skipEnrichment: true });
+
+    // Query DB for distributions
+    const conditionDist = db.prepare("SELECT condition, COUNT(*) as cnt FROM listings WHERE run_id = ? GROUP BY condition ORDER BY cnt DESC").all(result.run.id) as { condition: string; cnt: number }[];
+    const genderDistListings = db.prepare("SELECT gender, COUNT(*) as cnt FROM listings WHERE run_id = ? GROUP BY gender ORDER BY cnt DESC").all(result.run.id) as { gender: string; cnt: number }[];
+    const genderDistBoards = db.prepare("SELECT gender, COUNT(*) as cnt FROM boards WHERE board_key IN (SELECT DISTINCT board_key FROM listings WHERE run_id = ?) GROUP BY gender ORDER BY cnt DESC").all(result.run.id) as { gender: string; cnt: number }[];
+    const stockRows = db.prepare("SELECT retailer, COUNT(*) as cnt, AVG(stock_count) as avg_stock FROM listings WHERE run_id = ? AND stock_count IS NOT NULL GROUP BY retailer").all(result.run.id) as { retailer: string; cnt: number; avg_stock: number }[];
+
+    // Sample some interesting rows
+    const blemRows = db.prepare("SELECT retailer, url, condition FROM listings WHERE run_id = ? AND condition != 'new' AND condition != 'unknown' LIMIT 10").all(result.run.id);
+    const genderedRows = db.prepare("SELECT retailer, url, gender FROM listings WHERE run_id = ? AND gender != 'unisex' LIMIT 10").all(result.run.id);
+
+    // Also check: what conditions exist for closeout/blem URLs specifically
+    const closeoutListings = db.prepare("SELECT url, condition FROM listings WHERE run_id = ? AND (url LIKE '%closeout%' OR url LIKE '%blem%')").all(result.run.id) as { url: string; condition: string }[];
+
+    // Check from the result object directly (pre-DB)
+    const resultConditions = result.boards.flatMap(b =>
+      b.listings.filter(l => l.url.includes("closeout") || l.url.includes("blem"))
+        .map(l => ({ url: l.url, condition: l.condition }))
+    );
+
+    return NextResponse.json({
+      action,
+      runId: result.run.id,
+      totalBoards: result.boards.length,
+      totalListings: result.boards.reduce((s, b) => s + b.listings.length, 0),
+      errors: result.errors,
+      conditionDistribution: conditionDist,
+      genderDistributionListings: genderDistListings,
+      genderDistributionBoards: genderDistBoards,
+      stockByRetailer: stockRows,
+      sampleBlemished: blemRows,
+      sampleGendered: genderedRows,
+      closeoutInDb: closeoutListings,
+      closeoutInResult: resultConditions,
+    });
+  }
+
+  if (action === "condition-debug") {
+    // Trace condition detection through the actual pipeline with no constraint filtering
+    const { detectCondition, normalizeBoard } = await import("@/lib/normalization");
+    const { BoardIdentifier } = await import("@/lib/board-identifier");
+    const { Currency, Region } = await import("@/lib/types");
+    const { tactics } = await import("@/lib/retailers/tactics");
+    const { evo } = await import("@/lib/retailers/evo");
+
+    // Run scrapers and find closeout/blem boards
+    const tacticsBoards = await tactics.searchBoards({});
+    const evoBoards = await evo.searchBoards({});
+    const closeoutKws = ["closeout", "blem", "outlet"];
+
+    const allBoards = [...tacticsBoards, ...evoBoards];
+    const interesting = allBoards.filter(b =>
+      closeoutKws.some(kw => b.url.toLowerCase().includes(kw)) ||
+      (b.model && closeoutKws.some(kw => b.model!.toLowerCase().includes(kw)))
+    );
+
+    const traced = interesting.map(raw => {
+      const cb = normalizeBoard(raw, "trace-run");
+      return {
+        retailer: raw.retailer,
+        rawUrl: raw.url,
+        rawModel: raw.model,
+        rawBrand: raw.brand,
+        lengthCm: raw.lengthCm ?? null,
+        salePrice: raw.salePrice,
+        condition: cb.condition,
+        gender: cb.gender,
+        model: cb.model,
+        // Why might it be filtered?
+        wouldBeFilteredByLength: raw.lengthCm != null && (raw.lengthCm < 155 || raw.lengthCm > 161),
+        wouldBeFilteredByPrice: (raw.salePrice ?? 0) > 650,
+        wouldBeFilteredByWomens: /women|wmns/i.test(`${cb.brand} ${cb.model} ${raw.description || ""}`),
+      };
+    });
+
+    return NextResponse.json({ action, total: allBoards.length, closeoutBoards: traced });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

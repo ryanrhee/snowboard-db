@@ -186,7 +186,11 @@ export default function Home() {
         </div>
       )}
 
-      <SearchResults boards={boards} />
+      <SearchResults boards={
+        filters.gender
+          ? boards.filter(b => b.gender === filters.gender || b.gender === "unisex")
+          : boards
+      } />
     </div>
   );
 }

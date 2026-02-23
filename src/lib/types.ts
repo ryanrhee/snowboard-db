@@ -40,6 +40,21 @@ export enum Availability {
   UNKNOWN = "unknown",
 }
 
+export enum ListingCondition {
+  NEW = "new",
+  BLEMISHED = "blemished",
+  CLOSEOUT = "closeout",
+  USED = "used",
+  UNKNOWN = "unknown",
+}
+
+export enum GenderTarget {
+  MENS = "mens",
+  WOMENS = "womens",
+  KIDS = "kids",
+  UNISEX = "unisex",
+}
+
 // ===== Raw Board (retailer output, messy) =====
 
 export interface RawBoard {
@@ -64,6 +79,9 @@ export interface RawBoard {
   description?: string;
   specs?: Record<string, string>;
   scrapedAt: string; // ISO timestamp
+  condition?: string;
+  gender?: string;
+  stockCount?: number;
 }
 
 // ===== Canonical Board (normalized, scored, DB-ready) =====
@@ -101,6 +119,9 @@ export interface CanonicalBoard {
   scoreNotes: string | null; // human-readable scoring explanation
   scrapedAt: string;
   specSources: string | null; // JSON: Record<string, SpecFieldInfo>
+  condition: ListingCondition;
+  gender: GenderTarget;
+  stockCount: number | null;
 }
 
 // ===== Board-centric types (new data model) =====
@@ -120,6 +141,7 @@ export interface Board {
   manufacturerUrl: string | null;
   description: string | null;
   beginnerScore: number;
+  gender: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,6 +164,9 @@ export interface Listing {
   discountPercent: number | null;
   availability: string;
   scrapedAt: string;
+  condition: string;
+  gender: string;
+  stockCount: number | null;
 }
 
 export interface BoardWithListings extends Board {

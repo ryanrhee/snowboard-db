@@ -178,6 +178,21 @@ export function SearchResults({ boards }: SearchResultsProps) {
                     <div>
                       <span className="font-medium">{board.brand}</span>{" "}
                       <span className="text-gray-300">{board.model}</span>
+                      {(() => {
+                        const hasBlem = board.listings.some(l => l.condition === "blemished");
+                        const hasCloseout = board.listings.some(l => l.condition === "closeout");
+                        return (
+                          <>
+                            {hasBlem && <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-yellow-900/50 text-yellow-300">BLEM</span>}
+                            {hasCloseout && <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-orange-900/50 text-orange-300">CLOSEOUT</span>}
+                          </>
+                        );
+                      })()}
+                      {board.gender && board.gender !== "unisex" && (
+                        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-gray-800 text-gray-400">
+                          {board.gender === "womens" ? "W" : board.gender === "mens" ? "M" : board.gender === "kids" ? "K" : ""}
+                        </span>
+                      )}
                     </div>
                     {board.manufacturerUrl && (
                       <a

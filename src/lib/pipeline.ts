@@ -84,6 +84,7 @@ function splitIntoBoardsAndListings(
         manufacturerUrl: null,
         description: cb.description,
         beginnerScore: 0,
+        gender: cb.gender,
         createdAt: now,
         updatedAt: now,
       };
@@ -109,7 +110,17 @@ function splitIntoBoardsAndListings(
       discountPercent: cb.discountPercent,
       availability: cb.availability,
       scrapedAt: cb.scrapedAt,
+      condition: cb.condition,
+      gender: cb.gender,
+      stockCount: cb.stockCount,
     });
+  }
+
+  // Resolve board gender across all listings for each board
+  for (const [key, board] of boardMap) {
+    const boardListings = listings.filter(l => l.boardKey === key);
+    const genders = new Set(boardListings.map(l => l.gender));
+    board.gender = genders.size === 1 ? [...genders][0] : "unisex";
   }
 
   return { boards: Array.from(boardMap.values()), listings };
