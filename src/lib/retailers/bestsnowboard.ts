@@ -1,12 +1,12 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
-import { RawBoard, SearchConstraints, Currency, Region } from "../types";
+import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
 import { fetchPage, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const BS_BASE_URL = "https://www.bestsnowboard.co.kr";
 
-function buildSearchUrl(constraints: SearchConstraints): string {
+function buildSearchUrl(): string {
   // Korean snowboard shop — search for sale boards
   return `${BS_BASE_URL}/product/list.html?cate_no=25&sort_method=6`;
 }
@@ -233,27 +233,18 @@ export const bestsnowboard: RetailerModule = {
   region: Region.KR,
   baseUrl: BS_BASE_URL,
 
-  async searchBoards(constraints: SearchConstraints): Promise<RawBoard[]> {
-    const searchUrl = buildSearchUrl(constraints);
+  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+    const searchUrl = buildSearchUrl();
     console.log(`[bestsnowboard] Fetching search results from ${searchUrl}`);
 
     const html = await fetchPage(searchUrl);
     const partials = parseProductsFromHtml(html);
     console.log(`[bestsnowboard] Found ${partials.length} product cards`);
 
-    // Convert KRW max price for filtering
-    const maxPriceKrw = constraints.maxPriceUsd
-      ? constraints.maxPriceUsd / config.krwToUsdRate
-      : null;
-
-    const filtered = maxPriceKrw
-      ? partials.filter((b) => !b.salePrice || b.salePrice <= maxPriceKrw)
-      : partials;
-
-    console.log(`[bestsnowboard] Fetching details for ${filtered.length} boards`);
+    console.log(`[bestsnowboard] Fetching details for ${partials.length} boards`);
 
     const boards: RawBoard[] = [];
-    for (const partial of filtered) {
+    for (const partial of partials) {
       const board = await fetchBoardDetails(partial);
       if (board) boards.push(board);
     }

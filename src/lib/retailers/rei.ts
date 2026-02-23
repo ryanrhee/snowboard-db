@@ -1,4 +1,4 @@
-import { RawBoard, SearchConstraints, Currency, Region } from "../types";
+import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
 import { fetchPageWithBrowser, normalizeBrand } from "../scraping/utils";
 import { delay } from "../scraping/utils";
@@ -6,7 +6,7 @@ import { config } from "../config";
 
 const REI_BASE_URL = "https://www.rei.com";
 
-function buildSearchUrl(_constraints: SearchConstraints, page?: number): string {
+function buildSearchUrl(page?: number): string {
   const base = `${REI_BASE_URL}/c/snowboards`;
   return page && page > 1 ? `${base}?page=${page}` : base;
 }
@@ -96,8 +96,8 @@ export const rei: RetailerModule = {
   region: Region.US,
   baseUrl: REI_BASE_URL,
 
-  async searchBoards(constraints: SearchConstraints): Promise<RawBoard[]> {
-    const page1Url = buildSearchUrl(constraints);
+  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+    const page1Url = buildSearchUrl();
     console.log(`[rei] Fetching page 1 from ${page1Url}`);
 
     const page1Html = await fetchPageWithBrowser(page1Url, {
@@ -112,7 +112,7 @@ export const rei: RetailerModule = {
 
     for (let page = 2; page <= totalPages; page++) {
       await delay(config.scrapeDelayMs);
-      const pageUrl = buildSearchUrl(constraints, page);
+      const pageUrl = buildSearchUrl(page);
       console.log(`[rei] Fetching page ${page} from ${pageUrl}`);
       const html = await fetchPageWithBrowser(pageUrl, {
         waitUntil: "domcontentloaded",
@@ -135,12 +135,9 @@ export const rei: RetailerModule = {
 
     console.log(`[rei] ${uniqueProducts.length} unique products after dedup`);
 
-    const maxPrice = constraints.maxPriceUsd;
-
     const boards: RawBoard[] = uniqueProducts
       .filter((p) => {
         if (!p.displayPrice?.min) return false;
-        if (maxPrice && p.displayPrice.min > maxPrice) return false;
         // Only include boards that are actually discounted
         if (!p.sale && !p.clearance && !parseFloat(p.percentageOff || "0")) return false;
         return true;

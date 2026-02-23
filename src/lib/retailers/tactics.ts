@@ -1,12 +1,12 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
-import { RawBoard, SearchConstraints, Currency, Region } from "../types";
+import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
 import { fetchPage, parsePrice, normalizeBrand, delay } from "../scraping/utils";
 
 const TACTICS_BASE_URL = "https://www.tactics.com";
 
-function buildSearchUrl(constraints: SearchConstraints): string {
+function buildSearchUrl(): string {
   return `${TACTICS_BASE_URL}/snowboards/sale`;
 }
 
@@ -288,24 +288,18 @@ export const tactics: RetailerModule = {
   region: Region.US,
   baseUrl: TACTICS_BASE_URL,
 
-  async searchBoards(constraints: SearchConstraints): Promise<RawBoard[]> {
-    const searchUrl = buildSearchUrl(constraints);
+  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+    const searchUrl = buildSearchUrl();
     console.log(`[tactics] Fetching search results from ${searchUrl}`);
 
     const html = await fetchPage(searchUrl);
     const partialBoards = parseProductCards(html);
     console.log(`[tactics] Found ${partialBoards.length} product cards`);
 
-    // Quick price filter before fetching details
-    const maxPrice = constraints.maxPriceUsd;
-    const filtered = maxPrice
-      ? partialBoards.filter((b) => !b.salePrice || b.salePrice <= maxPrice)
-      : partialBoards;
-
-    console.log(`[tactics] Fetching details for ${filtered.length} boards`);
+    console.log(`[tactics] Fetching details for ${partialBoards.length} boards`);
 
     const boards: RawBoard[] = [];
-    for (const partial of filtered) {
+    for (const partial of partialBoards) {
       const results = await fetchBoardDetails(partial);
       boards.push(...results);
     }

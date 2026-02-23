@@ -33,16 +33,24 @@ export async function GET(request: NextRequest) {
     // Client-side filters
     const region = searchParams.get("region") || undefined;
     const maxPrice = searchParams.get("maxPrice");
+    const minPrice = searchParams.get("minPrice");
     const minLength = searchParams.get("minLength");
     const maxLength = searchParams.get("maxLength");
+    const gender = searchParams.get("gender") || undefined;
+    const excludeKids = searchParams.get("excludeKids");
+    const excludeWomens = searchParams.get("excludeWomens");
 
-    const hasFilters = region || maxPrice || minLength || maxLength;
+    const hasFilters = region || maxPrice || minPrice || minLength || maxLength || gender || excludeKids || excludeWomens;
     if (hasFilters) {
       boards = filterBoardsWithListings(boards, {
         region,
         maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
         minLength: minLength ? parseFloat(minLength) : undefined,
         maxLength: maxLength ? parseFloat(maxLength) : undefined,
+        gender,
+        excludeKids: excludeKids === "true",
+        excludeWomens: excludeWomens === "true",
       });
     }
 

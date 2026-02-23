@@ -177,6 +177,14 @@ export interface BoardWithListings extends Board {
   specSources?: Record<string, { source: string; value: string; sourceUrl?: string | null }[]>;
 }
 
+// ===== Scrape Scope (ingestion-time, no personal filters) =====
+
+export interface ScrapeScope {
+  regions?: Region[] | null;
+  retailers?: string[] | null;
+  skipEnrichment?: boolean;
+}
+
 // ===== Search Types =====
 
 export interface SearchConstraints {

@@ -1,6 +1,5 @@
 import {
   SearchConstraints,
-  CanonicalBoard,
   BoardWithListings,
   Region,
 } from "./types";
@@ -18,101 +17,17 @@ export const DEFAULT_CONSTRAINTS: SearchConstraints = {
   retailers: null,
 };
 
-export function applyConstraints(
-  boards: CanonicalBoard[],
-  constraints: SearchConstraints
-): CanonicalBoard[] {
-  return boards.filter((board) => {
-    // Length filter — null length does NOT disqualify
-    if (board.lengthCm !== null) {
-      if (
-        constraints.minLengthCm &&
-        board.lengthCm < constraints.minLengthCm
-      ) {
-        return false;
-      }
-      if (
-        constraints.maxLengthCm &&
-        board.lengthCm > constraints.maxLengthCm
-      ) {
-        return false;
-      }
-    }
-
-    // Price filter
-    if (
-      constraints.maxPriceUsd &&
-      board.salePriceUsd > constraints.maxPriceUsd
-    ) {
-      return false;
-    }
-    if (
-      constraints.minPriceUsd &&
-      board.salePriceUsd < constraints.minPriceUsd
-    ) {
-      return false;
-    }
-
-    // Exclude kids boards
-    if (constraints.excludeKids) {
-      const lower = `${board.model} ${board.description || ""}`.toLowerCase();
-      if (
-        lower.includes("kids") ||
-        lower.includes("youth") ||
-        lower.includes("junior") ||
-        lower.includes("grom") ||
-        lower.includes("children")
-      ) {
-        return false;
-      }
-      // Kids boards are usually under 140cm
-      if (board.lengthCm !== null && board.lengthCm < 130) {
-        return false;
-      }
-    }
-
-    // Exclude women's boards
-    if (constraints.excludeWomens) {
-      const lower = `${board.brand} ${board.model} ${board.description || ""}`.toLowerCase();
-      if (
-        lower.includes("women") ||
-        lower.includes("woman") ||
-        lower.includes("wmns") ||
-        lower.includes("wms")
-      ) {
-        return false;
-      }
-    }
-
-    // Region filter
-    if (
-      constraints.regions &&
-      constraints.regions.length > 0 &&
-      !constraints.regions.includes(board.region)
-    ) {
-      return false;
-    }
-
-    // Retailer filter
-    if (
-      constraints.retailers &&
-      constraints.retailers.length > 0 &&
-      !constraints.retailers.includes(board.retailer)
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
 export function filterBoardsWithListings(
   boards: BoardWithListings[],
   filters: {
     region?: string;
     maxPrice?: number;
+    minPrice?: number;
     minLength?: number;
     maxLength?: number;
+    gender?: string;
+    excludeKids?: boolean;
+    excludeWomens?: boolean;
   }
 ): BoardWithListings[] {
   return boards.map((board) => {
@@ -123,6 +38,9 @@ export function filterBoardsWithListings(
     }
     if (filters.maxPrice) {
       filteredListings = filteredListings.filter(l => l.salePriceUsd <= filters.maxPrice!);
+    }
+    if (filters.minPrice) {
+      filteredListings = filteredListings.filter(l => l.salePriceUsd >= filters.minPrice!);
     }
     if (filters.minLength) {
       filteredListings = filteredListings.filter(l => l.lengthCm === null || l.lengthCm >= filters.minLength!);
@@ -135,5 +53,42 @@ export function filterBoardsWithListings(
 
     const bestPrice = Math.min(...filteredListings.map(l => l.salePriceUsd));
     return { ...board, listings: filteredListings, bestPrice };
-  }).filter((b): b is BoardWithListings => b !== null);
+  }).filter((b): b is BoardWithListings => b !== null)
+    .filter((board) => {
+      // Gender filter
+      if (filters.gender && board.gender !== filters.gender && board.gender !== "unisex") {
+        return false;
+      }
+
+      // Exclude kids boards
+      if (filters.excludeKids) {
+        if (board.gender === "kids") return false;
+        const lower = `${board.model} ${board.description || ""}`.toLowerCase();
+        if (
+          lower.includes("kids") ||
+          lower.includes("youth") ||
+          lower.includes("junior") ||
+          lower.includes("grom") ||
+          lower.includes("children")
+        ) {
+          return false;
+        }
+      }
+
+      // Exclude women's boards
+      if (filters.excludeWomens) {
+        if (board.gender === "womens") return false;
+        const lower = `${board.brand} ${board.model} ${board.description || ""}`.toLowerCase();
+        if (
+          lower.includes("women") ||
+          lower.includes("woman") ||
+          lower.includes("wmns") ||
+          lower.includes("wms")
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    });
 }

@@ -1,12 +1,12 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
-import { RawBoard, SearchConstraints, Currency, Region } from "../types";
+import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
 import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const BC_BASE_URL = "https://www.backcountry.com";
 
-function buildSearchUrl(_constraints: SearchConstraints): string {
+function buildSearchUrl(): string {
   return `${BC_BASE_URL}/snowboards`;
 }
 
@@ -281,21 +281,16 @@ export const backcountry: RetailerModule = {
   region: Region.US,
   baseUrl: BC_BASE_URL,
 
-  async searchBoards(constraints: SearchConstraints): Promise<RawBoard[]> {
-    const searchUrl = buildSearchUrl(constraints);
+  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+    const searchUrl = buildSearchUrl();
     console.log(`[backcountry] Fetching search results from ${searchUrl}`);
 
     const html = await fetchPageWithBrowser(searchUrl);
     const partials = parseProductsFromHtml(html);
     console.log(`[backcountry] Found ${partials.length} product cards`);
 
-    const maxPrice = constraints.maxPriceUsd;
-    const filtered = maxPrice
-      ? partials.filter((b) => !b.salePrice || b.salePrice <= maxPrice)
-      : partials;
-
     // Convert listing data directly to RawBoard (skip detail pages for speed)
-    const boards: RawBoard[] = filtered
+    const boards: RawBoard[] = partials
       .filter((p) => p.salePrice && p.url)
       .map((p) => ({
         retailer: "backcountry",

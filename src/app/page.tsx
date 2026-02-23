@@ -32,6 +32,7 @@ export default function Home() {
         if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
         if (filters.minLength) params.set("minLength", filters.minLength);
         if (filters.maxLength) params.set("maxLength", filters.maxLength);
+        if (filters.gender) params.set("gender", filters.gender);
 
         const res = await fetch(`/api/results?${params}`);
         const data = await res.json();
@@ -186,11 +187,7 @@ export default function Home() {
         </div>
       )}
 
-      <SearchResults boards={
-        filters.gender
-          ? boards.filter(b => b.gender === filters.gender || b.gender === "unisex")
-          : boards
-      } />
+      <SearchResults boards={boards} />
     </div>
   );
 }

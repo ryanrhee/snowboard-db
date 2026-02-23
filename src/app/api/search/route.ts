@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runSearchPipeline } from "@/lib/pipeline";
-import { SearchConstraints } from "@/lib/types";
-import { DEFAULT_CONSTRAINTS } from "@/lib/constraints";
+import { ScrapeScope } from "@/lib/types";
 import { getLatestRun, getBoardsWithListings } from "@/lib/db";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -11,10 +10,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const force = body.force === true;
 
-    const constraints: Partial<SearchConstraints> = {
-      ...DEFAULT_CONSTRAINTS,
-      ...body,
-    };
+    const scope: Partial<ScrapeScope> = {};
+    if (body.regions) scope.regions = body.regions;
+    if (body.retailers) scope.retailers = body.retailers;
+    if (body.skipEnrichment !== undefined) scope.skipEnrichment = body.skipEnrichment;
 
     // Return cached results if the latest run is less than 1 hour old
     if (!force) {
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const response = await runSearchPipeline(constraints);
+    const response = await runSearchPipeline(scope);
 
     return NextResponse.json(response);
   } catch (error) {

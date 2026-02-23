@@ -1,11 +1,11 @@
 import * as cheerio from "cheerio";
-import { RawBoard, SearchConstraints, Currency, Region } from "../types";
+import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
 import { fetchPageWithBrowser, parsePrice, normalizeBrand } from "../scraping/utils";
 
 const EVO_BASE_URL = "https://www.evo.com";
 
-function buildSearchUrl(_constraints: SearchConstraints): string {
+function buildSearchUrl(): string {
   return `${EVO_BASE_URL}/shop/snowboard/snowboards/sale`;
 }
 
@@ -73,21 +73,16 @@ export const evo: RetailerModule = {
   region: Region.US,
   baseUrl: EVO_BASE_URL,
 
-  async searchBoards(constraints: SearchConstraints): Promise<RawBoard[]> {
-    const searchUrl = buildSearchUrl(constraints);
+  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+    const searchUrl = buildSearchUrl();
     console.log(`[evo] Fetching search results from ${searchUrl}`);
 
     const html = await fetchPageWithBrowser(searchUrl);
     const partialBoards = parseProductCards(html);
     console.log(`[evo] Found ${partialBoards.length} product cards`);
 
-    const maxPrice = constraints.maxPriceUsd;
-    const filtered = maxPrice
-      ? partialBoards.filter((b) => !b.salePrice || b.salePrice <= maxPrice)
-      : partialBoards;
-
     // Convert listing data directly to RawBoard (skip detail pages for speed)
-    const boards: RawBoard[] = filtered
+    const boards: RawBoard[] = partialBoards
       .filter((p) => p.salePrice && p.url)
       .map((p) => ({
         retailer: "evo",

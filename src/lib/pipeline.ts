@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import {
-  SearchConstraints,
+  ScrapeScope,
   SearchResponse,
   RetailerError,
   CanonicalBoard,
@@ -9,11 +9,11 @@ import {
   BoardWithListings,
   Availability,
   Currency,
+  Region,
 } from "./types";
 import { getRetailers } from "./retailers/registry";
 import { normalizeBoard, convertToUsd } from "./normalization";
 import { scoreBoard, calcValueScore, calcFinalScore, calcBeginnerScoreForBoard } from "./scoring";
-import { applyConstraints, DEFAULT_CONSTRAINTS } from "./constraints";
 import {
   insertSearchRun,
   getRunById,
@@ -126,25 +126,30 @@ function splitIntoBoardsAndListings(
   return { boards: Array.from(boardMap.values()), listings };
 }
 
+const DEFAULT_SCOPE: ScrapeScope = {
+  regions: [Region.US, Region.KR],
+  skipEnrichment: true,
+};
+
 export async function runSearchPipeline(
-  constraints?: Partial<SearchConstraints>
+  scope?: Partial<ScrapeScope>
 ): Promise<SearchResponse> {
-  const mergedConstraints: SearchConstraints = {
-    ...DEFAULT_CONSTRAINTS,
-    ...constraints,
+  const mergedScope: ScrapeScope = {
+    ...DEFAULT_SCOPE,
+    ...scope,
   };
 
   const startTime = Date.now();
   const runId = randomUUID();
 
   // Get relevant retailers
-  const retailers = getRetailers(mergedConstraints.regions, mergedConstraints.retailers);
+  const retailers = getRetailers(mergedScope.regions, mergedScope.retailers);
   const errors: RetailerError[] = [];
 
   // Query all retailers in parallel
   const results = await Promise.allSettled(
     retailers.map((retailer) =>
-      retailer.searchBoards(mergedConstraints).then((boards) => ({
+      retailer.searchBoards(mergedScope).then((boards) => ({
         retailer: retailer.name,
         boards,
       }))
@@ -187,20 +192,17 @@ export async function runSearchPipeline(
   const normalizedBoards = allRawBoards.map((raw) =>
     normalizeBoard(raw, runId)
   );
-
-  // Apply hard constraint filters (works on CanonicalBoard)
-  const filteredBoards = applyConstraints(normalizedBoards, mergedConstraints);
   console.log(
-    `[pipeline] ${filteredBoards.length} boards after constraint filtering`
+    `[pipeline] ${normalizedBoards.length} boards after normalization`
   );
 
   // Save retailer-provided specs to spec_sources before enrichment
-  saveRetailerSpecs(filteredBoards);
+  saveRetailerSpecs(normalizedBoards);
 
   // Enrich boards missing specs via LLM + web search
-  const enrichedBoards = mergedConstraints.skipEnrichment
-    ? filteredBoards
-    : await enrichBoardSpecs(filteredBoards);
+  const enrichedBoards = mergedScope.skipEnrichment
+    ? normalizedBoards
+    : await enrichBoardSpecs(normalizedBoards);
 
   // Resolve spec sources: priority-based resolution + disagreement detection
   const resolvedBoards = await resolveSpecSources(enrichedBoards);
@@ -230,7 +232,7 @@ export async function runSearchPipeline(
   const run = {
     id: runId,
     timestamp: new Date().toISOString(),
-    constraintsJson: JSON.stringify(mergedConstraints),
+    constraintsJson: JSON.stringify(mergedScope),
     boardCount: boards.length,
     retailersQueried: retailers.map((r) => r.name).join(","),
     durationMs,
