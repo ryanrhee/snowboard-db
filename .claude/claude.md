@@ -19,6 +19,53 @@ while true; do npx next dev -p 3099 2>&1 | tee output.txt; echo "--- restarted -
 3. **Triggering non-debug endpoints**: Add a new action to debug route that calls the desired code path internally, then use `./debug.sh`. Do NOT use `kill` or `curl` directly — `debug.sh` handles the kill+wait+curl cycle and avoids per-command user approval.
 4. **Never launch a browser directly** — scraping that requires a browser must go through the dev server via `./debug.sh`. Non-browser commands (`npm run test`, `node` scripts, etc.) can be run directly.
 
+## Re-running the Pipeline from Cached HTML
+
+The HTTP cache (`http_cache` table in `data/snowboard-finder.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
+
+### Quick re-run
+
+```bash
+./debug.sh '{"action":"metadata-check"}'
+```
+
+Runs `runSearchPipeline({ skipEnrichment: true })` — scrapes all retailers (hitting cache), normalizes, resolves specs, stores in DB.
+
+### Reset pipeline output + re-run
+
+```bash
+# Clear pipeline output, keep cached HTML and spec data
+sqlite3 data/snowboard-finder.db "
+  DELETE FROM listings;
+  DELETE FROM boards;
+  DELETE FROM search_runs;
+"
+
+./debug.sh '{"action":"metadata-check"}'
+```
+
+### Extend cache TTL (if entries are >24h old)
+
+```bash
+sqlite3 data/snowboard-finder.db "
+  UPDATE http_cache SET ttl_ms = 7 * 24 * 60 * 60 * 1000;
+"
+```
+
+### Table reference
+
+| Table | Safe to clear? | Notes |
+|-------|---------------|-------|
+| `http_cache` | **No** | Raw HTML — keeps you off the network |
+| `review_sitemap_cache` | **No** | The Good Ride sitemap cache |
+| `review_url_map` | **No** | Board → review URL mappings |
+| `spec_sources` | Only to re-derive | Accumulated specs from mfr/retailer/review/llm |
+| `spec_cache` | Only to re-enrich | Enrichment results keyed by input hash |
+| `search_runs` | Yes | Pipeline run metadata |
+| `boards` | Yes | Re-derived from raw data each run |
+| `listings` | Yes | Re-derived from raw data each run |
+| `boards_legacy` | Yes | Deprecated old schema |
+
 ## Task Tracking
 
 Each task is its own markdown file:
