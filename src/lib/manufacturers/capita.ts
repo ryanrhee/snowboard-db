@@ -118,6 +118,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
     const bodySpecs = parseBodyHtml(product.body_html);
     const tags = product.tags?.map((t) => t.toLowerCase()) || [];
 
+    // Fall back to tags for profile/shape if body parsing didn't find them
+    const profileFromTags = bodySpecs.profile || parseProfileFromTags(tags);
+    const shapeFromTags = bodySpecs.shape || parseShapeFromTags(tags);
+
     // Merge detail page hexagon data
     const detail = detailData.get(product.handle);
     const extras = { ...bodySpecs.extras };
@@ -145,8 +149,8 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       model: cleanModelName(product.title),
       year: null,
       flex: bodySpecs.flex,
-      profile: bodySpecs.profile,
-      shape: bodySpecs.shape,
+      profile: profileFromTags,
+      shape: shapeFromTags,
       category: bodySpecs.category,
       msrpUsd: price && !isNaN(price) ? price : null,
       sourceUrl: `${CAPITA_BASE}/products/${product.handle}`,
@@ -337,6 +341,24 @@ async function scrapeHtmlCatalog(): Promise<ManufacturerSpec[]> {
   });
 
   return specs;
+}
+
+function parseProfileFromTags(tags: string[]): string | null {
+  // Order matters — check more specific terms first
+  if (tags.includes("hybrid camber")) return "hybrid camber";
+  if (tags.includes("hybrid rocker")) return "hybrid rocker";
+  if (tags.includes("camber")) return "camber";
+  if (tags.includes("rocker")) return "rocker";
+  if (tags.includes("flat")) return "flat";
+  return null;
+}
+
+function parseShapeFromTags(tags: string[]): string | null {
+  if (tags.includes("true twin")) return "true twin";
+  if (tags.includes("directional twin")) return "directional twin";
+  if (tags.includes("directional")) return "directional";
+  if (tags.includes("tapered")) return "tapered";
+  return null;
 }
 
 function cleanModelName(raw: string): string {

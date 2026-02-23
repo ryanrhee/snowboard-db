@@ -74,7 +74,7 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
       manufacturerUrl: spec.sourceUrl,
       description: null,
       beginnerScore: 0,
-      gender: null,
+      gender: "unisex",
       createdAt: now,
       updatedAt: now,
     };

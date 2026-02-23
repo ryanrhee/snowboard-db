@@ -143,46 +143,64 @@ function parseDetailHtml(
   // Extract profile and shape from description text.
   // Lib Tech uses terms like "Banana Tech", "C2", "C2x", "BTX", "C3".
   const description = $(".product.attribute.description .value, .product-description").text();
-  if (description && !profile) {
-    const descLower = description.toLowerCase();
-    // Profile detection
-    if (descLower.includes("c2x")) profile = "C2x";
-    else if (descLower.includes("c2e")) profile = "C2e";
-    else if (descLower.includes("c2")) profile = "C2";
-    else if (descLower.includes("c3")) profile = "C3";
-    else if (descLower.includes("banana tech") || descLower.includes("btx")) profile = "BTX";
-    else if (descLower.includes("b.c.")) profile = "B.C.";
+  const descLower = description?.toLowerCase() || "";
 
-    // Shape detection
-    if (!shape) {
-      if (descLower.includes("true twin") || descLower.includes("perfectly twin")) shape = "true twin";
-      else if (descLower.includes("directional twin")) shape = "directional twin";
-      else if (descLower.includes("directional")) shape = "directional";
-    }
+  // Also search the full page text for profile/shape terms as a fallback.
+  // Lib Tech often puts profile info in pagebuilder elements and contour images
+  // outside the description div.
+  const fullText = $.text().toLowerCase();
+  const searchText = descLower || fullText;
 
-    // Category from description keywords
-    if (!category) {
-      if (descLower.includes("all-mountain") || descLower.includes("all mountain")) category = "all-mountain";
-      else if (descLower.includes("freestyle") || descLower.includes("jib")) category = "freestyle";
-      else if (descLower.includes("freeride") || descLower.includes("backcountry")) category = "freeride";
-      else if (descLower.includes("powder") || descLower.includes("float")) category = "powder";
-      else if (descLower.includes("park") || descLower.includes("pipe")) category = "park";
-    }
+  if (!profile) {
+    // Profile detection — search description first, then full page
+    const profileText = descLower || fullText;
+    if (profileText.includes("c2x")) profile = "C2x";
+    else if (profileText.includes("c2e")) profile = "C2e";
+    else if (/\bc2\b/.test(profileText)) profile = "C2";
+    else if (/\bc3\b/.test(profileText)) profile = "C3";
+    else if (profileText.includes("banana tech") || /\bbtx\b/.test(profileText)) profile = "BTX";
+    else if (profileText.includes("b.c.")) profile = "B.C.";
+  }
 
-    // Ability level from description (conservative — only clear ability phrases)
-    if (!descLower.includes("all ability level")) {
-      if (descLower.includes("beginner") && descLower.includes("intermediate")) {
-        extras["ability level"] = "beginner-intermediate";
-      } else if (descLower.includes("intermediate") && descLower.includes("advanced")) {
-        extras["ability level"] = "intermediate-advanced";
-      } else if (descLower.includes("beginner") || descLower.includes("entry level")) {
-        extras["ability level"] = "beginner";
-      } else if (descLower.includes("advanced")) {
-        extras["ability level"] = "advanced";
-      }
-      // Note: "pro" and "expert" are NOT matched here because Lib Tech uses
-      // "pro" in model names and tech descriptions (ProTech, Pro Model, etc.)
+  // Also check contour image filenames (e.g. Hybrid-C2-Contour.jpg)
+  if (!profile) {
+    const contourImg = $("img[src*='Contour'], img[alt*='Contour']").first();
+    const contourSrc = (contourImg.attr("src") || contourImg.attr("alt") || "").toLowerCase();
+    if (contourSrc.includes("c2x")) profile = "C2x";
+    else if (contourSrc.includes("c2e")) profile = "C2e";
+    else if (contourSrc.includes("c2")) profile = "C2";
+    else if (contourSrc.includes("c3")) profile = "C3";
+    else if (contourSrc.includes("btx") || contourSrc.includes("banana")) profile = "BTX";
+  }
+
+  if (!shape) {
+    if (searchText.includes("true twin") || searchText.includes("perfectly twin")) shape = "true twin";
+    else if (searchText.includes("directional twin")) shape = "directional twin";
+    else if (searchText.includes("directional")) shape = "directional";
+  }
+
+  // Category from description keywords
+  if (!category) {
+    if (searchText.includes("all-mountain") || searchText.includes("all mountain")) category = "all-mountain";
+    else if (searchText.includes("freestyle") || searchText.includes("jib")) category = "freestyle";
+    else if (searchText.includes("freeride") || searchText.includes("backcountry")) category = "freeride";
+    else if (searchText.includes("powder") || searchText.includes("float")) category = "powder";
+    else if (searchText.includes("park") || searchText.includes("pipe")) category = "park";
+  }
+
+  // Ability level from description (conservative — only clear ability phrases)
+  if (descLower && !descLower.includes("all ability level")) {
+    if (descLower.includes("beginner") && descLower.includes("intermediate")) {
+      extras["ability level"] = "beginner-intermediate";
+    } else if (descLower.includes("intermediate") && descLower.includes("advanced")) {
+      extras["ability level"] = "intermediate-advanced";
+    } else if (descLower.includes("beginner") || descLower.includes("entry level")) {
+      extras["ability level"] = "beginner";
+    } else if (descLower.includes("advanced")) {
+      extras["ability level"] = "advanced";
     }
+    // Note: "pro" and "expert" are NOT matched here because Lib Tech uses
+    // "pro" in model names and tech descriptions (ProTech, Pro Model, etc.)
   }
 
   // Infer rider level from the infographic image
