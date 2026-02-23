@@ -216,6 +216,15 @@ export function normalizeModel(raw: string, brand?: string): string {
     model = model.replace(/^(?:Will Die|Dinosaurs)\s+/i, "");
   }
 
+  // Normalize "T.Rice" → "T. Rice" (Lib Tech website vs retailer naming)
+  model = model.replace(/T\.Rice/g, "T. Rice");
+
+  // Strip trailing profile designators (profile is stored as a separate field)
+  model = model.replace(
+    /\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i,
+    ""
+  );
+
   // Clean up leftover dashes, slashes, and whitespace
   model = model.replace(/\/+$/, "");
   model = model.replace(/^\s*[-/]\s*/, "").replace(/\s*[-/]\s*$/, "");

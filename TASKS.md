@@ -1,53 +1,5 @@
 # TASKS
 
-## 3. Manufacturer spec keys include profile suffixes that retailers don't use
-
-**Status:** open
-**Priority:** high — this is the "95 of 119 don't match" problem from the restructure plan
-
-### Problem
-
-Manufacturer scrapers (Burton especially) emit one product entry per profile variant: `burton|custom camber`, `burton|custom flying v`, `burton|feelgood camber`, `burton|feelgood flying v`, `burton|counterbalance camber`. Retailers list the same board as just `burton|custom`, `burton|feelgood`, `burton|counterbalance`.
-
-Fuzzy match data from the key-mismatch audit:
-
-| Board key (retailer) | Spec_cache key (manufacturer) |
-|---|---|
-| `burton\|custom` | `burton\|custom camber`, `burton\|custom flying v`, `burton\|custom x camber` |
-| `burton\|feelgood` | `burton\|feelgood camber`, `burton\|feelgood flying v` |
-| `burton\|counterbalance` | `burton\|counterbalance camber` |
-| `burton\|good company` | `burton\|good company undefeated camber` |
-| `burton\|rewind` | `burton\|rewind camber` |
-| `capita\|arthur longo aeronaut` | `capita\|aeronaut` |
-| `lib tech\|legitimizer c3` | `lib tech\|legitimizer` |
-| `lib tech\|rasman c2x` | `lib tech\|rasman` |
-| `lib tech\|t. rice apex orca` | `lib tech\|apex orca` |
-
-The pattern is bidirectional:
-- **Burton**: manufacturer key = `model + " " + profile`. Retailer key = just `model`. Manufacturer key is _longer_.
-- **Lib Tech**: manufacturer key = base model name. Retailer key = `model + " " + profile_code`. Manufacturer key is _shorter_.
-- **CAPiTA**: manufacturer uses full name `aeronaut`, retailer uses `arthur longo aeronaut` (artist prefix). Manufacturer key is _shorter_.
-
-### Root cause
-
-1. **Burton scraper** (`src/lib/manufacturers/burton.ts`): uses the full `productName` which includes the profile variant as part of the name (e.g. "Custom Camber Snowboard"). `normalizeModel()` doesn't know to strip profile suffixes like "Camber", "Flying V" because those are valid model name words in other contexts.
-2. **Lib Tech scraper**: uses the page slug as the model (e.g. "legitimizer", "rasman") while retailers append the profile code ("C3", "C2X") that Lib Tech uses in their naming.
-3. **CAPiTA**: retailer prepends artist names that the manufacturer omits from the Shopify handle.
-
-### Fix
-
-This needs a fuzzy matching / alias resolution layer when looking up specs. Options:
-
-**Option A — Strip known profile suffixes during key generation.** In `normalizeModel()`, strip trailing profile-like words (`Camber`, `Flying V`, `Rocker`, `Flat Top`, `C2`, `C3`, `C2X`, `C2E`, `C3 BTX`) when the brand is known to use profile-in-name conventions. Risk: some models legitimately end with these words.
-
-**Option B — Fuzzy spec_cache lookup.** When `specKey(brand, model)` doesn't hit in `spec_cache`, try progressively shorter suffixes of the model, or check if any spec_cache key for the same brand is a substring of the query (or vice versa). This is more robust but needs careful implementation to avoid false matches.
-
-**Option C — Manufacturer-side normalization.** Fix each manufacturer scraper to strip profile suffixes before emitting the model name, and store the profile in the `profile` field instead. Burton's scraper should emit `model="Custom"`, `profile="Camber"` rather than `model="Custom Camber"`. Lib Tech's scraper should emit `model="Legitimizer C3"` to match retailer convention, or add C3/C2X as an alias.
-
-Likely the best approach is a combination: fix manufacturer scrapers to normalize their models (Option C), and add a fuzzy fallback (Option B) to catch remaining mismatches.
-
----
-
 ## 5. Add listing-level retail metadata: condition, gender, and extras
 
 **Status:** open

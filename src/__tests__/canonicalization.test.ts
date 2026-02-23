@@ -797,7 +797,7 @@ describe("normalizeModel", () => {
       ["Lotus Snowboard - 2025 - Women's", undefined, "Lotus"],
       ["Ultra Prodigy Snowboard - Kids'", undefined, "Ultra Prodigy"],
       ["Lectra Cam-Out Snowboard - 2026 - Women's", undefined, "Lectra Cam-Out"],
-      ["Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp C3"],
+      ["Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
     });
@@ -810,7 +810,7 @@ describe("normalizeModel", () => {
       ["Women's Saturday Snowboard 2025", undefined, "Saturday"],
       ["Women's Darrah Snowboard 2025", undefined, "Darrah"],
       ["Women's No Drama Snowboard (Closeout) 2024", undefined, "No Drama"],
-      ["Women's Frosting C2 Snowboard 2025", undefined, "Frosting C2"],
+      ["Women's Frosting C2 Snowboard 2025", undefined, "Frosting"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
     });
@@ -819,7 +819,7 @@ describe("normalizeModel", () => {
   describe("strips retail tags", () => {
     it.each([
       ["Psychocandy Snowboard (Closeout) 2025", undefined, "Psychocandy"],
-      ["Forest Bailey Head Space C3 Snowboard (Closeout) 2025", undefined, "Forest Bailey Head Space C3"],
+      ["Forest Bailey Head Space C3 Snowboard (Closeout) 2025", undefined, "Forest Bailey Head Space"],
       ["T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "T. Rice Apex Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
@@ -828,7 +828,7 @@ describe("normalizeModel", () => {
 
   describe("strips binding/package info", () => {
     it.each([
-      ["Instigator Camber Snowboard + Malavita Re:Flex Binding", "Burton", "Instigator Camber"],
+      ["Instigator Camber Snowboard + Malavita Re:Flex Binding", "Burton", "Instigator"],
       ["Birds Of A Feather Snowboard + Union Ultra Binding - 2026", "CAPiTA", "Birds Of A Feather"],
       ["Kazu Kokubo Pro Snowboard + Union Atlas Pro Binding - 2026", "CAPiTA", "Kazu Kokubo Pro"],
       ["Feelgood Snowboard + Step On Package - Women's", "Burton", "Feelgood"],
@@ -839,11 +839,11 @@ describe("normalizeModel", () => {
 
   describe("fixes Lib Tech brand leak", () => {
     it.each([
-      ["Tech Dynamiss C3 Snowboard - Women's 2025", "Lib Tech", "Dynamiss C3"],
-      ["Tech Legitimizer C3 Snowboard 2025", "Lib Tech", "Legitimizer C3"],
+      ["Tech Dynamiss C3 Snowboard - Women's 2025", "Lib Tech", "Dynamiss"],
+      ["Tech Legitimizer C3 Snowboard 2025", "Lib Tech", "Legitimizer"],
       ["Tech Cold Brew C2 LTD Snowboard 2026", "Lib Tech", "Cold Brew C2 LTD"],
-      ["Tech Rasman C2X Snowboard 2025", "Lib Tech", "Rasman C2X"],
-      ["Tech Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp C3"],
+      ["Tech Rasman C2X Snowboard 2025", "Lib Tech", "Rasman"],
+      ["Tech Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp"],
       ["Tech T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "T. Rice Apex Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
@@ -867,7 +867,7 @@ describe("normalizeModel", () => {
   describe("handles models that need no cleanup", () => {
     it.each([
       ["Custom", undefined, "Custom"],
-      ["Process Flying V", undefined, "Process Flying V"],
+      ["Process Flying V", undefined, "Process"],
       ["Halldor", undefined, "Halldor"],
       ["Flagship Pro", undefined, "Flagship Pro"],
     ])('%s → %s', (input, brand, expected) => {
@@ -877,7 +877,7 @@ describe("normalizeModel", () => {
 
   describe("strips brand name prefix from model (generic)", () => {
     it.each([
-      ["GNU Asym Ladies Choice C2X Snowboard - Women's 2025", "GNU", "Asym Ladies Choice C2X"],
+      ["GNU Asym Ladies Choice C2X Snowboard - Women's 2025", "GNU", "Asym Ladies Choice"],
       ["Jones Dream Weaver 2.0 Snowboard - Women's 2026", "Jones", "Dream Weaver 2.0"],
       ["Rossignol Juggernaut Snowboard 2025", "Rossignol", "Juggernaut"],
       ["Sims Bowl Squad Snowboard 2026", "Sims", "Bowl Squad"],
@@ -885,7 +885,7 @@ describe("normalizeModel", () => {
       ["Yes. Airmaster 3D Snowboard 2026", "Yes.", "Airmaster 3D"],
       ["Salomon Sight X Snowboard 2026", "Salomon", "Sight X"],
       ["Rome Heist Snowboard - Women's 2024", "Rome", "Heist"],
-      ["Lib Tech Dynamiss C3 Snowboard - Women's 2025", "Lib Tech", "Dynamiss C3"],
+      ["Lib Tech Dynamiss C3 Snowboard - Women's 2025", "Lib Tech", "Dynamiss"],
       ["Never Summer Proto Ultra Snowboard 2026", "Never Summer", "Proto Ultra"],
     ])('%s (brand: %s) → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
@@ -917,6 +917,49 @@ describe("normalizeModel", () => {
 
     it("returns empty for empty", () => {
       expect(normalizeModel("")).toBe("");
+    });
+  });
+
+  describe("strips trailing profile designators", () => {
+    // Burton profile stripping
+    it.each([
+      ["Custom Camber", "Burton", "Custom"],
+      ["Custom Flying V", "Burton", "Custom"],
+      ["Feelgood Camber", "Burton", "Feelgood"],
+      ["Hideaway Flat Top", "Burton", "Hideaway"],
+      ["Instigator PurePop Camber", "Burton", "Instigator"],
+    ])('Burton: %s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand)).toBe(expected);
+    });
+
+    // Lib Tech / GNU profile code stripping
+    it.each([
+      ["Legitimizer C3", "Lib Tech", "Legitimizer"],
+      ["Rasman C2X", "Lib Tech", "Rasman"],
+      ["Frosting C2", "GNU", "Frosting"],
+      ["Gloss-C C3", "GNU", "Gloss-C"],
+      ["C Money C3", "GNU", "C Money"],
+      ["T. Rice Pro C2", "Lib Tech", "T. Rice Pro"],
+    ])('Lib Tech/GNU: %s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand)).toBe(expected);
+    });
+
+    // No-op cases (should NOT strip)
+    it.each([
+      ["Airmaster 3D", "Yes.", "Airmaster 3D"],
+      ["Dream Weaver 2.0", "Jones", "Dream Weaver 2.0"],
+      ["Cold Brew C2 LTD", "Lib Tech", "Cold Brew C2 LTD"],
+    ])('No-op: %s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand)).toBe(expected);
+    });
+  });
+
+  describe("normalizes T.Rice → T. Rice", () => {
+    it.each([
+      ["T.Rice Pro", "Lib Tech", "T. Rice Pro"],
+      ["T.Rice Orca", "Lib Tech", "T. Rice Orca"],
+    ])('%s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand)).toBe(expected);
     });
   });
 
@@ -967,7 +1010,7 @@ describe("normalizeModel", () => {
     });
 
     it("REI: Process Camber Snowboard - 2025/2026", () => {
-      expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process Camber");
+      expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process");
     });
   });
 });
