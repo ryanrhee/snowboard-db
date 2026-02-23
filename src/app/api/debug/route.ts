@@ -855,6 +855,110 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ action, specSourcesDeleted: r1.changes, specCacheDeleted: r2.changes });
   }
 
+  if (action === "llm-audit") {
+    // Show all LLM-derived data in spec_cache and spec_sources (excluding judgment)
+    const db = getDb();
+    const llmCache = db.prepare("SELECT * FROM spec_cache WHERE source = 'llm'").all();
+    const llmSources = db.prepare("SELECT * FROM spec_sources WHERE source = 'llm'").all();
+    const judgmentSources = db.prepare("SELECT * FROM spec_sources WHERE source = 'judgment'").all();
+    // Also check boards that only have LLM-sourced specs (no manufacturer/review/retailer data)
+    const allBoardKeys = db.prepare("SELECT DISTINCT brand_model FROM spec_sources").all() as { brand_model: string }[];
+    const llmOnlyBoards: string[] = [];
+    for (const { brand_model } of allBoardKeys) {
+      const sources = db.prepare("SELECT DISTINCT source FROM spec_sources WHERE brand_model = ?").all(brand_model) as { source: string }[];
+      const sourceSet = new Set(sources.map(s => s.source));
+      if (sourceSet.has("llm") && !sourceSet.has("manufacturer") && !sourceSet.has("review-site") && !Array.from(sourceSet).some(s => s.startsWith("retailer:"))) {
+        llmOnlyBoards.push(brand_model);
+      }
+    }
+    return NextResponse.json({
+      action,
+      llmCacheCount: llmCache.length,
+      llmSourcesCount: llmSources.length,
+      judgmentCount: judgmentSources.length,
+      llmOnlyBoardCount: llmOnlyBoards.length,
+      llmCache,
+      llmSources,
+      judgmentSources,
+      llmOnlyBoards,
+    });
+  }
+
+  if (action === "purge-llm") {
+    // Remove all LLM-derived data from spec_cache and spec_sources (keep judgment)
+    const db = getDb();
+    const r1 = db.prepare("DELETE FROM spec_cache WHERE source = 'llm'").run();
+    const r2 = db.prepare("DELETE FROM spec_sources WHERE source = 'llm'").run();
+    // Null out spec fields on boards whose resolved values came from LLM
+    // Find boards that now have NO remaining spec_sources for a given field
+    const boardRows = db.prepare("SELECT board_key FROM boards").all() as { board_key: string }[];
+    let boardsCleared = 0;
+    for (const { board_key } of boardRows) {
+      const remaining = db.prepare("SELECT DISTINCT field FROM spec_sources WHERE brand_model = ?").all(board_key) as { field: string }[];
+      const fieldsWithData = new Set(remaining.map(r => r.field));
+      const updates: string[] = [];
+      if (!fieldsWithData.has("flex")) updates.push("flex = NULL");
+      if (!fieldsWithData.has("profile")) updates.push("profile = NULL");
+      if (!fieldsWithData.has("shape")) updates.push("shape = NULL");
+      if (!fieldsWithData.has("category")) updates.push("category = NULL");
+      if (updates.length > 0) {
+        db.prepare(`UPDATE boards SET ${updates.join(", ")} WHERE board_key = ?`).run(board_key);
+        boardsCleared++;
+      }
+    }
+    return NextResponse.json({
+      action,
+      specCacheDeleted: r1.changes,
+      specSourcesDeleted: r2.changes,
+      boardsCleared,
+    });
+  }
+
+  if (action === "key-mismatch") {
+    const db = getDb();
+    // All board_key values from boards table (from retailer pipeline)
+    const boardKeys = db.prepare("SELECT board_key, brand, model FROM boards ORDER BY board_key").all() as { board_key: string; brand: string; model: string }[];
+    // All spec_cache keys (from manufacturer scraping)
+    const specKeys = db.prepare("SELECT brand_model, source FROM spec_cache WHERE source = 'manufacturer' ORDER BY brand_model").all() as { brand_model: string; source: string }[];
+    const specKeySet = new Set(specKeys.map(s => s.brand_model));
+    const boardKeySet = new Set(boardKeys.map(b => b.board_key));
+
+    // Boards with no matching spec_cache entry
+    const boardsWithoutSpecs = boardKeys.filter(b => !specKeySet.has(b.board_key));
+    // Spec cache entries with no matching board
+    const specsWithoutBoards = specKeys.filter(s => !boardKeySet.has(s.brand_model));
+
+    // Try fuzzy matching: for each unmatched board, find closest spec_cache key by brand
+    const fuzzyMatches: { boardKey: string; boardModel: string; specKey: string; similarity: string }[] = [];
+    for (const b of boardsWithoutSpecs) {
+      const brand = b.board_key.split("|")[0];
+      const boardModel = b.board_key.split("|").slice(1).join("|");
+      const candidates = specsWithoutBoards
+        .filter(s => s.brand_model.startsWith(brand + "|"))
+        .map(s => {
+          const specModel = s.brand_model.split("|").slice(1).join("|");
+          // Check if one contains the other
+          const contains = specModel.includes(boardModel) || boardModel.includes(specModel);
+          return { specKey: s.brand_model, specModel, contains };
+        })
+        .filter(c => c.contains);
+      for (const c of candidates) {
+        fuzzyMatches.push({ boardKey: b.board_key, boardModel: b.model, specKey: c.specKey, similarity: "substring" });
+      }
+    }
+
+    return NextResponse.json({
+      action,
+      totalBoards: boardKeys.length,
+      totalSpecKeys: specKeys.length,
+      boardsWithoutSpecs: boardsWithoutSpecs.length,
+      specsWithoutBoards: specsWithoutBoards.length,
+      fuzzyMatches,
+      unmatchedBoards: boardsWithoutSpecs.map(b => ({ key: b.board_key, brand: b.brand, model: b.model })),
+      unmatchedSpecs: specsWithoutBoards.map(s => s.brand_model),
+    });
+  }
+
   if (action === "scrape-specs") {
     const manufacturers = getManufacturers();
     const results: Record<string, unknown> = {};
@@ -871,6 +975,100 @@ export async function POST(request: NextRequest) {
     const db = getDb();
     const abilityRows = db.prepare("SELECT brand_model, field, value, source FROM spec_sources WHERE field = 'ability level' AND source = 'manufacturer'").all();
     return NextResponse.json({ action, results, abilityLevelEntries: abilityRows });
+  }
+
+  if (action === "brand-coverage") {
+    const db = getDb();
+
+    // 1. Count of boards per brand, ordered by count descending
+    const boardsPerBrand = db.prepare(`
+      SELECT brand, COUNT(*) as board_count
+      FROM boards
+      GROUP BY brand
+      ORDER BY board_count DESC
+    `).all() as { brand: string; board_count: number }[];
+
+    // 2. Count of spec_sources entries per brand where source='manufacturer'
+    const specSourcesPerBrand = db.prepare(`
+      SELECT SUBSTR(brand_model, 1, INSTR(brand_model, '|') - 1) as brand,
+             COUNT(DISTINCT brand_model) as boards_with_mfr_sources,
+             COUNT(*) as total_mfr_source_entries
+      FROM spec_sources
+      WHERE source = 'manufacturer'
+      GROUP BY brand
+      ORDER BY boards_with_mfr_sources DESC
+    `).all() as { brand: string; boards_with_mfr_sources: number; total_mfr_source_entries: number }[];
+
+    // 3. Count of spec_cache entries per brand where source='manufacturer'
+    const specCachePerBrand = db.prepare(`
+      SELECT SUBSTR(brand_model, 1, INSTR(brand_model, '|') - 1) as brand,
+             COUNT(*) as mfr_cache_count
+      FROM spec_cache
+      WHERE source = 'manufacturer'
+      GROUP BY brand
+      ORDER BY mfr_cache_count DESC
+    `).all() as { brand: string; mfr_cache_count: number }[];
+
+    // 4. Brands WITHOUT manufacturer data: board count, listing count, avg discount
+    // First, find all brand_model keys that DO have manufacturer spec_sources
+    const mfrBrandModels = db.prepare(`
+      SELECT DISTINCT brand_model FROM spec_sources WHERE source = 'manufacturer'
+    `).all() as { brand_model: string }[];
+    const mfrKeySet = new Set(mfrBrandModels.map(r => r.brand_model));
+
+    // Get all boards
+    const allBoards = db.prepare(`SELECT board_key, brand FROM boards`).all() as { board_key: string; brand: string }[];
+
+    // Partition boards into those with/without manufacturer data
+    const brandsWithout: Record<string, string[]> = {};
+    for (const b of allBoards) {
+      if (!mfrKeySet.has(b.board_key)) {
+        if (!brandsWithout[b.brand]) brandsWithout[b.brand] = [];
+        brandsWithout[b.brand].push(b.board_key);
+      }
+    }
+
+    // For brands without mfr data, get listing stats
+    const brandImpact: {
+      brand: string;
+      boards_without_mfr: number;
+      listing_count: number;
+      avg_discount_percent: number | null;
+    }[] = [];
+
+    for (const [brand, boardKeys] of Object.entries(brandsWithout)) {
+      // Check if this brand has ANY boards with mfr data
+      const hasAnyMfr = allBoards.some(b => b.brand === brand && mfrKeySet.has(b.board_key));
+      // Only include brands where NO boards have mfr data (fully uncovered brands)
+      // But also show partial coverage brands separately
+      const placeholders = boardKeys.map(() => '?').join(',');
+      const listingStats = db.prepare(`
+        SELECT COUNT(*) as listing_count,
+               AVG(discount_percent) as avg_discount
+        FROM listings
+        WHERE board_key IN (${placeholders})
+      `).get(...boardKeys) as { listing_count: number; avg_discount: number | null };
+
+      brandImpact.push({
+        brand,
+        boards_without_mfr: boardKeys.length,
+        listing_count: listingStats.listing_count,
+        avg_discount_percent: listingStats.avg_discount !== null
+          ? Math.round(listingStats.avg_discount * 100) / 100
+          : null,
+      });
+    }
+
+    // Sort by boards_without_mfr descending
+    brandImpact.sort((a, b) => b.boards_without_mfr - a.boards_without_mfr);
+
+    return NextResponse.json({
+      action,
+      boardsPerBrand,
+      specSourcesPerBrand,
+      specCachePerBrand,
+      brandsWithoutMfrData: brandImpact,
+    });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

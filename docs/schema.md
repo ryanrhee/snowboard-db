@@ -262,16 +262,24 @@ The TypeScript types mirror the DB schema:
 ## Data Flow
 
 ```
-Retailers (Evo, Tactics, ...)          Manufacturers (Burton, Lib Tech, CAPiTA)
-         │                                          │
-         ▼                                          ▼
-     RawBoard[]                            ManufacturerSpec[]
-         │                                          │
-    normalizeBoard()                      ingestManufacturerSpecs()
-         │                                          │
-         ▼                                          ▼
-   CanonicalBoard[]                         spec_cache + spec_sources
-         │                                    + boards (upsert)
+Retailers (Evo, Tactics, ...)    Manufacturers (Burton,     Review Sites (The Good Ride)
+         │                        Lib Tech, CAPiTA)                    │
+         ▼                                │                            │
+     RawBoard[]                           ▼                            │
+         │                       ManufacturerSpec[]                    │
+    normalizeBoard()                      │                            │
+         │                     ingestManufacturerSpecs()               │
+         ▼                                │                            │
+   CanonicalBoard[]                       ▼                            │
+         │                        spec_cache + spec_sources            │
+         │                          + boards (upsert)                  │
+    saveRetailerSpecs()──────►spec_sources                             │
+         │                                                             │
+    enrichBoardSpecs()─────────────────────────────────────────────────┘
+         │                    (for boards missing specs:
+         │                     tryReviewSiteLookup() → spec_cache
+         │                     + spec_sources with source="review-site")
+         │
     resolveSpecSources()◄───reads────── spec_sources
          │
    splitIntoBoardsAndListings()
