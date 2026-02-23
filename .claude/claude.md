@@ -21,7 +21,7 @@ while true; do npx next dev -p 3099 2>&1 | tee output.txt; echo "--- restarted -
 
 ## Database
 
-Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env var). The `snowboards.db` in the project root is a stale empty file — ignore it.
+Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env var).
 
 ### Schema
 
