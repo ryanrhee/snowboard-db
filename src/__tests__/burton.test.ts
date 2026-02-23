@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   extractDetailAttrs,
+  extractPersonalityFlex,
   mapSkillLevel,
   mapBend,
   mapTerrain,
@@ -8,6 +9,38 @@ import {
   cleanModelName,
   extractSpecsFromText,
 } from "../lib/manufacturers/burton";
+
+describe("extractPersonalityFlex", () => {
+  it("extracts flex from Personality slider (Custom: 40-70 → 6)", () => {
+    const html = `"productSliders":[{"title":"Personality","units":10,"sort":30,"labels":["Soft & Playful","Happy Medium","Stiff & Aggressive"],"lowerValue":"40","upperValue":"70"}]`;
+    expect(extractPersonalityFlex(html)).toBe(6);
+  });
+
+  it("extracts flex from stiff board (Custom X: 60-90 → 8)", () => {
+    const html = `"title":"Personality","units":10,"sort":30,"labels":["Soft & Playful","Happy Medium","Stiff & Aggressive"],"lowerValue":"60","upperValue":"90"}`;
+    expect(extractPersonalityFlex(html)).toBe(8);
+  });
+
+  it("extracts flex from soft board (Instigator: 00-30 → 2)", () => {
+    const html = `"title":"Personality","units":10,"sort":30,"labels":["Soft & Playful","Happy Medium","Stiff & Aggressive"],"lowerValue":"00","upperValue":"30"}`;
+    expect(extractPersonalityFlex(html)).toBe(2);
+  });
+
+  it("extracts flex from medium-soft board (Process: 20-50 → 4)", () => {
+    const html = `"title":"Personality","units":10,"sort":30,"labels":["Soft & Playful","Happy Medium","Stiff & Aggressive"],"lowerValue":"20","upperValue":"50"}`;
+    expect(extractPersonalityFlex(html)).toBe(4);
+  });
+
+  it("returns null when no Personality slider found", () => {
+    const html = `<html><body>No slider data here</body></html>`;
+    expect(extractPersonalityFlex(html)).toBeNull();
+  });
+
+  it("clamps minimum to 1", () => {
+    const html = `"title":"Personality","units":10,"sort":30,"labels":["Soft & Playful","Happy Medium","Stiff & Aggressive"],"lowerValue":"00","upperValue":"00"}`;
+    expect(extractPersonalityFlex(html)).toBe(1);
+  });
+});
 
 describe("extractDetailAttrs", () => {
   it("extracts a simple label/value pair", () => {

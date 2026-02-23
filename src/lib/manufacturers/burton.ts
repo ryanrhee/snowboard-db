@@ -31,6 +31,25 @@ interface CatalogBoard {
 }
 
 /**
+ * Extract flex rating from Burton's "Personality" slider in __bootstrap JSON.
+ * The slider has lowerValue/upperValue on a 0–100 scale (soft→stiff).
+ * We take the midpoint and map to a 1–10 flex rating.
+ *
+ * Example: {"title":"Personality",...,"lowerValue":"40","upperValue":"70"} → midpoint 55 → flex 6
+ */
+function extractPersonalityFlex(html: string): number | null {
+  const m = html.match(
+    /"title"\s*:\s*"Personality"[^}]*"lowerValue"\s*:\s*"(\d+)"[^}]*"upperValue"\s*:\s*"(\d+)"/
+  );
+  if (!m) return null;
+  const lower = parseInt(m[1], 10);
+  const upper = parseInt(m[2], 10);
+  const midpoint = (lower + upper) / 2;
+  // Map 0–100 → 1–10, clamping to valid range
+  return Math.max(1, Math.min(10, Math.round(midpoint / 10)));
+}
+
+/**
  * Extract label/value attribute pairs from a Burton detail page's __bootstrap JSON.
  * Full JSON parsing fails on detail pages (malformed JSON), so we use regex.
  */
@@ -52,9 +71,17 @@ function extractDetailAttrs(html: string): Record<string, string[]> {
   return attrs;
 }
 
-async function scrapeDetailPage(boardUrl: string): Promise<Record<string, string[]>> {
+interface DetailPageResult {
+  attrs: Record<string, string[]>;
+  flex: number | null;
+}
+
+async function scrapeDetailPage(boardUrl: string): Promise<DetailPageResult> {
   const html = await fetchPage(boardUrl, { timeoutMs: 20000 });
-  return extractDetailAttrs(html);
+  return {
+    attrs: extractDetailAttrs(html),
+    flex: extractPersonalityFlex(html),
+  };
 }
 
 function parseCatalogHtml(html: string): CatalogBoard[] {
@@ -203,22 +230,22 @@ export const burton: ManufacturerModule = {
 
     // Phase 2: Fetch detail pages (concurrency 3)
     const CONCURRENCY = 3;
-    const detailData = new Map<string, Record<string, string[]>>();
+    const detailData = new Map<string, DetailPageResult>();
     for (let i = 0; i < allBoards.length; i += CONCURRENCY) {
       const batch = allBoards.slice(i, i + CONCURRENCY);
       const results = await Promise.all(
         batch.map(async (board) => {
           try {
-            const attrs = await scrapeDetailPage(board.sourceUrl);
-            return { url: board.sourceUrl, attrs };
+            const result = await scrapeDetailPage(board.sourceUrl);
+            return { url: board.sourceUrl, result };
           } catch (err) {
             console.warn(`[burton] Failed to scrape detail page ${board.sourceUrl}:`, err instanceof Error ? err.message : err);
-            return { url: board.sourceUrl, attrs: null };
+            return { url: board.sourceUrl, result: null };
           }
         })
       );
-      for (const { url, attrs } of results) {
-        if (attrs) detailData.set(url, attrs);
+      for (const { url, result } of results) {
+        if (result) detailData.set(url, result);
       }
     }
 
@@ -230,29 +257,34 @@ export const burton: ManufacturerModule = {
       const detail = detailData.get(board.sourceUrl);
       const extras: Record<string, string> = {};
 
+      let flex: number | null = null;
       let profile: string | null = null;
       let shape: string | null = null;
       let category: string | null = null;
 
       if (detail) {
+        flex = detail.flex;
+
+        const attrs = detail.attrs;
+
         // Use structured detail page attributes (much more reliable than text parsing)
-        const bend = detail["Board Bend"];
+        const bend = attrs["Board Bend"];
         if (bend?.[0]) profile = mapBend(bend[0]);
 
-        const shapeVal = detail["Board Shape"];
+        const shapeVal = attrs["Board Shape"];
         if (shapeVal?.[0]) shape = mapShape(shapeVal[0]);
 
-        const terrain = detail["Board Terrain"];
+        const terrain = attrs["Board Terrain"];
         if (terrain?.[0]) category = mapTerrain(terrain[0]);
 
-        const skillLevel = detail["Board Skill Level"];
+        const skillLevel = attrs["Board Skill Level"];
         if (skillLevel && skillLevel.length > 0) {
           extras["ability level"] = mapSkillLevel(skillLevel);
         }
 
         // Store all interesting attributes as extras
         for (const label of EXTRA_ATTRS) {
-          const vals = detail[label];
+          const vals = attrs[label];
           if (vals && vals.length > 0) {
             const key = label.toLowerCase().replace(/^board\s+/, "");
             if (!extras[key]) {
@@ -273,7 +305,7 @@ export const burton: ManufacturerModule = {
         brand: "Burton",
         model: cleanModelName(board.name),
         year: null,
-        flex: null,
+        flex: flex != null ? String(flex) : null,
         profile,
         shape,
         category,
@@ -334,4 +366,4 @@ function extractSpecsFromText(text: string): {
 }
 
 // Test exports
-export { extractDetailAttrs, mapSkillLevel, mapBend, mapTerrain, mapShape, cleanModelName, extractSpecsFromText, parseCatalogHtml };
+export { extractDetailAttrs, extractPersonalityFlex, mapSkillLevel, mapBend, mapTerrain, mapShape, cleanModelName, extractSpecsFromText, parseCatalogHtml };
