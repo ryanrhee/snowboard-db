@@ -22,6 +22,15 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
 
     const existing = getCachedSpecs(key);
 
+    // Always store extras in spec_sources, even if we skip the main cache update
+    for (const [field, value] of Object.entries(spec.extras)) {
+      setSpecSource(key, field, 'manufacturer', value, spec.sourceUrl);
+      // Also store "ability level" under the camelCase key used by spec resolution
+      if (field === "ability level") {
+        setSpecSource(key, "abilityLevel", 'manufacturer', value, spec.sourceUrl);
+      }
+    }
+
     // Don't overwrite existing manufacturer data
     if (existing && existing.source === "manufacturer") {
       stats.skipped++;

@@ -36,6 +36,17 @@ function saveRetailerSpecs(boards: CanonicalBoard[]): void {
     if (board.profile !== null) setSpecSource(key, "profile", source, board.profile, board.url);
     if (board.shape !== null) setSpecSource(key, "shape", source, board.shape, board.url);
     if (board.category !== null) setSpecSource(key, "category", source, board.category, board.url);
+    if (board.abilityLevelMin !== null) {
+      const abilityStr = board.abilityLevelMin === board.abilityLevelMax
+        ? board.abilityLevelMin
+        : `${board.abilityLevelMin}-${board.abilityLevelMax}`;
+      setSpecSource(key, "abilityLevel", source, abilityStr, board.url);
+    }
+
+    // Store all extra fields
+    for (const [field, value] of Object.entries(board.extras)) {
+      setSpecSource(key, field, source, value, board.url);
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { CanonicalBoard, BoardProfile, BoardShape, BoardCategory } from "./types";
 import { specKey, getSpecSources, setSpecSource, SpecSourceEntry } from "./db";
+import { normalizeAbilityRange } from "./normalization";
 
 // Priority: manufacturer > review-site = judgment > retailer > llm
 const SOURCE_PRIORITY: Record<string, number> = {
@@ -174,7 +175,7 @@ export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<Cano
     }
   }
 
-  const SPEC_FIELDS = ["flex", "profile", "shape", "category"] as const;
+  const SPEC_FIELDS = ["flex", "profile", "shape", "category", "abilityLevel"] as const;
 
   // Collect disagreements for batched LLM judgment
   const disagreements: { key: string; field: string; ctx: DisagreementContext }[] = [];
@@ -330,6 +331,14 @@ export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<Cano
     const categoryInfo = fieldInfoMap.category;
     if (categoryInfo && categoryInfo.resolved !== null) {
       updated.category = categoryInfo.resolved as BoardCategory;
+    }
+
+    // Apply resolved abilityLevel → split into min/max range
+    const abilityLevelInfo = fieldInfoMap.abilityLevel;
+    if (abilityLevelInfo && abilityLevelInfo.resolved !== null) {
+      const range = normalizeAbilityRange(abilityLevelInfo.resolved as string);
+      updated.abilityLevelMin = range.min;
+      updated.abilityLevelMax = range.max;
     }
 
     updated.specSources = JSON.stringify(fieldInfoMap);

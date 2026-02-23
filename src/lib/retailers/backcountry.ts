@@ -220,7 +220,8 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
     const flex = specs["flex rating"] || specs["flex"] || specs["stiffness"];
     const profile = specs["profile"] || specs["bend"] || specs["camber type"];
     const shape = specs["shape"] || specs["shape type"];
-    const category = specs["terrain"] || specs["best for"] || specs["ability level"];
+    const category = specs["terrain"] || specs["best for"];
+    const abilityLevel = specs["ability level"] || specs["rider level"] || specs["skill level"];
 
     let lengthCm: number | undefined;
     const lengthSpec = specs["size"] || specs["length"] || specs["board length"];
@@ -260,6 +261,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       profile,
       shape,
       category,
+      abilityLevel,
       originalPrice,
       salePrice,
       currency: Currency.USD,

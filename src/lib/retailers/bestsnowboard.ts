@@ -174,6 +174,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
     const profile = specs["profile"] || specs["프로파일"] || specs["캠버"];
     const shape = specs["shape"] || specs["쉐이프"] || specs["형태"];
     const category = specs["terrain"] || specs["지형"] || specs["용도"];
+    const abilityLevel = specs["ability level"] || specs["rider level"] || specs["레벨"] || specs["수준"];
 
     let lengthCm: number | undefined;
     const lengthSpec = specs["size"] || specs["사이즈"] || specs["길이"] || specs["length"];
@@ -212,6 +213,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       profile,
       shape,
       category,
+      abilityLevel,
       originalPrice,
       salePrice,
       currency: Currency.KRW,

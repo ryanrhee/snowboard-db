@@ -134,6 +134,15 @@ function initSchema(db: Database.Database): void {
   if (!boardColNames.has("spec_sources")) {
     db.exec("ALTER TABLE boards ADD COLUMN spec_sources TEXT");
   }
+  if (!boardColNames.has("ability_level")) {
+    db.exec("ALTER TABLE boards ADD COLUMN ability_level TEXT");
+  }
+  if (!boardColNames.has("ability_level_min")) {
+    db.exec("ALTER TABLE boards ADD COLUMN ability_level_min TEXT");
+  }
+  if (!boardColNames.has("ability_level_max")) {
+    db.exec("ALTER TABLE boards ADD COLUMN ability_level_max TEXT");
+  }
 }
 
 // ===== Board ID Generation =====
@@ -219,14 +228,14 @@ export function insertBoards(boards: CanonicalBoard[]): void {
       original_price_usd, sale_price_usd, discount_percent,
       currency, original_price, sale_price, availability,
       description, beginner_score, value_score, final_score, score_notes, scraped_at,
-      spec_sources
+      spec_sources, ability_level_min, ability_level_max
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
-      ?
+      ?, ?, ?
     )
   `);
 
@@ -240,7 +249,9 @@ export function insertBoards(boards: CanonicalBoard[]): void {
         b.currency, b.originalPrice, b.salePrice, b.availability,
         b.description, b.beginnerScore, b.valueScore, b.finalScore,
         b.scoreNotes, b.scrapedAt,
-        b.specSources ?? null
+        b.specSources ?? null,
+        b.abilityLevelMin ?? null,
+        b.abilityLevelMax ?? null
       );
     }
   });
@@ -309,6 +320,9 @@ function mapRowToBoard(row: Record<string, unknown>): CanonicalBoard {
     profile: (row.profile as string) || null,
     shape: (row.shape as string) || null,
     category: (row.category as string) || null,
+    abilityLevelMin: (row.ability_level_min as string) || null,
+    abilityLevelMax: (row.ability_level_max as string) || null,
+    extras: {},
     originalPriceUsd: (row.original_price_usd as number) || null,
     salePriceUsd: row.sale_price_usd as number,
     discountPercent: (row.discount_percent as number) || null,

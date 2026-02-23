@@ -218,6 +218,16 @@ export async function enrichBoardSpecs(
           if (specs.profile !== null) setSpecSource(sk, 'profile', 'review-site', specs.profile, reviewSpec.sourceUrl);
           if (specs.shape !== null) setSpecSource(sk, 'shape', 'review-site', specs.shape, reviewSpec.sourceUrl);
           if (specs.category !== null) setSpecSource(sk, 'category', 'review-site', specs.category, reviewSpec.sourceUrl);
+
+          // Store ability level from review site
+          if (reviewSpec.abilityLevel) {
+            setSpecSource(sk, 'abilityLevel', 'review-site', reviewSpec.abilityLevel, reviewSpec.sourceUrl);
+          }
+
+          // Store all extra fields from review site
+          for (const [field, value] of Object.entries(reviewSpec.extras)) {
+            setSpecSource(sk, field, 'review-site', value, reviewSpec.sourceUrl);
+          }
           console.log(`[enrich] Review site hit: ${boardSample.brand} ${boardSample.model}`);
           return { hash, specs };
         }

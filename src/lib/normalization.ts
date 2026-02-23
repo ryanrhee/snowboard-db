@@ -20,6 +20,7 @@ export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
   const category = normalizeCategory(raw.category, raw.description);
   const flex = raw.flex ? normalizeFlex(raw.flex) : null;
   const year = raw.year || inferYear(raw.model || "");
+  const abilityRange = normalizeAbilityRange(raw.abilityLevel);
 
   const salePriceUsd = convertToUsd(raw.salePrice || 0, raw.currency);
   const originalPriceUsd = raw.originalPrice
@@ -50,6 +51,9 @@ export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
     profile,
     shape,
     category,
+    abilityLevelMin: abilityRange.min,
+    abilityLevelMax: abilityRange.max,
+    extras: raw.specs ?? {},
     originalPriceUsd,
     salePriceUsd,
     discountPercent,
@@ -234,6 +238,57 @@ export function normalizeFlex(raw: string): number | null {
   if (lower.includes("medium")) return 5;
 
   return null;
+}
+
+const ABILITY_LEVELS = ["beginner", "intermediate", "advanced", "expert"] as const;
+const ABILITY_ALIASES: Record<string, string> = {
+  novice: "beginner",
+  "entry level": "beginner",
+  "entry-level": "beginner",
+  "day 1": "beginner",
+  pro: "expert",
+  "pro level": "expert",
+};
+
+/**
+ * Parse a raw ability level string into a min/max range.
+ * Handles single levels ("intermediate"), compound ranges ("beginner-intermediate"),
+ * and wide spans ("beginner-advanced").
+ */
+export function normalizeAbilityRange(raw?: string): { min: string | null; max: string | null } {
+  if (!raw) return { min: null, max: null };
+  const lower = raw.toLowerCase().trim();
+
+  const found = new Set<string>();
+  for (const level of ABILITY_LEVELS) {
+    if (lower.includes(level)) found.add(level);
+  }
+  for (const [alias, level] of Object.entries(ABILITY_ALIASES)) {
+    if (lower.includes(alias)) found.add(level);
+  }
+
+  if (found.size === 0) return { min: null, max: null };
+
+  let minIdx = ABILITY_LEVELS.length;
+  let maxIdx = -1;
+  for (const level of found) {
+    const idx = ABILITY_LEVELS.indexOf(level as typeof ABILITY_LEVELS[number]);
+    if (idx < minIdx) minIdx = idx;
+    if (idx > maxIdx) maxIdx = idx;
+  }
+
+  return { min: ABILITY_LEVELS[minIdx], max: ABILITY_LEVELS[maxIdx] };
+}
+
+/**
+ * Normalize a raw ability level string into a canonical single string.
+ * Used for spec_sources storage. Returns "beginner-advanced" style ranges.
+ */
+export function normalizeAbilityLevel(raw?: string): string | null {
+  const range = normalizeAbilityRange(raw);
+  if (!range.min) return null;
+  if (range.min === range.max) return range.min;
+  return `${range.min}-${range.max}`;
 }
 
 function normalizeAvailability(raw?: string): Availability {

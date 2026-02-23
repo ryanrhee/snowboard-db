@@ -83,6 +83,7 @@ export const libTech: ManufacturerModule = {
               category: null,
               msrpUsd: product.price,
               sourceUrl: product.url,
+              extras: {},
             };
           }
         })
@@ -112,22 +113,29 @@ async function scrapeDetailPage(
   let shape: string | null = null;
   let category: string | null = null;
   let msrp = fallbackPrice;
+  const extras: Record<string, string> = {};
 
   // Lib Tech uses a columnar spec table with headers like:
   //   Size | Contact Length | ... | Flex (10 = Firm) | Weight Range
-  // Find the flex column index from headers, read the first data row.
+  // Capture ALL columns into extras, and pull flex out specifically.
   $("table").each((_, table) => {
     const headers: string[] = [];
     $(table).find("th").each((__, th) => { headers.push($(th).text().toLowerCase().trim()); });
 
     const flexCol = headers.findIndex((h) => h.includes("flex"));
-    if (flexCol < 0) return;
 
-    // Read the first data row for a representative flex value
+    // Read the first data row for representative values
     const firstRow: string[] = [];
     $(table).find("tbody tr").first().find("td").each((__, td) => { firstRow.push($(td).text().trim()); });
 
-    if (firstRow[flexCol]) {
+    // Capture all columns into extras
+    for (let i = 0; i < headers.length && i < firstRow.length; i++) {
+      if (headers[i] && firstRow[i]) {
+        extras[headers[i]] = firstRow[i];
+      }
+    }
+
+    if (flexCol >= 0 && firstRow[flexCol]) {
       flex = firstRow[flexCol];
     }
   });
@@ -160,6 +168,32 @@ async function scrapeDetailPage(
       else if (descLower.includes("powder") || descLower.includes("float")) category = "powder";
       else if (descLower.includes("park") || descLower.includes("pipe")) category = "park";
     }
+
+    // Ability level from description (conservative — only clear ability phrases)
+    if (!descLower.includes("all ability level")) {
+      if (descLower.includes("beginner") && descLower.includes("intermediate")) {
+        extras["ability level"] = "beginner-intermediate";
+      } else if (descLower.includes("intermediate") && descLower.includes("advanced")) {
+        extras["ability level"] = "intermediate-advanced";
+      } else if (descLower.includes("beginner") || descLower.includes("entry level")) {
+        extras["ability level"] = "beginner";
+      } else if (descLower.includes("advanced")) {
+        extras["ability level"] = "advanced";
+      }
+      // Note: "pro" and "expert" are NOT matched here because Lib Tech uses
+      // "pro" in model names and tech descriptions (ProTech, Pro Model, etc.)
+    }
+  }
+
+  // Infer rider level from the infographic image
+  // Lib Tech encodes rider level visually in per-product PNG infographics;
+  // no structured data exists. We extract the image URL and use a mapping
+  // derived from visual analysis of the gradient ranges.
+  const infographicImg = $("img[src*='terrain'][src*='riderlevel']").first();
+  const infographicSrc = (infographicImg.attr("src") || "").toLowerCase();
+  if (infographicSrc && !extras["ability level"]) {
+    const level = inferRiderLevelFromInfographic(infographicSrc);
+    if (level) extras["ability level"] = level;
   }
 
   // Price from JSON-LD
@@ -185,7 +219,66 @@ async function scrapeDetailPage(
     category,
     msrpUsd: msrp && !isNaN(msrp) ? msrp : null,
     sourceUrl: url,
+    extras,
   };
+}
+
+/**
+ * Infer rider level from the Lib Tech infographic image filename.
+ * Each board has a unique terrain-riderlevel-flex PNG/JPG.
+ * The mapping was built by visual analysis of the gradient ranges:
+ *   - Color covers Day 1→Advanced = "beginner-advanced"
+ *   - Color covers Day 1→Intermediate = "beginner-intermediate"
+ *   - Color covers Intermediate→Advanced = "intermediate-advanced"
+ */
+function inferRiderLevelFromInfographic(src: string): string | null {
+  const lower = src.toLowerCase();
+
+  // Intermediate-Advanced boards (color emphasizes right side)
+  const intAdv = [
+    "golden-orca", "trice-golden-orca",
+    "t-rice-orca",                        // Orca family
+    "apex-orca", "t-rice-apex-orca",
+    "dynamo",
+    "ejack-knife",
+    "tr-orca-techno-split", "orca-techno-split",
+  ];
+  for (const slug of intAdv) {
+    if (lower.includes(slug)) return "intermediate-advanced";
+  }
+
+  // All-levels / Beginner-Advanced boards (color covers full range)
+  const allLevels = [
+    "skate-banana",
+    "t-rice-pro",
+    "terrain-wrecker",
+    "jamie-lynn",
+    "rasman",
+    "skunkape-terrain",   // Skunk Ape (BTX)
+  ];
+  for (const slug of allLevels) {
+    if (lower.includes(slug)) return "beginner-advanced";
+  }
+
+  // Beginner-Intermediate boards (color emphasizes left/center)
+  const begInt = [
+    "libzilla",
+    "dough-boy", "doughboy",
+    "legitimizer",
+    "offramp", "off-ramp",
+    "mayhem-rad-ripper", "rad-ripper",
+    "dpr-terrain", "dpr-",
+    "coldbrew", "cold-brew",
+    "lib-rig",
+    "mayhem-rocket",
+    "skunkapecamber", "skunk-ape-camber",
+    "escalator",
+  ];
+  for (const slug of begInt) {
+    if (lower.includes(slug)) return "beginner-intermediate";
+  }
+
+  return null;
 }
 
 function cleanModelName(raw: string): string {

@@ -102,7 +102,9 @@ async function fetchBoardDetails(
     let profile: string | undefined;
     let shape: string | undefined;
     let category: string | undefined;
+    let abilityLevel: string | undefined;
     let availability: string = "unknown";
+    const specs: Record<string, string> = {};
     const sizes: { cm: number; salePrice: number; originalPrice: number; stock: number }[] = [];
 
     // JSON-LD for brand, name, price, availability
@@ -125,16 +127,33 @@ async function fetchBoardDetails(
       } catch { /* skip */ }
     });
 
-    // Spec icons: Ride Style, Profile, Shape, Flex
+    // Spec icons: capture ALL into specs, then pull known fields out
     $(".product-spec-icon-container").each((_, el) => {
       const name = $(el).find(".product-spec-icon-name").text().trim().toLowerCase();
       const img = $(el).find("img");
       const value = img.attr("alt")?.trim() || "";
+      if (!name || !value) return;
+
+      specs[name] = value;
 
       if (name === "ride style" || name === "riding style") category = value;
       else if (name === "profile") profile = value;
       else if (name === "shape") shape = value;
       else if (name === "flex") flex = value;
+      else if (name === "ability level" || name === "rider level" || name === "level") abilityLevel = value;
+    });
+
+    // Spec detail lists (e.g. "Terrain: All-Mountain", "Ability Level: Intermediate")
+    $(".product-spec-list li, .product-specs li, .product-details li").each((_, el) => {
+      const text = $(el).text().trim();
+      const parts = text.split(/:\s*/);
+      if (parts.length === 2 && parts[0] && parts[1]) {
+        const key = parts[0].toLowerCase().trim();
+        const val = parts[1].trim();
+        if (!specs[key]) specs[key] = val;
+        if ((key === "ability level" || key === "rider level") && !abilityLevel) abilityLevel = val;
+        if (key === "terrain" && !category) category = val;
+      }
     });
 
     // Parse product.init() JS for sizes, prices, and stock
@@ -215,12 +234,13 @@ async function fetchBoardDetails(
           profile,
           shape,
           category,
+          abilityLevel,
           originalPrice: s.originalPrice || originalPrice,
           salePrice: s.salePrice || salePrice || 0,
           currency: Currency.USD,
           availability: s.stock > 0 ? "in_stock" : "out_of_stock",
           description,
-          specs: {},
+          specs,
           scrapedAt: new Date().toISOString(),
         });
       }
@@ -244,12 +264,13 @@ async function fetchBoardDetails(
       profile,
       shape,
       category,
+      abilityLevel,
       originalPrice,
       salePrice,
       currency: Currency.USD,
       availability,
       description,
-      specs: {},
+      specs,
       scrapedAt: new Date().toISOString(),
     }];
   } catch (error) {

@@ -24,6 +24,8 @@ export interface BoardData {
   profile: string | null;
   shape: string | null;
   category: string | null;
+  abilityLevelMin: string | null;
+  abilityLevelMax: string | null;
   originalPriceUsd: number | null;
   salePriceUsd: number;
   discountPercent: number | null;
@@ -45,6 +47,12 @@ interface SpecFieldInfo {
     chosenValue: string;
     reasoning: string;
   };
+}
+
+function formatAbilityRange(min: string | null, max: string | null): string | null {
+  if (!min) return null;
+  if (min === max) return min;
+  return `${min} - ${max}`;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -100,7 +108,9 @@ function SpecField({
   fieldInfo: SpecFieldInfo | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const label = field.charAt(0).toUpperCase() + field.slice(1);
+  const label = field === "abilityLevel"
+    ? "Ability Level"
+    : field.charAt(0).toUpperCase() + field.slice(1);
 
   if (!fieldInfo || fieldInfo.sources.length === 0) {
     if (displayValue === null) return null;
@@ -300,6 +310,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                   <SpecField field="profile" displayValue={board.profile} fieldInfo={specSources?.profile} />
                   <SpecField field="shape" displayValue={board.shape} fieldInfo={specSources?.shape} />
                   <SpecField field="category" displayValue={board.category} fieldInfo={specSources?.category} />
+                  <SpecField field="abilityLevel" displayValue={formatAbilityRange(board.abilityLevelMin, board.abilityLevelMax)} fieldInfo={specSources?.abilityLevel} />
                 </>
               ) : (
                 <>

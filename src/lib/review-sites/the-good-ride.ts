@@ -17,6 +17,8 @@ export interface ReviewSiteSpec {
   category: string | null;
   msrpUsd: number | null;
   sourceUrl: string;
+  abilityLevel: string | null;
+  extras: Record<string, string>;
 }
 
 // ===== Constants =====
@@ -278,6 +280,8 @@ export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | n
   let category: string | null = null;
   let flex: string | null = null;
   let msrpUsd: number | null = null;
+  let abilityLevel: string | null = null;
+  const extras: Record<string, string> = {};
 
   // Parse table specs: <td>Label</td><td class="rating-align-right">Value</td>
   $("td").each((_, el) => {
@@ -288,12 +292,17 @@ export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | n
     const value = $valueTd.text().trim();
     if (!value) return;
 
+    // Capture everything into extras
+    extras[label] = value;
+
     if (label === "shape") {
       shape = value;
     } else if (label === "camber profile") {
       profile = value;
     } else if (label === "riding style") {
       category = value;
+    } else if (label === "ability level" || label === "rider level" || label === "riding level") {
+      abilityLevel = value;
     }
   });
 
@@ -338,6 +347,8 @@ export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | n
     category,
     msrpUsd,
     sourceUrl: url,
+    abilityLevel,
+    extras,
   };
 }
 

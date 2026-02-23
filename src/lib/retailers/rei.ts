@@ -149,6 +149,11 @@ export const rei: RetailerModule = {
         const salePrice = p.displayPrice.min;
         const originalPrice = p.displayPrice.compareAt || parseFloat(p.regularPrice) || undefined;
 
+        // Capture available metadata into specs
+        const specs: Record<string, string> = {};
+        if (p.rating) specs["rating"] = p.rating;
+        if (p.reviewCount) specs["review count"] = p.reviewCount;
+
         return {
           retailer: "rei",
           region: Region.US,
@@ -168,7 +173,7 @@ export const rei: RetailerModule = {
           currency: Currency.USD,
           availability: p.available ? "in_stock" : "out_of_stock",
           description: (p.benefit || p.description || "").slice(0, 1000) || undefined,
-          specs: {},
+          specs,
           scrapedAt: new Date().toISOString(),
         };
       });

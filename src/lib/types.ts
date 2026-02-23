@@ -56,6 +56,7 @@ export interface RawBoard {
   profile?: string; // raw profile string e.g. "CamRock", "Flying V"
   shape?: string; // raw shape string e.g. "True Twin", "Directional"
   category?: string; // raw category string
+  abilityLevel?: string; // raw ability level string
   originalPrice?: number;
   salePrice?: number;
   currency: Currency;
@@ -83,6 +84,9 @@ export interface CanonicalBoard {
   profile: BoardProfile | null;
   shape: BoardShape | null;
   category: BoardCategory | null;
+  abilityLevelMin: string | null;
+  abilityLevelMax: string | null;
+  extras: Record<string, string>;
   originalPriceUsd: number | null;
   salePriceUsd: number;
   discountPercent: number | null;

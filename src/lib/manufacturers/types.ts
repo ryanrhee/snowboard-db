@@ -8,6 +8,7 @@ export interface ManufacturerSpec {
   category: string | null;
   msrpUsd: number | null;
   sourceUrl: string;
+  extras: Record<string, string>;
 }
 
 export interface ManufacturerModule {
