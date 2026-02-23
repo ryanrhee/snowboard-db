@@ -1155,5 +1155,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ action, total: allBoards.length, closeoutBoards: traced });
   }
 
+  if (action === "full-pipeline") {
+    const { runSearchPipeline } = await import("@/lib/pipeline");
+    const result = await runSearchPipeline({ skipEnrichment: false });
+    return NextResponse.json({
+      action,
+      runId: result.run.id,
+      totalBoards: result.boards.length,
+      totalListings: result.boards.reduce((s, b) => s + b.listings.length, 0),
+      errors: result.errors,
+      withFlex: result.boards.filter(b => b.flex !== null).length,
+      withProfile: result.boards.filter(b => b.profile !== null).length,
+      withShape: result.boards.filter(b => b.shape !== null).length,
+      withCategory: result.boards.filter(b => b.category !== null).length,
+    });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

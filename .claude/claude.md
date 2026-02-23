@@ -47,13 +47,21 @@ Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env
 
 The HTTP cache (`http_cache` table in `data/snowboard-finder.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
 
-### Quick re-run
+### Quick re-run (no enrichment)
 
 ```bash
 ./debug.sh '{"action":"metadata-check"}'
 ```
 
-Runs `runSearchPipeline({ skipEnrichment: true })` — scrapes all retailers (hitting cache), normalizes, resolves specs, stores in DB.
+Runs `runSearchPipeline({ skipEnrichment: true })` — scrapes all retailers (hitting cache), normalizes, resolves specs from existing `spec_sources`, stores in DB. Fast.
+
+### Full re-run (with enrichment)
+
+```bash
+./debug.sh '{"action":"full-pipeline"}'
+```
+
+Runs `runSearchPipeline({ skipEnrichment: false })` — same as above but also hits The Good Ride for review-site spec lookups on boards missing specs. LLM enrichment is currently disabled in code (`enrich.ts:102`). Slower due to review-site network requests.
 
 ### Reset pipeline output + re-run
 
