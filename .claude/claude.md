@@ -21,5 +21,7 @@ while true; do npx next dev -p 3099 2>&1 | tee output.txt; echo "--- restarted -
 
 ## Task Tracking
 
-- **Open tasks**: `TASKS.md` in the project root. Only contains tasks that are not yet done.
-- **Completed tasks**: `DONE.md` in the project root. When a task is finished, move it from `TASKS.md` to `DONE.md` with a completion date and summary of what was done.
+Each task is its own markdown file:
+
+- **Open tasks**: `tasks/todo/` — one `.md` file per task.
+- **Completed tasks**: `tasks/done/` — move the file from `todo/` to `done/` when finished, adding a completion date and summary of what was done.

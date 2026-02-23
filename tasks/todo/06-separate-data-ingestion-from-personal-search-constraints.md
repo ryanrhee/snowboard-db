@@ -1,11 +1,8 @@
-# TASKS
+# 6. Separate data ingestion from personal search constraints
 
-## 6. Separate data ingestion from personal search constraints
-
-**Status:** open
 **Priority:** high — architectural prerequisite for all other work
 
-### Problem
+## Problem
 
 The pipeline currently merges data scraping with personal search filtering (`DEFAULT_CONSTRAINTS`: 155-161cm, max $650, excludeWomens, excludeKids). This means:
 
@@ -13,7 +10,7 @@ The pipeline currently merges data scraping with personal search filtering (`DEF
 2. **Single-user lock-in** — the stored data can't serve other queries (e.g. finding a women's board for someone else).
 3. **Wrong layer** — filtering belongs in the query/UI layer, not the ingestion layer.
 
-### Solution
+## Solution
 
 Restructure into two phases:
 
@@ -24,7 +21,7 @@ Restructure into two phases:
 
 2. **Query phase** — apply user-specific filters at query time through the API/UI layer. `DEFAULT_CONSTRAINTS` moves from pipeline ingestion to the frontend/API query parameters.
 
-### Implementation notes
+## Implementation notes
 
 - `runSearchPipeline()` should scrape and store without applying `applyConstraints`
 - `applyConstraints` / `filterBoardsWithListings` move to the API response layer
