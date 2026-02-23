@@ -264,15 +264,7 @@ export async function resolveReviewUrl(
  * Scrape specs from a Good Ride review page.
  * Extracts: shape, camber profile, riding style (→ category), flex, MSRP.
  */
-export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | null> {
-  let html: string;
-  try {
-    html = await fetchPage(url);
-  } catch (err) {
-    console.warn(`[the-good-ride] Failed to fetch review: ${url}`, (err as Error).message);
-    return null;
-  }
-
+function parseReviewHtml(html: string, url: string): ReviewSiteSpec | null {
   const $ = cheerio.load(html);
 
   let shape: string | null = null;
@@ -352,12 +344,27 @@ export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | n
   };
 }
 
+export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | null> {
+  let html: string;
+  try {
+    html = await fetchPage(url);
+  } catch (err) {
+    console.warn(`[the-good-ride] Failed to fetch review: ${url}`, (err as Error).message);
+    return null;
+  }
+
+  return parseReviewHtml(html, url);
+}
+
 // ===== Main Entry Point =====
 
 /**
  * Try to look up specs for a board from The Good Ride.
  * Returns normalized specs or null if no review found.
  */
+// Test exports
+export { parseSlug, diceCoefficient, parseReviewHtml };
+
 export async function tryReviewSiteLookup(
   brand: string,
   model: string

@@ -346,3 +346,6 @@ function cleanModelName(raw: string): string {
     .replace(/\s+Snowboard$/i, "")
     .trim();
 }
+
+// Test exports
+export { skillLevelToAbility, parseBodyHtml, cleanModelName };

@@ -162,6 +162,9 @@ function valuesMatch(a: string, b: string, field: string): boolean {
   return a === b;
 }
 
+// Test exports
+export { getSourcePriority, findConsensus, valuesMatch };
+
 export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<CanonicalBoard[]> {
   // Group boards by specKey to avoid redundant resolution
   const keyToBoards = new Map<string, CanonicalBoard[]>();

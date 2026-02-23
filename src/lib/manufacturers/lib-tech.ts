@@ -96,12 +96,12 @@ export const libTech: ManufacturerModule = {
   },
 };
 
-async function scrapeDetailPage(
+function parseDetailHtml(
+  html: string,
   url: string,
   fallbackName: string,
   fallbackPrice: number | null
-): Promise<ManufacturerSpec> {
-  const html = await fetchPage(url, { timeoutMs: 15000 });
+): ManufacturerSpec {
   const $ = cheerio.load(html);
 
   const name =
@@ -223,6 +223,15 @@ async function scrapeDetailPage(
   };
 }
 
+async function scrapeDetailPage(
+  url: string,
+  fallbackName: string,
+  fallbackPrice: number | null
+): Promise<ManufacturerSpec> {
+  const html = await fetchPage(url, { timeoutMs: 15000 });
+  return parseDetailHtml(html, url, fallbackName, fallbackPrice);
+}
+
 /**
  * Infer rider level from the Lib Tech infographic image filename.
  * Each board has a unique terrain-riderlevel-flex PNG/JPG.
@@ -287,3 +296,6 @@ function cleanModelName(raw: string): string {
     .replace(/\s+Snowboard$/i, "")
     .trim();
 }
+
+// Test exports
+export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml };

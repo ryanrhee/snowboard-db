@@ -57,8 +57,7 @@ async function scrapeDetailPage(boardUrl: string): Promise<Record<string, string
   return extractDetailAttrs(html);
 }
 
-async function scrapeListingPage(url: string): Promise<CatalogBoard[]> {
-  const html = await fetchPage(url, { timeoutMs: 20000 });
+function parseCatalogHtml(html: string): CatalogBoard[] {
   const boards: CatalogBoard[] = [];
 
   const startMarker = "window.__bootstrap = ";
@@ -105,6 +104,11 @@ async function scrapeListingPage(url: string): Promise<CatalogBoard[]> {
   }
 
   return boards;
+}
+
+async function scrapeListingPage(url: string): Promise<CatalogBoard[]> {
+  const html = await fetchPage(url, { timeoutMs: 20000 });
+  return parseCatalogHtml(html);
 }
 
 /**
@@ -328,3 +332,6 @@ function extractSpecsFromText(text: string): {
 
   return { profile, shape, category, abilityLevel };
 }
+
+// Test exports
+export { extractDetailAttrs, mapSkillLevel, mapBend, mapTerrain, mapShape, cleanModelName, extractSpecsFromText, parseCatalogHtml };
