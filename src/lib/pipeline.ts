@@ -215,10 +215,6 @@ export async function runSearchPipeline(
   // Split into Board + Listing entities and persist
   const { boards, listings } = splitIntoBoardsAndListings(boardsWithDiscount, runId);
 
-  // Persist boards and listings
-  upsertBoards(boards);
-  insertListings(listings);
-
   const durationMs = Date.now() - startTime;
   const run = {
     id: runId,
@@ -229,7 +225,11 @@ export async function runSearchPipeline(
     durationMs,
   };
 
+  // Insert search run before listings (listings.run_id FK → search_runs.id)
   insertSearchRun(run);
+  upsertBoards(boards);
+  insertListings(listings);
+
   pruneHttpCache();
 
   // Retrieve the board-centric results
