@@ -1,6 +1,7 @@
 import {
   SearchConstraints,
   CanonicalBoard,
+  BoardWithListings,
   Region,
 } from "./types";
 
@@ -103,4 +104,36 @@ export function applyConstraints(
 
     return true;
   });
+}
+
+export function filterBoardsWithListings(
+  boards: BoardWithListings[],
+  filters: {
+    region?: string;
+    maxPrice?: number;
+    minLength?: number;
+    maxLength?: number;
+  }
+): BoardWithListings[] {
+  return boards.map((board) => {
+    let filteredListings = board.listings;
+
+    if (filters.region) {
+      filteredListings = filteredListings.filter(l => l.region === filters.region);
+    }
+    if (filters.maxPrice) {
+      filteredListings = filteredListings.filter(l => l.salePriceUsd <= filters.maxPrice!);
+    }
+    if (filters.minLength) {
+      filteredListings = filteredListings.filter(l => l.lengthCm === null || l.lengthCm >= filters.minLength!);
+    }
+    if (filters.maxLength) {
+      filteredListings = filteredListings.filter(l => l.lengthCm === null || l.lengthCm <= filters.maxLength!);
+    }
+
+    if (filteredListings.length === 0) return null;
+
+    const bestPrice = Math.min(...filteredListings.map(l => l.salePriceUsd));
+    return { ...board, listings: filteredListings, bestPrice };
+  }).filter((b): b is BoardWithListings => b !== null);
 }

@@ -4,21 +4,28 @@ import {
   SearchResponse,
   RetailerError,
   CanonicalBoard,
+  Board,
+  Listing,
+  BoardWithListings,
   Availability,
   Currency,
 } from "./types";
 import { getRetailers } from "./retailers/registry";
 import { normalizeBoard, convertToUsd } from "./normalization";
-import { scoreBoard, calcValueScore, calcFinalScore } from "./scoring";
+import { scoreBoard, calcValueScore, calcFinalScore, calcBeginnerScoreForBoard } from "./scoring";
 import { applyConstraints, DEFAULT_CONSTRAINTS } from "./constraints";
 import {
   insertSearchRun,
-  insertBoards,
-  getBoardsByRunId,
   getRunById,
-  updateBoardPriceAndStock,
   specKey,
   setSpecSource,
+  upsertBoards,
+  insertListings,
+  getBoardsWithListings,
+  getListingsByRunId,
+  updateListingPriceAndStock,
+  getBoardByKey,
+  generateListingId,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
@@ -48,6 +55,64 @@ function saveRetailerSpecs(boards: CanonicalBoard[]): void {
       setSpecSource(key, field, source, value, board.url);
     }
   }
+}
+
+function splitIntoBoardsAndListings(
+  canonicalBoards: CanonicalBoard[],
+  runId: string
+): { boards: Board[]; listings: Listing[] } {
+  const boardMap = new Map<string, Board>();
+  const listings: Listing[] = [];
+  const now = new Date().toISOString();
+
+  for (const cb of canonicalBoards) {
+    const key = specKey(cb.brand, cb.model);
+
+    if (!boardMap.has(key)) {
+      const board: Board = {
+        boardKey: key,
+        brand: cb.brand,
+        model: cb.model,
+        year: cb.year,
+        flex: cb.flex,
+        profile: cb.profile,
+        shape: cb.shape,
+        category: cb.category,
+        abilityLevelMin: cb.abilityLevelMin,
+        abilityLevelMax: cb.abilityLevelMax,
+        msrpUsd: cb.originalPriceUsd,
+        manufacturerUrl: null,
+        description: cb.description,
+        beginnerScore: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      board.beginnerScore = calcBeginnerScoreForBoard(board);
+      boardMap.set(key, board);
+    }
+
+    listings.push({
+      id: generateListingId(cb.retailer, cb.url, cb.lengthCm),
+      boardKey: key,
+      runId,
+      retailer: cb.retailer,
+      region: cb.region,
+      url: cb.url,
+      imageUrl: cb.imageUrl,
+      lengthCm: cb.lengthCm,
+      widthMm: cb.widthMm,
+      currency: cb.currency,
+      originalPrice: cb.originalPrice,
+      salePrice: cb.salePrice,
+      originalPriceUsd: cb.originalPriceUsd,
+      salePriceUsd: cb.salePriceUsd,
+      discountPercent: cb.discountPercent,
+      availability: cb.availability,
+      scrapedAt: cb.scrapedAt,
+    });
+  }
+
+  return { boards: Array.from(boardMap.values()), listings };
 }
 
 export async function runSearchPipeline(
@@ -112,7 +177,7 @@ export async function runSearchPipeline(
     normalizeBoard(raw, runId)
   );
 
-  // Apply hard constraint filters
+  // Apply hard constraint filters (works on CanonicalBoard)
   const filteredBoards = applyConstraints(normalizedBoards, mergedConstraints);
   console.log(
     `[pipeline] ${filteredBoards.length} boards after constraint filtering`
@@ -147,34 +212,36 @@ export async function runSearchPipeline(
     return board;
   });
 
-  // Score each board
-  const scoredBoards = boardsWithDiscount.map(scoreBoard);
+  // Split into Board + Listing entities and persist
+  const { boards, listings } = splitIntoBoardsAndListings(boardsWithDiscount, runId);
 
-  // Sort by finalScore descending
-  scoredBoards.sort((a, b) => b.finalScore - a.finalScore);
+  // Persist boards and listings
+  upsertBoards(boards);
+  insertListings(listings);
 
-  // Persist to database
   const durationMs = Date.now() - startTime;
   const run = {
     id: runId,
     timestamp: new Date().toISOString(),
     constraintsJson: JSON.stringify(mergedConstraints),
-    boardCount: scoredBoards.length,
+    boardCount: boards.length,
     retailersQueried: retailers.map((r) => r.name).join(","),
     durationMs,
   };
 
   insertSearchRun(run);
-  insertBoards(scoredBoards);
   pruneHttpCache();
 
+  // Retrieve the board-centric results
+  const boardsWithListings = getBoardsWithListings(runId);
+
   console.log(
-    `[pipeline] Search complete: ${scoredBoards.length} boards in ${durationMs}ms`
+    `[pipeline] Search complete: ${boards.length} boards, ${listings.length} listings in ${durationMs}ms`
   );
 
   return {
     run,
-    boards: scoredBoards,
+    boards: boardsWithListings,
     errors,
   };
 }
@@ -185,25 +252,24 @@ export async function refreshPipeline(
   const run = getRunById(runId);
   if (!run) throw new Error(`Run ${runId} not found`);
 
-  const boards = getBoardsByRunId(runId);
-  if (boards.length === 0) throw new Error(`No boards found for run ${runId}`);
+  const listings = getListingsByRunId(runId);
+  if (listings.length === 0) throw new Error(`No listings found for run ${runId}`);
 
   const errors: RetailerError[] = [];
-  const updatedBoards: CanonicalBoard[] = [];
 
-  for (const board of boards) {
+  for (const listing of listings) {
     try {
       const browserRetailers = new Set(["evo", "backcountry", "rei"]);
-      const fetchFn = browserRetailers.has(board.retailer)
+      const fetchFn = browserRetailers.has(listing.retailer)
         ? fetchPageWithBrowser
         : fetchPage;
-      const html = await fetchFn(board.url, { retries: 1, timeoutMs: 10000, cacheTtlMs: 0 });
+      const html = await fetchFn(listing.url, { retries: 1, timeoutMs: 10000, cacheTtlMs: 0 });
       const $ = cheerio.load(html);
 
       // Try to extract current price
       let currentSalePrice: number | null = null;
       let currentOriginalPrice: number | null = null;
-      let availability: Availability = board.availability as Availability;
+      let availability: string = listing.availability;
 
       // Check JSON-LD first
       $('script[type="application/ld+json"]').each((_, el) => {
@@ -244,65 +310,43 @@ export async function refreshPipeline(
       if (currentSalePrice) {
         const salePriceUsd = convertToUsd(
           currentSalePrice,
-          board.currency as Currency
+          listing.currency as Currency
         );
         const originalPriceUsd = currentOriginalPrice
-          ? convertToUsd(currentOriginalPrice, board.currency as import("./types").Currency)
-          : board.originalPriceUsd;
+          ? convertToUsd(currentOriginalPrice, listing.currency as Currency)
+          : listing.originalPriceUsd;
         const discountPercent =
           originalPriceUsd && salePriceUsd && originalPriceUsd > 0
             ? Math.round(
                 ((originalPriceUsd - salePriceUsd) / originalPriceUsd) * 100
               )
-            : board.discountPercent;
+            : listing.discountPercent;
 
-        const updatedBoard: CanonicalBoard = {
-          ...board,
-          salePrice: currentSalePrice,
-          salePriceUsd,
-          originalPrice: currentOriginalPrice || board.originalPrice,
-          originalPriceUsd: originalPriceUsd || board.originalPriceUsd,
-          discountPercent,
-          availability,
-        };
-
-        const valueResult = calcValueScore(updatedBoard);
-        const finalScore = calcFinalScore(updatedBoard.beginnerScore, valueResult.score);
-
-        updatedBoard.valueScore = valueResult.score;
-        updatedBoard.finalScore = finalScore;
-
-        updateBoardPriceAndStock(board.id, runId, {
+        updateListingPriceAndStock(listing.id, {
           salePrice: currentSalePrice,
           salePriceUsd,
           originalPrice: currentOriginalPrice,
           originalPriceUsd,
           discountPercent,
           availability,
-          valueScore: valueResult.score,
-          finalScore,
         });
-
-        updatedBoards.push(updatedBoard);
-      } else {
-        updatedBoards.push(board);
       }
     } catch (error) {
-      console.error(`[refresh] Failed to refresh ${board.url}:`, error);
+      console.error(`[refresh] Failed to refresh ${listing.url}:`, error);
       errors.push({
-        retailer: board.retailer,
-        error: `Failed to refresh ${board.url}: ${error instanceof Error ? error.message : String(error)}`,
+        retailer: listing.retailer,
+        error: `Failed to refresh ${listing.url}: ${error instanceof Error ? error.message : String(error)}`,
         timestamp: new Date().toISOString(),
       });
-      updatedBoards.push(board);
     }
   }
 
-  updatedBoards.sort((a, b) => b.finalScore - a.finalScore);
+  // Re-fetch board-centric results with updated prices
+  const boardsWithListings = getBoardsWithListings(runId);
 
   return {
     run,
-    boards: updatedBoards,
+    boards: boardsWithListings,
     errors,
   };
 }

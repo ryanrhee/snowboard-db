@@ -344,7 +344,7 @@ export async function resolveSpecSources(boards: CanonicalBoard[]): Promise<Cano
       updated.abilityLevelMax = range.max;
     }
 
-    updated.specSources = JSON.stringify(fieldInfoMap);
+    updated.specSources = null; // provenance is in spec_sources table, not on the board
 
     return updated;
   });

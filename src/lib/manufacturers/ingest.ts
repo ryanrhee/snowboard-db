@@ -1,7 +1,9 @@
 import { ManufacturerSpec } from "./types";
-import { getCachedSpecs, setCachedSpecs, CachedSpecs, specKey, setSpecSource } from "../db";
+import { getCachedSpecs, setCachedSpecs, CachedSpecs, specKey, setSpecSource, upsertBoard } from "../db";
 import { normalizeFlex, normalizeProfile, normalizeShape, normalizeCategory, normalizeModel } from "../normalization";
 import { canonicalizeBrand } from "../scraping/utils";
+import { Board } from "../types";
+import { calcBeginnerScoreForBoard } from "../scoring";
 
 export interface IngestStats {
   inserted: number;
@@ -10,7 +12,7 @@ export interface IngestStats {
 }
 
 /**
- * Ingest manufacturer specs into spec_cache.
+ * Ingest manufacturer specs into spec_cache and boards table.
  * Manufacturer data overwrites LLM data but not other manufacturer data.
  */
 export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats {
@@ -54,6 +56,29 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
     if (cached.profile !== null) setSpecSource(key, 'profile', 'manufacturer', cached.profile, spec.sourceUrl);
     if (cached.shape !== null) setSpecSource(key, 'shape', 'manufacturer', cached.shape, spec.sourceUrl);
     if (cached.category !== null) setSpecSource(key, 'category', 'manufacturer', cached.category, spec.sourceUrl);
+
+    // Also upsert into boards table
+    const now = new Date().toISOString();
+    const board: Board = {
+      boardKey: key,
+      brand,
+      model: normalizeModel(spec.model, brand),
+      year: spec.year,
+      flex: cached.flex,
+      profile: cached.profile,
+      shape: cached.shape,
+      category: cached.category,
+      abilityLevelMin: null,
+      abilityLevelMax: null,
+      msrpUsd: spec.msrpUsd,
+      manufacturerUrl: spec.sourceUrl,
+      description: null,
+      beginnerScore: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    board.beginnerScore = calcBeginnerScoreForBoard(board);
+    upsertBoard(board);
 
     if (existing) {
       stats.updated++;

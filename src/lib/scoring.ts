@@ -1,5 +1,6 @@
 import {
   CanonicalBoard,
+  Board,
   BoardProfile,
   BoardShape,
   BoardCategory,
@@ -23,7 +24,14 @@ export interface ScoreNotes {
   final: { score: number; formula: string };
 }
 
-export function calcBeginnerScore(board: CanonicalBoard): ScoreResult {
+interface BoardSpecs {
+  flex: number | null;
+  profile: BoardProfile | string | null;
+  shape: BoardShape | string | null;
+  category: BoardCategory | string | null;
+}
+
+export function calcBeginnerScore(board: BoardSpecs): ScoreResult {
   const factors: ScoreFactor[] = [];
   let total = 0;
   let weights = 0;
@@ -203,4 +211,8 @@ export function scoreBoard(board: CanonicalBoard): CanonicalBoard {
     finalScore,
     scoreNotes: JSON.stringify(scoreNotes),
   };
+}
+
+export function calcBeginnerScoreForBoard(board: Board): number {
+  return calcBeginnerScore(board).score;
 }

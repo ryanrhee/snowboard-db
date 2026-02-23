@@ -269,15 +269,15 @@ export function normalizeAbilityRange(raw?: string): { min: string | null; max: 
 
   if (found.size === 0) return { min: null, max: null };
 
-  let minIdx = ABILITY_LEVELS.length;
-  let maxIdx = -1;
+  let minIdx = ABILITY_LEVELS.length - 1;
+  let maxIdx = 0;
   for (const level of found) {
     const idx = ABILITY_LEVELS.indexOf(level as typeof ABILITY_LEVELS[number]);
-    if (idx < minIdx) minIdx = idx;
+    if (idx >= 0 && idx < minIdx) minIdx = idx;
     if (idx > maxIdx) maxIdx = idx;
   }
 
-  return { min: ABILITY_LEVELS[minIdx], max: ABILITY_LEVELS[maxIdx] };
+  return { min: ABILITY_LEVELS[minIdx] ?? null, max: ABILITY_LEVELS[maxIdx] ?? null };
 }
 
 /**

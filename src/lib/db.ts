@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
-import { CanonicalBoard, SearchRun } from "./types";
+import { CanonicalBoard, SearchRun, Board, Listing, BoardWithListings } from "./types";
 import { normalizeModel } from "./normalization";
 
 let db: Database.Database | null = null;
@@ -38,43 +38,6 @@ function initSchema(db: Database.Database): void {
       duration_ms INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE TABLE IF NOT EXISTS boards (
-      id TEXT NOT NULL,
-      run_id TEXT NOT NULL,
-      retailer TEXT NOT NULL,
-      region TEXT NOT NULL,
-      url TEXT NOT NULL,
-      image_url TEXT,
-      brand TEXT NOT NULL,
-      model TEXT NOT NULL,
-      year INTEGER,
-      length_cm REAL,
-      width_mm REAL,
-      flex REAL,
-      profile TEXT,
-      shape TEXT,
-      category TEXT,
-      original_price_usd REAL,
-      sale_price_usd REAL NOT NULL,
-      discount_percent REAL,
-      currency TEXT NOT NULL,
-      original_price REAL,
-      sale_price REAL NOT NULL,
-      availability TEXT NOT NULL DEFAULT 'unknown',
-      description TEXT,
-      beginner_score REAL NOT NULL DEFAULT 0,
-      value_score REAL NOT NULL DEFAULT 0,
-      final_score REAL NOT NULL DEFAULT 0,
-      score_notes TEXT,
-      scraped_at TEXT NOT NULL,
-      PRIMARY KEY (id, run_id),
-      FOREIGN KEY (run_id) REFERENCES search_runs(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_boards_run_id ON boards(run_id);
-    CREATE INDEX IF NOT EXISTS idx_boards_final_score ON boards(final_score);
-    CREATE INDEX IF NOT EXISTS idx_boards_retailer ON boards(retailer);
-
     CREATE TABLE IF NOT EXISTS spec_cache (
       brand_model TEXT PRIMARY KEY,
       flex REAL,
@@ -93,7 +56,7 @@ function initSchema(db: Database.Database): void {
   if (!colNames.has("source_url")) db.exec("ALTER TABLE spec_cache ADD COLUMN source_url TEXT");
   if (!colNames.has("updated_at")) db.exec("ALTER TABLE spec_cache ADD COLUMN updated_at TEXT");
 
-  // Review site tables
+  // Review site tables, http cache, spec sources
   db.exec(`
     CREATE TABLE IF NOT EXISTS review_sitemap_cache (
       url TEXT PRIMARY KEY,
@@ -128,26 +91,189 @@ function initSchema(db: Database.Database): void {
     );
   `);
 
-  // Migrate boards: add spec_sources column if missing
-  const boardCols = db.pragma("table_info(boards)") as { name: string }[];
-  const boardColNames = new Set(boardCols.map((c) => c.name));
-  if (!boardColNames.has("spec_sources")) {
-    db.exec("ALTER TABLE boards ADD COLUMN spec_sources TEXT");
+  // ===== Migration: old listing-shaped boards → new board-centric model =====
+  migrateToNewModel(db);
+}
+
+function migrateToNewModel(db: Database.Database): void {
+  // Check if old boards table exists and is listing-shaped (has retailer, url, sale_price columns)
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='boards'").get() as { name: string } | undefined;
+
+  if (tables) {
+    const boardCols = db.pragma("table_info(boards)") as { name: string }[];
+    const boardColNames = new Set(boardCols.map((c) => c.name));
+
+    if (boardColNames.has("retailer") && boardColNames.has("url") && boardColNames.has("sale_price")) {
+      // Old listing-shaped table — rename to boards_legacy
+      console.log("[db] Migrating old boards table to boards_legacy...");
+      db.exec("ALTER TABLE boards RENAME TO boards_legacy");
+    } else if (boardColNames.has("board_key")) {
+      // Already migrated — create listings table if missing, then return
+      createListingsTable(db);
+      return;
+    }
   }
-  if (!boardColNames.has("ability_level")) {
-    db.exec("ALTER TABLE boards ADD COLUMN ability_level TEXT");
+
+  // Create new boards table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS boards (
+      board_key         TEXT PRIMARY KEY,
+      brand             TEXT NOT NULL,
+      model             TEXT NOT NULL,
+      year              INTEGER,
+      flex              REAL,
+      profile           TEXT,
+      shape             TEXT,
+      category          TEXT,
+      ability_level_min TEXT,
+      ability_level_max TEXT,
+      msrp_usd          REAL,
+      manufacturer_url  TEXT,
+      description       TEXT,
+      beginner_score    REAL NOT NULL DEFAULT 0,
+      created_at        TEXT NOT NULL,
+      updated_at        TEXT NOT NULL
+    );
+  `);
+
+  createListingsTable(db);
+
+  // Populate from boards_legacy if it exists
+  const legacyExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='boards_legacy'").get();
+  if (legacyExists) {
+    populateFromLegacy(db);
   }
-  if (!boardColNames.has("ability_level_min")) {
-    db.exec("ALTER TABLE boards ADD COLUMN ability_level_min TEXT");
-  }
-  if (!boardColNames.has("ability_level_max")) {
-    db.exec("ALTER TABLE boards ADD COLUMN ability_level_max TEXT");
-  }
+}
+
+function createListingsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS listings (
+      id                 TEXT PRIMARY KEY,
+      board_key          TEXT NOT NULL REFERENCES boards(board_key),
+      run_id             TEXT NOT NULL REFERENCES search_runs(id),
+      retailer           TEXT NOT NULL,
+      region             TEXT NOT NULL,
+      url                TEXT NOT NULL,
+      image_url          TEXT,
+      length_cm          REAL,
+      width_mm           REAL,
+      currency           TEXT NOT NULL,
+      original_price     REAL,
+      sale_price         REAL NOT NULL,
+      original_price_usd REAL,
+      sale_price_usd     REAL NOT NULL,
+      discount_percent   REAL,
+      availability       TEXT NOT NULL DEFAULT 'unknown',
+      scraped_at         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_listings_board ON listings(board_key);
+    CREATE INDEX IF NOT EXISTS idx_listings_run   ON listings(run_id);
+  `);
+}
+
+function populateFromLegacy(db: Database.Database): void {
+  console.log("[db] Populating new boards + listings from boards_legacy...");
+  const now = new Date().toISOString();
+
+  // Group legacy rows by specKey to create one board per unique product
+  const legacyRows = db.prepare(`
+    SELECT * FROM boards_legacy ORDER BY final_score DESC
+  `).all() as Record<string, unknown>[];
+
+  const boardMap = new Map<string, {
+    brand: string; model: string; year: number | null;
+    flex: number | null; profile: string | null; shape: string | null;
+    category: string | null; abilityLevelMin: string | null; abilityLevelMax: string | null;
+    description: string | null; beginnerScore: number;
+  }>();
+
+  const upsertBoard = db.prepare(`
+    INSERT OR IGNORE INTO boards (
+      board_key, brand, model, year, flex, profile, shape, category,
+      ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
+      description, beginner_score, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertListing = db.prepare(`
+    INSERT OR IGNORE INTO listings (
+      id, board_key, run_id, retailer, region, url, image_url,
+      length_cm, width_mm, currency, original_price, sale_price,
+      original_price_usd, sale_price_usd, discount_percent,
+      availability, scraped_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.transaction(() => {
+    for (const row of legacyRows) {
+      const brand = row.brand as string;
+      const model = row.model as string;
+      const key = `${brand.toLowerCase()}|${normalizeModel(model, brand).toLowerCase()}`;
+
+      if (!boardMap.has(key)) {
+        // Get MSRP from spec_cache if available
+        const specCache = db.prepare("SELECT msrp_usd, source_url FROM spec_cache WHERE brand_model = ? AND source = 'manufacturer'")
+          .get(key) as { msrp_usd: number | null; source_url: string | null } | undefined;
+
+        const boardData = {
+          brand, model,
+          year: (row.year as number) || null,
+          flex: (row.flex as number) || null,
+          profile: (row.profile as string) || null,
+          shape: (row.shape as string) || null,
+          category: (row.category as string) || null,
+          abilityLevelMin: (row.ability_level_min as string) || null,
+          abilityLevelMax: (row.ability_level_max as string) || null,
+          description: (row.description as string) || null,
+          beginnerScore: (row.beginner_score as number) || 0,
+        };
+        boardMap.set(key, boardData);
+
+        upsertBoard.run(
+          key, brand, model, boardData.year,
+          boardData.flex, boardData.profile, boardData.shape, boardData.category,
+          boardData.abilityLevelMin, boardData.abilityLevelMax,
+          specCache?.msrp_usd ?? (row.original_price_usd as number) ?? null,
+          specCache?.source_url ?? null,
+          boardData.description, boardData.beginnerScore,
+          now, now
+        );
+      }
+
+      // Create listing
+      const listingId = row.id as string;
+      const runId = row.run_id as string;
+      insertListing.run(
+        listingId, key, runId,
+        row.retailer as string, row.region as string,
+        row.url as string, (row.image_url as string) || null,
+        (row.length_cm as number) || null, (row.width_mm as number) || null,
+        row.currency as string,
+        (row.original_price as number) || null, row.sale_price as number,
+        (row.original_price_usd as number) || null, row.sale_price_usd as number,
+        (row.discount_percent as number) || null,
+        row.availability as string, row.scraped_at as string
+      );
+    }
+  })();
+
+  const boardCount = db.prepare("SELECT COUNT(*) as c FROM boards").get() as { c: number };
+  const listingCount = db.prepare("SELECT COUNT(*) as c FROM listings").get() as { c: number };
+  console.log(`[db] Migration complete: ${boardCount.c} boards, ${listingCount.c} listings`);
 }
 
 // ===== Board ID Generation =====
 
 export function generateBoardId(
+  retailer: string,
+  url: string,
+  lengthCm?: number | null
+): string {
+  const input = `${retailer}|${url}|${lengthCm ?? ""}`;
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+export function generateListingId(
   retailer: string,
   url: string,
   lengthCm?: number | null
@@ -215,61 +341,77 @@ function mapRowToSearchRun(row: Record<string, unknown>): SearchRun {
   };
 }
 
-// ===== Board CRUD =====
+// ===== Board CRUD (new board-centric model) =====
 
-export function insertBoards(boards: CanonicalBoard[]): void {
+export function upsertBoard(board: Board): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO boards (
+      board_key, brand, model, year, flex, profile, shape, category,
+      ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
+      description, beginner_score, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(board_key) DO UPDATE SET
+      year = COALESCE(excluded.year, boards.year),
+      flex = COALESCE(excluded.flex, boards.flex),
+      profile = COALESCE(excluded.profile, boards.profile),
+      shape = COALESCE(excluded.shape, boards.shape),
+      category = COALESCE(excluded.category, boards.category),
+      ability_level_min = COALESCE(excluded.ability_level_min, boards.ability_level_min),
+      ability_level_max = COALESCE(excluded.ability_level_max, boards.ability_level_max),
+      msrp_usd = COALESCE(excluded.msrp_usd, boards.msrp_usd),
+      manufacturer_url = COALESCE(excluded.manufacturer_url, boards.manufacturer_url),
+      description = COALESCE(excluded.description, boards.description),
+      beginner_score = excluded.beginner_score,
+      updated_at = excluded.updated_at
+  `).run(
+    board.boardKey, board.brand, board.model, board.year,
+    board.flex, board.profile, board.shape, board.category,
+    board.abilityLevelMin, board.abilityLevelMax,
+    board.msrpUsd, board.manufacturerUrl,
+    board.description, board.beginnerScore,
+    board.createdAt, board.updatedAt
+  );
+}
+
+export function upsertBoards(boards: Board[]): void {
   if (boards.length === 0) return;
+  const db = getDb();
+  db.transaction(() => {
+    for (const board of boards) {
+      upsertBoard(board);
+    }
+  })();
+}
 
+export function insertListings(listings: Listing[]): void {
+  if (listings.length === 0) return;
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO boards (
-      id, run_id, retailer, region, url, image_url, brand, model, year,
-      length_cm, width_mm, flex, profile, shape, category,
+    INSERT OR REPLACE INTO listings (
+      id, board_key, run_id, retailer, region, url, image_url,
+      length_cm, width_mm, currency, original_price, sale_price,
       original_price_usd, sale_price_usd, discount_percent,
-      currency, original_price, sale_price, availability,
-      description, beginner_score, value_score, final_score, score_notes, scraped_at,
-      spec_sources, ability_level_min, ability_level_max
-    ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?,
-      ?, ?, ?,
-      ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?,
-      ?, ?, ?
-    )
+      availability, scraped_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  const insertMany = db.transaction((boards: CanonicalBoard[]) => {
-    for (const b of boards) {
+  db.transaction(() => {
+    for (const l of listings) {
       stmt.run(
-        b.id, b.runId, b.retailer, b.region, b.url, b.imageUrl,
-        b.brand, b.model, b.year,
-        b.lengthCm, b.widthMm, b.flex, b.profile, b.shape, b.category,
-        b.originalPriceUsd, b.salePriceUsd, b.discountPercent,
-        b.currency, b.originalPrice, b.salePrice, b.availability,
-        b.description, b.beginnerScore, b.valueScore, b.finalScore,
-        b.scoreNotes, b.scrapedAt,
-        b.specSources ?? null,
-        b.abilityLevelMin ?? null,
-        b.abilityLevelMax ?? null
+        l.id, l.boardKey, l.runId,
+        l.retailer, l.region, l.url, l.imageUrl,
+        l.lengthCm, l.widthMm, l.currency,
+        l.originalPrice, l.salePrice,
+        l.originalPriceUsd, l.salePriceUsd, l.discountPercent,
+        l.availability, l.scrapedAt
       );
     }
-  });
-
-  insertMany(boards);
+  })();
 }
 
-export function getBoardsByRunId(runId: string): CanonicalBoard[] {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT * FROM boards WHERE run_id = ? ORDER BY final_score DESC")
-    .all(runId) as Record<string, unknown>[];
-  return rows.map(mapRowToBoard);
-}
-
-export function updateBoardPriceAndStock(
+export function updateListingPriceAndStock(
   id: string,
-  runId: string,
   updates: {
     salePrice: number;
     salePriceUsd: number;
@@ -277,18 +419,15 @@ export function updateBoardPriceAndStock(
     originalPriceUsd?: number | null;
     discountPercent?: number | null;
     availability: string;
-    valueScore: number;
-    finalScore: number;
   }
 ): void {
   const db = getDb();
   db.prepare(`
-    UPDATE boards SET
+    UPDATE listings SET
       sale_price = ?, sale_price_usd = ?,
       original_price = ?, original_price_usd = ?,
-      discount_percent = ?, availability = ?,
-      value_score = ?, final_score = ?
-    WHERE id = ? AND run_id = ?
+      discount_percent = ?, availability = ?
+    WHERE id = ?
   `).run(
     updates.salePrice,
     updates.salePriceUsd,
@@ -296,48 +435,219 @@ export function updateBoardPriceAndStock(
     updates.originalPriceUsd ?? null,
     updates.discountPercent ?? null,
     updates.availability,
-    updates.valueScore,
-    updates.finalScore,
-    id,
-    runId
+    id
   );
 }
 
-function mapRowToBoard(row: Record<string, unknown>): CanonicalBoard {
+export function getBoardByKey(boardKey: string): Board | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM boards WHERE board_key = ?").get(boardKey) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return mapRowToNewBoard(row);
+}
+
+export function getBoardsWithListings(runId?: string): BoardWithListings[] {
+  const db = getDb();
+
+  // Get all boards that have listings in the given run (or latest run)
+  let listingRows: Record<string, unknown>[];
+  if (runId) {
+    listingRows = db.prepare(`
+      SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
+             b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
+             b.description, b.beginner_score, b.created_at, b.updated_at
+      FROM listings l
+      JOIN boards b ON l.board_key = b.board_key
+      WHERE l.run_id = ?
+      ORDER BY l.sale_price_usd ASC
+    `).all(runId) as Record<string, unknown>[];
+  } else {
+    // Get listings from the latest run
+    const latestRun = getLatestRun();
+    if (!latestRun) return [];
+    listingRows = db.prepare(`
+      SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
+             b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
+             b.description, b.beginner_score, b.created_at, b.updated_at
+      FROM listings l
+      JOIN boards b ON l.board_key = b.board_key
+      WHERE l.run_id = ?
+      ORDER BY l.sale_price_usd ASC
+    `).all(latestRun.id) as Record<string, unknown>[];
+  }
+
+  // Group by board_key
+  const boardMap = new Map<string, { board: Board; listings: Listing[] }>();
+
+  for (const row of listingRows) {
+    const boardKey = row.board_key as string;
+    if (!boardMap.has(boardKey)) {
+      boardMap.set(boardKey, {
+        board: {
+          boardKey,
+          brand: row.brand as string,
+          model: row.model as string,
+          year: (row.year as number) || null,
+          flex: (row.flex as number) || null,
+          profile: (row.profile as string) || null,
+          shape: (row.shape as string) || null,
+          category: (row.category as string) || null,
+          abilityLevelMin: (row.ability_level_min as string) || null,
+          abilityLevelMax: (row.ability_level_max as string) || null,
+          msrpUsd: (row.msrp_usd as number) || null,
+          manufacturerUrl: (row.manufacturer_url as string) || null,
+          description: (row.description as string) || null,
+          beginnerScore: (row.beginner_score as number) || 0,
+          createdAt: row.created_at as string,
+          updatedAt: row.updated_at as string,
+        },
+        listings: [],
+      });
+    }
+
+    boardMap.get(boardKey)!.listings.push({
+      id: row.id as string,
+      boardKey,
+      runId: row.run_id as string,
+      retailer: row.retailer as string,
+      region: row.region as string,
+      url: row.url as string,
+      imageUrl: (row.image_url as string) || null,
+      lengthCm: (row.length_cm as number) || null,
+      widthMm: (row.width_mm as number) || null,
+      currency: row.currency as string,
+      originalPrice: (row.original_price as number) || null,
+      salePrice: row.sale_price as number,
+      originalPriceUsd: (row.original_price_usd as number) || null,
+      salePriceUsd: row.sale_price_usd as number,
+      discountPercent: (row.discount_percent as number) || null,
+      availability: row.availability as string,
+      scrapedAt: row.scraped_at as string,
+    });
+  }
+
+  // Build BoardWithListings with computed scores
+  const results: BoardWithListings[] = [];
+  for (const { board, listings } of boardMap.values()) {
+    const bestPrice = Math.min(...listings.map(l => l.salePriceUsd));
+    const valueScore = calcValueScoreFromBoardAndPrice(board, bestPrice, listings);
+    const finalScore = Math.round((0.6 * board.beginnerScore + 0.4 * valueScore) * 100) / 100;
+
+    results.push({
+      ...board,
+      listings,
+      bestPrice,
+      valueScore,
+      finalScore,
+    });
+  }
+
+  // Sort by finalScore descending
+  results.sort((a, b) => b.finalScore - a.finalScore);
+  return results;
+}
+
+function calcValueScoreFromBoardAndPrice(board: Board, bestPrice: number, listings: Listing[]): number {
+  let total = 0;
+  let weights = 0;
+
+  // Discount: best listing's discount
+  const bestListing = listings.reduce((best, l) => l.salePriceUsd < best.salePriceUsd ? l : best, listings[0]);
+  const discountPercent = bestListing.discountPercent ??
+    (board.msrpUsd && board.msrpUsd > bestPrice
+      ? Math.round(((board.msrpUsd - bestPrice) / board.msrpUsd) * 100)
+      : null);
+
+  if (discountPercent !== null && discountPercent > 0) {
+    let discountScore: number;
+    if (discountPercent >= 50) discountScore = 1.0;
+    else if (discountPercent >= 40) discountScore = 0.9;
+    else if (discountPercent >= 30) discountScore = 0.75;
+    else if (discountPercent >= 20) discountScore = 0.55;
+    else if (discountPercent >= 10) discountScore = 0.35;
+    else discountScore = 0.2;
+    total += discountScore * 0.5;
+    weights += 0.5;
+  }
+
+  // Premium tier based on MSRP or best price
+  const msrp = board.msrpUsd ?? bestPrice;
+  if (msrp > 0) {
+    let premiumScore: number;
+    if (msrp >= 600) premiumScore = 1.0;
+    else if (msrp >= 500) premiumScore = 0.85;
+    else if (msrp >= 400) premiumScore = 0.65;
+    else if (msrp >= 300) premiumScore = 0.45;
+    else premiumScore = 0.25;
+    total += premiumScore * 0.35;
+    weights += 0.35;
+  }
+
+  // Year
+  if (board.year) {
+    const currentYear = new Date().getFullYear();
+    const age = currentYear - board.year;
+    let yearScore: number;
+    if (age >= 3) yearScore = 0.9;
+    else if (age >= 2) yearScore = 0.8;
+    else if (age >= 1) yearScore = 0.6;
+    else yearScore = 0.4;
+    total += yearScore * 0.15;
+    weights += 0.15;
+  }
+
+  if (weights === 0) return 0.3;
+  return Math.round((total / weights) * 100) / 100;
+}
+
+export function getListingsByRunId(runId: string): Listing[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT * FROM listings WHERE run_id = ? ORDER BY sale_price_usd ASC")
+    .all(runId) as Record<string, unknown>[];
+  return rows.map(mapRowToListing);
+}
+
+function mapRowToNewBoard(row: Record<string, unknown>): Board {
   return {
-    id: row.id as string,
-    runId: row.run_id as string,
-    retailer: row.retailer as string,
-    region: row.region as string,
-    url: row.url as string,
-    imageUrl: (row.image_url as string) || null,
+    boardKey: row.board_key as string,
     brand: row.brand as string,
     model: row.model as string,
     year: (row.year as number) || null,
-    lengthCm: (row.length_cm as number) || null,
-    widthMm: (row.width_mm as number) || null,
     flex: (row.flex as number) || null,
     profile: (row.profile as string) || null,
     shape: (row.shape as string) || null,
     category: (row.category as string) || null,
     abilityLevelMin: (row.ability_level_min as string) || null,
     abilityLevelMax: (row.ability_level_max as string) || null,
-    extras: {},
-    originalPriceUsd: (row.original_price_usd as number) || null,
-    salePriceUsd: row.sale_price_usd as number,
-    discountPercent: (row.discount_percent as number) || null,
+    msrpUsd: (row.msrp_usd as number) || null,
+    manufacturerUrl: (row.manufacturer_url as string) || null,
+    description: (row.description as string) || null,
+    beginnerScore: (row.beginner_score as number) || 0,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapRowToListing(row: Record<string, unknown>): Listing {
+  return {
+    id: row.id as string,
+    boardKey: row.board_key as string,
+    runId: row.run_id as string,
+    retailer: row.retailer as string,
+    region: row.region as string,
+    url: row.url as string,
+    imageUrl: (row.image_url as string) || null,
+    lengthCm: (row.length_cm as number) || null,
+    widthMm: (row.width_mm as number) || null,
     currency: row.currency as string,
     originalPrice: (row.original_price as number) || null,
     salePrice: row.sale_price as number,
+    originalPriceUsd: (row.original_price_usd as number) || null,
+    salePriceUsd: row.sale_price_usd as number,
+    discountPercent: (row.discount_percent as number) || null,
     availability: row.availability as string,
-    description: (row.description as string) || null,
-    beginnerScore: row.beginner_score as number,
-    valueScore: row.value_score as number,
-    finalScore: row.final_score as number,
-    scoreNotes: (row.score_notes as string) || null,
     scrapedAt: row.scraped_at as string,
-    specSources: (row.spec_sources as string) || null,
-  } as CanonicalBoard;
+  };
 }
 
 // ===== Spec Cache CRUD =====
@@ -547,4 +857,3 @@ export function getSpecSources(
   }
   return result;
 }
-

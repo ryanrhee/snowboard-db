@@ -103,6 +103,55 @@ export interface CanonicalBoard {
   specSources: string | null; // JSON: Record<string, SpecFieldInfo>
 }
 
+// ===== Board-centric types (new data model) =====
+
+export interface Board {
+  boardKey: string;
+  brand: string;
+  model: string;
+  year: number | null;
+  flex: number | null;
+  profile: string | null;
+  shape: string | null;
+  category: string | null;
+  abilityLevelMin: string | null;
+  abilityLevelMax: string | null;
+  msrpUsd: number | null;
+  manufacturerUrl: string | null;
+  description: string | null;
+  beginnerScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Listing {
+  id: string;
+  boardKey: string;
+  runId: string;
+  retailer: string;
+  region: string;
+  url: string;
+  imageUrl: string | null;
+  lengthCm: number | null;
+  widthMm: number | null;
+  currency: string;
+  originalPrice: number | null;
+  salePrice: number;
+  originalPriceUsd: number | null;
+  salePriceUsd: number;
+  discountPercent: number | null;
+  availability: string;
+  scrapedAt: string;
+}
+
+export interface BoardWithListings extends Board {
+  listings: Listing[];
+  bestPrice: number;
+  valueScore: number;
+  finalScore: number;
+  specSources?: Record<string, { source: string; value: string; sourceUrl?: string | null }[]>;
+}
+
 // ===== Search Types =====
 
 export interface SearchConstraints {
@@ -130,7 +179,7 @@ export interface SearchRun {
 
 export interface SearchResponse {
   run: SearchRun;
-  boards: CanonicalBoard[];
+  boards: BoardWithListings[];
   errors: RetailerError[];
 }
 

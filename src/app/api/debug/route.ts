@@ -386,7 +386,7 @@ export async function POST(request: NextRequest) {
 
     // Look for SVGs
     const svgs: string[] = [];
-    $("svg").each((_, el) => svgs.push($(el).toString().slice(0, 2000)));
+    $("svg").each((_, el) => { svgs.push($(el).toString().slice(0, 2000)); });
 
     // Look for any element with chart-related class/id
     const chartElements: string[] = [];

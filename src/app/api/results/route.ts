@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLatestRun, getRunById, getAllRuns, getBoardsByRunId } from "@/lib/db";
+import { getLatestRun, getRunById, getAllRuns, getBoardsWithListings, getSpecSources } from "@/lib/db";
+import { filterBoardsWithListings } from "@/lib/constraints";
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,36 +20,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ run: null, boards: [] });
     }
 
-    let boards = getBoardsByRunId(run.id);
+    let boards = getBoardsWithListings(run.id);
+
+    // Attach spec_sources provenance
+    for (const board of boards) {
+      const sources = getSpecSources(board.boardKey);
+      if (Object.keys(sources).length > 0) {
+        board.specSources = sources;
+      }
+    }
 
     // Client-side filters
-    const region = searchParams.get("region");
-    if (region) {
-      boards = boards.filter((b) => b.region === region);
-    }
-
+    const region = searchParams.get("region") || undefined;
     const maxPrice = searchParams.get("maxPrice");
-    if (maxPrice) {
-      const max = parseFloat(maxPrice);
-      if (!isNaN(max)) {
-        boards = boards.filter((b) => b.salePriceUsd <= max);
-      }
-    }
-
     const minLength = searchParams.get("minLength");
-    if (minLength) {
-      const min = parseFloat(minLength);
-      if (!isNaN(min)) {
-        boards = boards.filter((b) => b.lengthCm === null || b.lengthCm >= min);
-      }
-    }
-
     const maxLength = searchParams.get("maxLength");
-    if (maxLength) {
-      const max = parseFloat(maxLength);
-      if (!isNaN(max)) {
-        boards = boards.filter((b) => b.lengthCm === null || b.lengthCm <= max);
-      }
+
+    const hasFilters = region || maxPrice || minLength || maxLength;
+    if (hasFilters) {
+      boards = filterBoardsWithListings(boards, {
+        region,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minLength: minLength ? parseFloat(minLength) : undefined,
+        maxLength: maxLength ? parseFloat(maxLength) : undefined,
+      });
     }
 
     return NextResponse.json({ run, boards });

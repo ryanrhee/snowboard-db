@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ingestManufacturerSpecs } from "../lib/manufacturers/ingest";
-import { getCachedSpecs, setCachedSpecs, setSpecSource, specKey } from "../lib/db";
+import { getCachedSpecs, setCachedSpecs, setSpecSource, specKey, upsertBoard } from "../lib/db";
 import type { ManufacturerSpec } from "../lib/manufacturers/types";
 
 vi.mock("../lib/db", () => ({
@@ -8,10 +8,15 @@ vi.mock("../lib/db", () => ({
   setCachedSpecs: vi.fn(),
   setSpecSource: vi.fn(),
   specKey: vi.fn((brand: string, model: string) => `${brand.toLowerCase()}|${model.toLowerCase()}`),
+  upsertBoard: vi.fn(),
 }));
 
 vi.mock("../lib/scraping/utils", () => ({
   canonicalizeBrand: vi.fn((b: string) => b),
+}));
+
+vi.mock("../lib/scoring", () => ({
+  calcBeginnerScoreForBoard: vi.fn(() => 0.5),
 }));
 
 function makeSpec(overrides: Partial<ManufacturerSpec> = {}): ManufacturerSpec {
