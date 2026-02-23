@@ -875,6 +875,41 @@ describe("normalizeModel", () => {
     });
   });
 
+  describe("strips brand name prefix from model (generic)", () => {
+    it.each([
+      ["GNU Asym Ladies Choice C2X Snowboard - Women's 2025", "GNU", "Asym Ladies Choice C2X"],
+      ["Jones Dream Weaver 2.0 Snowboard - Women's 2026", "Jones", "Dream Weaver 2.0"],
+      ["Rossignol Juggernaut Snowboard 2025", "Rossignol", "Juggernaut"],
+      ["Sims Bowl Squad Snowboard 2026", "Sims", "Bowl Squad"],
+      ["Season Kin Snowboard 2026", "Season", "Kin"],
+      ["Yes. Airmaster 3D Snowboard 2026", "Yes.", "Airmaster 3D"],
+      ["Salomon Sight X Snowboard 2026", "Salomon", "Sight X"],
+      ["Rome Heist Snowboard - Women's 2024", "Rome", "Heist"],
+      ["Lib Tech Dynamiss C3 Snowboard - Women's 2025", "Lib Tech", "Dynamiss C3"],
+      ["Never Summer Proto Ultra Snowboard 2026", "Never Summer", "Proto Ultra"],
+    ])('%s (brand: %s) → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand)).toBe(expected);
+    });
+
+    it("does not strip when model does not start with brand", () => {
+      expect(normalizeModel("Custom Snowboard 2026", "Burton")).toBe("Custom");
+    });
+
+    it("does not strip mid-model brand occurrence", () => {
+      expect(normalizeModel("Chrome Rome Snowboard 2025", "Rome")).toBe("Chrome Rome");
+    });
+  });
+
+  describe("strips trailing slashes (Task #4)", () => {
+    it("strips trailing slash from model", () => {
+      expect(normalizeModel("Element/")).toBe("Element");
+    });
+
+    it("strips multiple trailing slashes", () => {
+      expect(normalizeModel("Element///")).toBe("Element");
+    });
+  });
+
   describe("preserves Unknown and empty", () => {
     it("returns Unknown for Unknown", () => {
       expect(normalizeModel("Unknown")).toBe("Unknown");

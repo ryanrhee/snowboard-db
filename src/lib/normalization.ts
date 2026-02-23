@@ -197,6 +197,15 @@ export function normalizeModel(raw: string, brand?: string): string {
   // Strip leading "Women's ", "Men's " prefix
   model = model.replace(/^(?:Women's|Men's|Kids'|Boys'|Girls')\s+/i, "");
 
+  // Generic brand-prefix stripping: if model starts with the brand name, remove it
+  if (brand) {
+    const brandLower = brand.toLowerCase();
+    const modelLower = model.toLowerCase();
+    if (modelLower.startsWith(brandLower + " ")) {
+      model = model.slice(brand.length).trimStart();
+    }
+  }
+
   // Fix brand leak: Lib Tech → evo lists as "Lib Tech" brand + "Tech Cold Brew..." model
   if (brand === "Lib Tech" && /^Tech\s/i.test(model)) {
     model = model.replace(/^Tech\s+/i, "");
@@ -208,6 +217,7 @@ export function normalizeModel(raw: string, brand?: string): string {
   }
 
   // Clean up leftover dashes, slashes, and whitespace
+  model = model.replace(/\/+$/, "");
   model = model.replace(/^\s*[-/]\s*/, "").replace(/\s*[-/]\s*$/, "");
   model = model.replace(/\s{2,}/g, " ").trim();
 

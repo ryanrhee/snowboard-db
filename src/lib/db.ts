@@ -4,6 +4,7 @@ import path from "path";
 import { config } from "./config";
 import { CanonicalBoard, SearchRun, Board, Listing, BoardWithListings } from "./types";
 import { normalizeModel } from "./normalization";
+import { canonicalizeBrand } from "./scraping/utils";
 
 let db: Database.Database | null = null;
 
@@ -285,7 +286,8 @@ export function generateListingId(
 // ===== Spec Key =====
 
 export function specKey(brand: string, model: string): string {
-  return `${brand.toLowerCase()}|${normalizeModel(model, brand).toLowerCase()}`;
+  const cb = canonicalizeBrand(brand);
+  return `${cb.toLowerCase()}|${normalizeModel(model, cb).toLowerCase()}`;
 }
 
 // ===== Search Run CRUD =====
