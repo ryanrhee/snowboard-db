@@ -19,6 +19,30 @@ while true; do npx next dev -p 3099 2>&1 | tee output.txt; echo "--- restarted -
 3. **Triggering non-debug endpoints**: Add a new action to debug route that calls the desired code path internally, then use `./debug.sh`. Do NOT use `kill` or `curl` directly — `debug.sh` handles the kill+wait+curl cycle and avoids per-command user approval.
 4. **Never launch a browser directly** — scraping that requires a browser must go through the dev server via `./debug.sh`. Non-browser commands (`npm run test`, `node` scripts, etc.) can be run directly.
 
+## Database
+
+Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env var). The `snowboards.db` in the project root is a stale empty file — ignore it.
+
+### Schema
+
+**Pipeline output** (re-derived each run, safe to clear):
+
+- **`search_runs`** — One row per pipeline run. Stores run ID, timestamp, scope JSON, board count, retailers queried, duration.
+- **`boards`** — One row per unique board (keyed by `brand|model`). Stores specs (flex, profile, shape, category, ability level), beginner score, gender, MSRP. Upserted each run.
+- **`listings`** — One row per retailer×board×size. Links to `boards` (board_key FK) and `search_runs` (run_id FK). Stores price, length, width, availability, condition, gender, stock count.
+- **`boards_legacy`** — Old flat schema (one row = one board+listing). Deprecated, not used by current code.
+
+**Spec data** (accumulated across runs, expensive to rebuild):
+
+- **`spec_sources`** — Multi-source spec provenance. Keyed by `(brand_model, field, source)`. Sources: `manufacturer`, `review-site`, `retailer:*`, `llm`, `judgment`. Fields: flex, profile, shape, category, abilityLevel, plus extras.
+- **`spec_cache`** — Enrichment result cache keyed by input hash (hash of scraper output). Stores resolved flex/profile/shape/category/msrp with source attribution.
+
+**Caches** (avoid network requests, expensive to rebuild):
+
+- **`http_cache`** — Raw HTML bodies keyed by URL hash. 24-hour default TTL. ~50MB for ~140 pages.
+- **`review_sitemap_cache`** — The Good Ride sitemap entries (URL → brand/model mapping). ~625 entries.
+- **`review_url_map`** — Resolved board → The Good Ride review URL mappings. ~148 entries.
+
 ## Re-running the Pipeline from Cached HTML
 
 The HTTP cache (`http_cache` table in `data/snowboard-finder.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
