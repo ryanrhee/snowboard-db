@@ -14,6 +14,7 @@ export interface ScrapedListing {
   stockCount?: number;
   scrapedAt: string;
   gender?: string;
+  comboContents?: string | null;
 }
 
 /** Unified scraper output — one per board model per source */

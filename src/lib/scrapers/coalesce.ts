@@ -193,6 +193,7 @@ export function coalesce(
           condition: identifier.condition,
           gender: identifier.gender,
           stockCount: sl.stockCount ?? null,
+          comboContents: sl.comboContents ?? null,
         });
 
         // Use year from identifier if not already set

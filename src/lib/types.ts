@@ -166,6 +166,7 @@ export interface Listing {
   condition: string;
   gender: string;
   stockCount: number | null;
+  comboContents: string | null;
 }
 
 export interface BoardWithListings extends Board {

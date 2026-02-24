@@ -180,6 +180,8 @@ function createListingsTable(db: Database.Database): void {
     db.exec("ALTER TABLE listings ADD COLUMN gender TEXT NOT NULL DEFAULT 'unisex'");
   if (!listingColNames.has("stock_count"))
     db.exec("ALTER TABLE listings ADD COLUMN stock_count INTEGER");
+  if (!listingColNames.has("combo_contents"))
+    db.exec("ALTER TABLE listings ADD COLUMN combo_contents TEXT");
 
   const boardCols2 = db.pragma("table_info(boards)") as { name: string }[];
   const boardColNames2 = new Set(boardCols2.map((c) => c.name));
@@ -420,8 +422,8 @@ export function insertListings(listings: Listing[]): void {
       id, board_key, run_id, retailer, region, url, image_url,
       length_cm, width_mm, currency, original_price, sale_price,
       original_price_usd, sale_price_usd, discount_percent,
-      availability, scraped_at, condition, gender, stock_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      availability, scraped_at, condition, gender, stock_count, combo_contents
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   db.transaction(() => {
@@ -433,7 +435,7 @@ export function insertListings(listings: Listing[]): void {
         l.originalPrice, l.salePrice,
         l.originalPriceUsd, l.salePriceUsd, l.discountPercent,
         l.availability, l.scrapedAt,
-        l.condition, l.gender, l.stockCount
+        l.condition, l.gender, l.stockCount, l.comboContents
       );
     }
   })();
@@ -555,14 +557,18 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
       condition: (row.condition as string) || "unknown",
       gender: (row.gender as string) || "unisex",
       stockCount: (row.stock_count as number) ?? null,
+      comboContents: (row.combo_contents as string) || null,
     });
   }
 
   // Build BoardWithListings with computed scores
   const results: BoardWithListings[] = [];
   for (const { board, listings } of boardMap.values()) {
-    const bestPrice = Math.min(...listings.map(l => l.salePriceUsd));
-    const valueScore = calcValueScoreFromBoardAndPrice(board, bestPrice, listings);
+    // Exclude combo listings from price calculations; fall back to all if no board-only listings
+    const boardOnlyListings = listings.filter(l => !l.comboContents);
+    const priceListings = boardOnlyListings.length > 0 ? boardOnlyListings : listings;
+    const bestPrice = Math.min(...priceListings.map(l => l.salePriceUsd));
+    const valueScore = calcValueScoreFromBoardAndPrice(board, bestPrice, priceListings);
     const finalScore = Math.round((0.6 * board.beginnerScore + 0.4 * valueScore) * 100) / 100;
 
     results.push({
@@ -682,6 +688,7 @@ function mapRowToListing(row: Record<string, unknown>): Listing {
     condition: (row.condition as string) || "unknown",
     gender: (row.gender as string) || "unisex",
     stockCount: (row.stock_count as number) ?? null,
+    comboContents: (row.combo_contents as string) || null,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   inferYear,
   detectCondition,
   detectGender,
+  extractComboContents,
 } from "../lib/normalization";
 import { BoardProfile, BoardShape, BoardCategory, ListingCondition, GenderTarget } from "../lib/types";
 
@@ -1082,5 +1083,51 @@ describe("detectGender", () => {
 
   it("detects -womens in URL → WOMENS", () => {
     expect(detectGender("model", "https://www.backcountry.com/some-board-womens")).toBe(GenderTarget.WOMENS);
+  });
+});
+
+// =============================================================================
+// extractComboContents
+// =============================================================================
+
+describe("extractComboContents", () => {
+  describe("detects + combos", () => {
+    it("extracts binding from board + binding combo", () => {
+      expect(extractComboContents("Instigator Camber Snowboard + Malavita Re:Flex Binding")).toBe(
+        "Malavita Re:Flex Binding"
+      );
+    });
+
+    it("strips trailing year from combo contents", () => {
+      expect(extractComboContents("Birds Of A Feather Snowboard + Union Ultra Binding - 2026")).toBe(
+        "Union Ultra Binding"
+      );
+    });
+
+    it("strips trailing gender from combo contents", () => {
+      expect(extractComboContents("Feelgood Snowboard + Step On Package - Women's")).toBe(
+        "Step On Package"
+      );
+    });
+
+    it("extracts binding with year in middle", () => {
+      expect(extractComboContents("Kazu Kokubo Pro Snowboard + Union Atlas Pro Binding - 2026")).toBe(
+        "Union Atlas Pro Binding"
+      );
+    });
+  });
+
+  describe("returns null for non-combos", () => {
+    it("returns null for plain model name", () => {
+      expect(extractComboContents("Custom Flying V")).toBeNull();
+    });
+
+    it("returns null for model with year", () => {
+      expect(extractComboContents("Process Camber Snowboard - 2025/2026")).toBeNull();
+    });
+
+    it("returns null for empty string", () => {
+      expect(extractComboContents("")).toBeNull();
+    });
   });
 });

@@ -22,6 +22,7 @@ interface Listing {
   condition: string;
   gender: string;
   stockCount: number | null;
+  comboContents: string | null;
 }
 
 export interface BoardData {
@@ -232,6 +233,10 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
     (entries) => entries.length > 0
   );
 
+  // Split listings into board-only and combo
+  const boardOnlyListings = board.listings.filter(l => !l.comboContents);
+  const comboListings = board.listings.filter(l => l.comboContents);
+
   // Collect all unique sources for summary
   const allSources = new Set<string>();
   if (specSources) {
@@ -361,7 +366,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                 </>
               )}
               <span className="text-xs text-gray-500">
-                from {board.listings.length} listing{board.listings.length !== 1 ? "s" : ""}
+                from {boardOnlyListings.length} listing{boardOnlyListings.length !== 1 ? "s" : ""}
               </span>
             </div>
           </div>
@@ -400,7 +405,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                 </tr>
               </thead>
               <tbody>
-                {board.listings.map((listing) => (
+                {boardOnlyListings.map((listing) => (
                   <tr key={listing.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="px-2 py-1.5">
                       <a
@@ -450,6 +455,55 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
               </tbody>
             </table>
           </div>
+
+          {/* Combo listings (board + binding packages) */}
+          {comboListings.length > 0 && (
+            <div className="border-t border-gray-800 pt-3">
+              <h3 className="text-sm font-medium text-gray-300 mb-2">Board + Binding Packages</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="px-2 py-1.5 text-left text-xs text-gray-400">Retailer</th>
+                    <th className="px-2 py-1.5 text-left text-xs text-gray-400">Includes</th>
+                    <th className="px-2 py-1.5 text-left text-xs text-gray-400">Size</th>
+                    <th className="px-2 py-1.5 text-left text-xs text-gray-400">Price</th>
+                    <th className="px-2 py-1.5 text-left text-xs text-gray-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comboListings.map((listing) => (
+                    <tr key={listing.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="px-2 py-1.5">
+                        <a
+                          href={listing.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${RETAILER_BADGE_COLOR[listing.retailer] || "bg-gray-800 text-gray-300"}`}>
+                            {listing.retailer}
+                          </span>
+                        </a>
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-300 text-xs">
+                        {listing.comboContents}
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-300">
+                        {listing.lengthCm ? `${listing.lengthCm}cm` : "-"}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <span className="text-green-400">${listing.salePriceUsd.toFixed(0)}</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-gray-400 capitalize">
+                        {listing.availability.replace(/_/g, " ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

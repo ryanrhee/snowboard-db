@@ -219,6 +219,36 @@ export function inferYear(model: string): number | null {
   return null;
 }
 
+/**
+ * Extract binding/package name from a combo listing's raw model string.
+ * Returns null if the model is not a combo.
+ */
+export function extractComboContents(raw: string): string | null {
+  if (!raw) return null;
+
+  // Match " + <combo contents>" or " w/ <combo contents>"
+  const plusMatch = raw.match(/\s*\+\s(.*)$/);
+  const withMatch = raw.match(/\s+w\/\s(.*)$/i);
+  const match = plusMatch || withMatch;
+  if (!match) return null;
+
+  let contents = match[1];
+
+  // Strip trailing year (e.g. "- 2026", " 2025")
+  contents = contents.replace(/\s*-?\s*\b20[1-2]\d\b/g, "");
+
+  // Strip trailing gender (e.g. "- Women's", "- Men's")
+  contents = contents.replace(/\s*-\s*(?:Men's|Women's|Kids'|Boys'|Girls')$/i, "");
+
+  // Strip "Snowboard" (shouldn't appear in combo part, but just in case)
+  contents = contents.replace(/\s+Snowboard\b/gi, "");
+
+  // Clean up whitespace
+  contents = contents.replace(/\s{2,}/g, " ").trim();
+
+  return contents || null;
+}
+
 export function normalizeModel(raw: string, brand?: string): string {
   if (!raw || raw === "Unknown") return raw;
 

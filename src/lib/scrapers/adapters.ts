@@ -2,7 +2,7 @@ import { RawBoard, Currency, Region } from "../types";
 import { ManufacturerSpec } from "../manufacturers/types";
 import { ScrapedBoard, ScrapedListing } from "./types";
 import { normalizeBrand } from "../scraping/utils";
-import { normalizeModel, detectGender } from "../normalization";
+import { normalizeModel, detectGender, extractComboContents } from "../normalization";
 
 /**
  * Group RawBoard[] (one per size/listing) from a retailer into ScrapedBoard[]
@@ -17,7 +17,9 @@ export function adaptRetailerOutput(
 
   for (const raw of rawBoards) {
     const brand = normalizeBrand(raw.brand || "Unknown");
-    const model = normalizeModel(raw.model || "Unknown", brand);
+    const rawModel = raw.model || "Unknown";
+    const comboContents = extractComboContents(rawModel);
+    const model = normalizeModel(rawModel, brand);
     const detectedGender = (raw.gender || detectGender(raw.model || "", raw.url)).toLowerCase();
     const genderSuffix = (detectedGender === "womens" || detectedGender === "kids") ? `|${detectedGender}` : "";
     const groupKey = `${brand.toLowerCase()}|${model.toLowerCase()}${genderSuffix}`;
@@ -71,6 +73,7 @@ export function adaptRetailerOutput(
       stockCount: raw.stockCount,
       scrapedAt: raw.scrapedAt,
       gender: raw.gender,
+      comboContents,
     });
   }
 
