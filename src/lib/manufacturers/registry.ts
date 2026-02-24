@@ -2,8 +2,9 @@ import { ManufacturerModule } from "./types";
 import { burton } from "./burton";
 import { libTech } from "./lib-tech";
 import { capita } from "./capita";
+import { jones } from "./jones";
 
-const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita];
+const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones];
 
 export function getManufacturers(brands?: string[]): ManufacturerModule[] {
   if (!brands || brands.length === 0) return ALL_MANUFACTURERS;

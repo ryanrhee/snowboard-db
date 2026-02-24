@@ -21,6 +21,7 @@ Scrapers are registered in `src/lib/manufacturers/registry.ts` and invoked via `
 | Burton | `burton.ts` | Custom (`__bootstrap` JSON) | HTTP | Yes | ~38 |
 | Lib Tech | `lib-tech.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | ~30 |
 | CAPiTA | `capita.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~39 |
+| Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~33 |
 
 ---
 
@@ -101,6 +102,40 @@ Two-phase: catalog page, then individual detail pages (concurrency 3).
 
 ---
 
+## Jones
+
+- **File:** `src/lib/manufacturers/jones.ts`
+- **Base URL:** `https://www.jonessnowboards.com`
+- **Catalog URL:** `/collections/snowboards/products.json` (Shopify JSON API)
+- **Fetch method:** HTTP — Shopify JSON API primary, detail pages via `fetchPage()` + cheerio
+
+### Scraping strategy
+
+Two-phase: Shopify JSON API, then individual detail pages (concurrency 3).
+
+**Primary: Shopify JSON API.** Fetches `/collections/snowboards/products.json` (paginated, up to 5 pages). Filters to snowboard products by `tags`. Extracts model name, MSRP from first variant price, and parses `body_html` for specs (flex, profile, shape, category) via keyword matching.
+
+**Detail pages** (fetched for each product) extract:
+- **Terrain ratings:** Regex-based extraction of patterns like "On-piste / All-mountain: 7/10", "Freeride / Powder: 10/10", "Freestyle / Park: 3/10" from `.spec` elements or body text.
+- **Category derivation:** If body_html doesn't yield a category, the highest-scoring terrain rating determines the category.
+
+**Body HTML parsing** detects:
+- **Profile:** CamRock, directional rocker, directional camber, camber, rocker, flat
+- **Shape:** tapered directional, directional twin, true twin, directional, twin
+- **Category:** all-mountain, freeride, freestyle, park, powder, backcountry
+- **Ability level:** beginner, intermediate, advanced, expert (from description text)
+
+### Model name cleaning
+
+Strips gender prefixes ("Men's", "Women's", "Youth"), " Snowboard" suffix, and year suffixes (2025, 2026).
+
+### Known issues
+
+- Jones body_html descriptions rarely include explicit ability level keywords — most boards have no ability level from the manufacturer source. The terrain ratings could potentially be mapped to an ability range.
+- Some products are non-board items (snowskate, packages) that pass the tag filter.
+
+---
+
 ## Coverage Analysis
 
 ### Current state
@@ -110,7 +145,7 @@ Only 3 of ~20 brands in the database have manufacturer scrapers. After brand nor
 | Brand (normalized) | Boards in DB | Listings | Has Mfr Scraper | Mfr Spec Entries |
 |---------------------|-------------|----------|-----------------|------------------|
 | Lib Tech | 26 | 10+ | Yes | 318 |
-| Jones | 20 | 25 | No | 0 |
+| Jones | 20 | 25 | Yes | ~130 |
 | Yes. | 20 | 17+ | No | 0 |
 | Burton | 15 | 12+ | Yes | 670 |
 | GNU | 15 | 14 | No | 0 |
@@ -172,9 +207,8 @@ Ranked by impact (board count × listing count × feasibility):
 
 ### Other notable candidates (not prioritized)
 
-| Brand | Boards | Why not top 3 |
+| Brand | Boards | Why not top 4 |
 |-------|--------|---------------|
-| **Jones** (20 boards, 25 listings) | Shopify but **hCaptcha protected** — automated scraping blocked without captcha-solving service. Highest board count but infeasible without additional tooling. |
 | **Yes.** (20 boards, 17 listings) | Website platform unknown. Needs investigation. High board count but unknown feasibility. |
 | **Rossignol** (8 boards, 43% avg discount) | Large corporate site, likely complex. Best discounts but moderate board count. |
 | **Ride** (5 boards, 7 listings) | Custom Nuxt.js + Amplience headless CMS — requires reverse-engineering undocumented API. Medium-high effort. |
