@@ -1,8 +1,9 @@
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { RetailerModule } from "./types";
-import { fetchPageWithBrowser, normalizeBrand } from "../scraping/utils";
-import { delay } from "../scraping/utils";
+import { fetchPageWithBrowser, normalizeBrand, delay } from "../scraping/utils";
+import { fetchPage } from "../scraping/utils";
 import { config } from "../config";
+import * as cheerio from "cheerio";
 
 const REI_BASE_URL = "https://www.rei.com";
 
@@ -93,6 +94,72 @@ function extractProductsFromHtml(html: string): ReiProduct[] {
 function extractTotalPages(html: string): number {
   const match = html.match(/"totalPages":(\d+)/);
   return match ? parseInt(match[1]) : 1;
+}
+
+let reiDetailBlocked = false;
+
+function parseReiDetailSpecs($: cheerio.CheerioAPI, board: RawBoard): void {
+  const specs = board.specs || {};
+
+  // REI tech-specs table: th = key, td > p.tech-specs__value = value
+  $("table.tech-specs tr, table[aria-labelledby='tech-specs-label'] tr").each((_, row) => {
+    const key = $(row).find("th").text().trim().toLowerCase();
+    // Collect all <p> values within td (multi-value specs like rider weight per size)
+    const values: string[] = [];
+    $(row).find("td p").each((_, p) => {
+      const v = $(p).text().trim();
+      if (v) values.push(v);
+    });
+    // Fallback: plain td text
+    if (values.length === 0) {
+      const val = $(row).find("td").text().trim();
+      if (val) values.push(val);
+    }
+    if (key && values.length > 0 && !specs[key]) {
+      specs[key] = values.join("; ");
+    }
+  });
+
+  // Map newly found specs to board fields
+  if (!board.abilityLevel) {
+    board.abilityLevel = specs["ability level"] || specs["skill level"] || specs["rider level"];
+  }
+  if (!board.flex) {
+    board.flex = specs["flex"] || specs["flex rating"];
+  }
+  if (!board.profile) {
+    board.profile = specs["snowboard profile"] || specs["profile"] || specs["rocker type"];
+  }
+  if (!board.shape) {
+    board.shape = specs["snowboard shape"] || specs["shape"] || specs["shape type"];
+  }
+  if (!board.category) {
+    board.category = specs["snowboard style"] || specs["terrain"] || specs["best for"] || specs["style"];
+  }
+
+  board.specs = specs;
+}
+
+async function tryFetchDetailPage(board: RawBoard): Promise<void> {
+  if (reiDetailBlocked) return;
+
+  try {
+    // Use plain HTTP with default cache TTL (24h) — cached pages are served instantly
+    const html = await fetchPage(board.url, { timeoutMs: 20000 });
+
+    if (html.length < 5000) {
+      console.log(`[rei] Detail page blocked by WAF, stopping detail fetches`);
+      reiDetailBlocked = true;
+      return;
+    }
+
+    const $ = cheerio.load(html);
+    parseReiDetailSpecs($, board);
+    console.log(`[rei] Parsed detail specs for ${board.model}`);
+  } catch (error) {
+    console.log(`[rei] Detail page fetch failed, stopping detail fetches:`, error instanceof Error ? error.message : error);
+    reiDetailBlocked = true;
+  }
 }
 
 export const rei: RetailerModule = {
@@ -198,6 +265,21 @@ export const rei: RetailerModule = {
       });
 
     console.log(`[rei] Successfully scraped ${boards.length} boards`);
+
+    // Attempt detail page fetches for additional specs.
+    // Uses plain HTTP with 24h cache. First uncached URL that gets blocked
+    // stops all further fetches. Cached pages are served instantly.
+    reiDetailBlocked = false;
+    let detailSuccessCount = 0;
+    for (const board of boards) {
+      await tryFetchDetailPage(board);
+      if (!reiDetailBlocked) detailSuccessCount++;
+      if (reiDetailBlocked) break;
+    }
+    if (detailSuccessCount > 0) {
+      console.log(`[rei] Parsed detail specs for ${detailSuccessCount} boards`);
+    }
+
     return boards;
   },
 };

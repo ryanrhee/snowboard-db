@@ -5,9 +5,9 @@
 | Retailer | URL | Region | Fetch Method | Detail Pages | Status |
 |----------|-----|--------|--------------|--------------|--------|
 | Tactics | tactics.com | US | HTTP | Yes | Active |
-| Evo | evo.com | US | Playwright | No | Active |
-| Backcountry | backcountry.com | US | Playwright | No | Active |
-| REI | rei.com | US | Playwright (system Chrome) | No | Active |
+| Evo | evo.com | US | Playwright | Yes | Active |
+| Backcountry | backcountry.com | US | Playwright | Yes | Active |
+| REI | rei.com | US | Playwright (system Chrome) | Yes (CDP pre-cache) | Active |
 | BestSnowboard | bestsnowboard.co.kr | KR | HTTP | Yes | Inactive |
 
 **Active** = included in searches. **Inactive** = code exists but blocked by Cloudflare/bot protection.
@@ -16,13 +16,13 @@
 
 Retailers that fetch detail pages provide specs directly from product pages. Listing-only retailers rely on LLM enrichment to fill in missing specs.
 
-| Retailer | Brand | Model | Price | Flex | Profile | Shape | Category | Length | Width | Description |
-|----------|-------|-------|-------|------|---------|-------|----------|--------|-------|-------------|
-| Tactics | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | No | Yes |
-| Evo | Yes | Yes | Yes | No | No | No | No | No | No | No |
-| Backcountry | Yes | Yes | Yes | No | No | No | No | No | No | No |
-| REI | Yes | Yes | Yes | No | No | No | No | No | No | Yes |
-| BestSnowboard | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | Yes |
+| Retailer | Brand | Model | Price | Flex | Profile | Shape | Category | Length | Width | Reviews | Description |
+|----------|-------|-------|-------|------|---------|-------|----------|--------|-------|---------|-------------|
+| Tactics | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | No | No | Yes |
+| Evo | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | Yes (per-size) | Yes | Yes |
+| Backcountry | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | No | Yes | Yes |
+| REI | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes |
+| BestSnowboard | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes |
 
 ---
 
@@ -66,16 +66,22 @@ Returns one `RawBoard` per in-stock size variant. If no sizes are in stock, retu
 
 ### Scraping strategy
 
-Listing-only — no detail page fetching.
+Two-phase: listing page, then individual product detail pages.
 
-Parses `.product-thumb` cards. Price text contains original + sale on separate lines (e.g. `$549.95\n$439.96\nSale`). Brand is extracted as the first word of the product title; the rest becomes the model.
+**Listing page** parses `.product-thumb` cards. Price text contains original + sale on separate lines (e.g. `$549.95\n$439.96\nSale`). Brand is extracted as the first word of the product title; the rest becomes the model.
 
-All spec fields (flex, profile, shape, category, length, width, description) are left empty and filled later via LLM enrichment.
+**Detail pages** extract:
+- **Specs:** All key-value pairs from `.pdp-spec-list` (flex, profile, shape, terrain, waist width, etc.)
+- **Size chart:** `.spec-table` rows parsed into per-size data (waist width → `widthMm`, rider weight). When a size chart has multiple sizes, returns one `RawBoard` per size (like backcountry variants).
+- **Reviews:** PowerReviews widget — `.pr-snippet-rating-decimal` (rating) and `.pr-snippet-review-count` (review count)
+- **Description:** `.pdp-description` or `.product-description`
+- **Availability/images:** from detail page HTML
 
 ### Special logic
 
 - Brand/model split assumes first word of title is the brand name
-- Availability hardcoded to `in_stock` (listing implies availability)
+- `fetchBoardDetails()` returns `RawBoard | RawBoard[] | null` — array when size chart is found
+- `searchBoards()` handles array returns with `Array.isArray()` check
 
 ---
 
@@ -89,21 +95,25 @@ All spec fields (flex, profile, shape, category, length, width, description) are
 
 ### Scraping strategy
 
-Listing-only — no detail page fetching.
+Two-phase: listing page, then individual product detail pages.
 
-Uses a multi-fallback extraction pipeline:
+**Listing page** uses a multi-fallback extraction pipeline:
 
 1. **Apollo GraphQL cache** (primary): Parses `#__NEXT_DATA__` script for `pageProps.__APOLLO_STATE__`, extracts `Product:ID` entries with brand, name, URL, min sale/list prices
 2. **Legacy data shapes:** Falls back to `pageProps.initialState.products.items` or `pageProps.products`
 3. **JSON-LD:** Standard `application/ld+json` with `@type === "Product"`
 4. **HTML cards:** `[data-id="productCard"]`, `[class*="product-card"]`, `[class*="ProductCard"]`, `.product-listing-item`
 
-All spec fields are left empty and filled via LLM enrichment.
+**Detail pages** extract from `#__NEXT_DATA__`:
+- **Specs:** `product.features` array (`[{name, value}]`) — flex, profile, shape, effective edge, etc.
+- **Size variants:** `product.skusCollection` with JSON-LD `hasVariant` for per-size length/price
+- **Reviews:** `product.customerReviews` — `average` (rating) and `count` (review count)
+- **Description/images/availability** from product data
 
 ### Special logic
 
 - Multiple data format fallbacks for resilience against site changes
-- Availability hardcoded to `in_stock`
+- Returns one `RawBoard` per size variant from detail page
 
 ---
 
@@ -117,21 +127,48 @@ All spec fields are left empty and filled via LLM enrichment.
 
 ### Scraping strategy
 
-Listing-only — no detail page fetching. REI requires system Chrome (not Playwright's bundled Chromium) because their bot protection does TLS fingerprinting and rejects headless Chromium's fingerprint.
+Two-phase: listing page (Playwright), then detail pages (from cache).
 
-**Product data extraction:**
+**Listing page** requires system Chrome (not Playwright's bundled Chromium) because REI's bot protection does TLS fingerprinting and rejects headless Chromium's fingerprint.
+
 REI embeds product data as inline JavaScript objects in Vue.js server-rendered templates. Each product object contains a `"link":"/product/..."` field used as an anchor to extract the full JSON object via bracket-depth parsing.
 
 Extracted fields: `brand`, `cleanTitle` (model), `displayPrice.min` (sale price), `displayPrice.compareAt` (original price), `regularPrice`, `percentageOff`, `available`, `sale`, `clearance`, `benefit` (description), `thumbnailImageLink`.
 
+Also extracts `tileAttributes` from listing page which provides flex, profile, shape, and category for most boards.
+
 Only boards with `sale: true`, `clearance: true`, or a nonzero `percentageOff` are included.
+
+**Detail pages** use plain HTTP (`fetchPage`) with 24h cache. On each pipeline run, cached detail pages are parsed immediately; the first uncached URL that gets a WAF block stops further attempts. Extracts from `table.tech-specs`:
+- All spec key-value pairs (board dimensions, effective edge, sidecut radius, stance setback, core, construction, bolt pattern, gender, sustainability)
+- Snowboard profile, shape, style (redundant with listing `tileAttributes` but confirms)
+- Recommended rider weight per size
+
+### CDP pre-caching workaround
+
+REI's Akamai WAF aggressively blocks automated requests (plain HTTP, headless Playwright) after ~1 request, with bans lasting 30+ minutes. To populate the detail page cache, use Chrome DevTools Protocol (CDP) to drive a real Chrome instance:
+
+1. Quit Chrome, relaunch with remote debugging:
+   ```bash
+   ln -sf "$HOME/Library/Application Support/Google/Chrome" /tmp/chrome-profile
+   /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+     --remote-debugging-port=9222 \
+     --user-data-dir=/tmp/chrome-profile
+   ```
+2. Visit `https://www.rei.com/c/snowboards` in that browser to warm up Akamai cookies.
+3. Run the slow-scrape endpoint:
+   ```bash
+   ./debug.sh '{"action":"slow-scrape","useSystemChrome":true,"maxPages":12,"delayMs":10000}'
+   ```
+
+This connects via `chromium.connectOverCDP("http://localhost:9222")`, opens tabs in the user's real Chrome, and caches each page. The real browser's cookies, TLS fingerprint, and Akamai bot score make requests indistinguishable from normal browsing.
+
+Once cached, the normal pipeline parses all detail pages automatically without needing CDP.
 
 ### Special logic
 
-- Requires `channel: "chrome"` — Playwright's bundled Chromium is blocked by REI's TLS fingerprinting
-- The dev server must be started outside of Claude's sandbox for system Chrome to launch successfully
-- Model names use season format (`"2025/2026"`) which `normalizeModel` handles
-- Specs (flex, profile, shape, category) are not available from the listing page and are filled via LLM enrichment
+- Requires `channel: "chrome"` for listing pages
+- Detail pages are best-effort: pipeline works without them (listing `tileAttributes` covers core specs), but detail pages add construction, dimensions, rider weight, etc.
 
 ---
 

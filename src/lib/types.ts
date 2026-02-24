@@ -185,6 +185,7 @@ export interface ScrapeScope {
   manufacturers?: string[] | null;
   skipEnrichment?: boolean;
   skipManufacturers?: boolean;
+  skipJudgment?: boolean;
 }
 
 // ===== Search Types =====

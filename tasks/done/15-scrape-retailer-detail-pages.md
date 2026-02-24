@@ -58,3 +58,24 @@ The detail-page fetch should use the existing `http_cache` so pages are only fet
 - Detail-page fetches multiply network requests (~1 per board per retailer). Rely on `http_cache` to keep this manageable.
 - Some retailers may require different request headers or have anti-scraping measures on detail pages vs. listing pages.
 - Parse defensively — detail page structure varies by product and may change over time.
+
+## Completed: 2026-02-24
+
+### What was done
+
+**Evo (`src/lib/retailers/evo.ts`):**
+- Added `.spec-table` size chart parsing → extracts `widthMm` and rider weight per size
+- When size chart has multiple entries, returns one `RawBoard` per size (matching backcountry's array return pattern)
+- Updated `searchBoards()` to handle `RawBoard[]` returns from `fetchBoardDetails()`
+- Added PowerReviews extraction: `.pr-snippet-rating-decimal` → rating, `.pr-snippet-review-count` → review count
+- Both stored in `specs["rating"]` and `specs["review count"]`
+
+**Backcountry (`src/lib/retailers/backcountry.ts`):**
+- Added `product.customerReviews` extraction from `__NEXT_DATA__`
+- Stores `customerReviews.average` → `specs["rating"]` and `customerReviews.count` → `specs["review count"]`
+
+**REI (`src/lib/retailers/rei.ts`):**
+- Added `tryFetchDetailPage()` using regular HTTP `fetchPage()` (not browser)
+- Tests first URL; if WAF blocks (403, captcha, short response), logs and skips all remaining detail pages
+- If successful, parses spec tables (tr/td and dt/dd patterns) for ability level, flex, profile, shape, category
+- Integrated into `searchBoards()` after listing scrape completes

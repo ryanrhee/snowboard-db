@@ -33,6 +33,7 @@ const DEFAULT_SCOPE: ScrapeScope = {
   regions: [Region.US, Region.KR],
   skipEnrichment: true,
   skipManufacturers: true,
+  skipJudgment: true,
 };
 
 export async function runSearchPipeline(
@@ -111,7 +112,7 @@ export async function runSearchPipeline(
   const { boards, listings } = coalesce(allScrapedBoards, runId);
 
   // Resolve spec sources: priority-based resolution + disagreement detection
-  const resolvedBoards = await resolveSpecSources(boards);
+  const resolvedBoards = await resolveSpecSources(boards, { skipJudgment: mergedScope.skipJudgment });
 
   // Calculate beginner scores now that specs are resolved
   for (const board of resolvedBoards) {

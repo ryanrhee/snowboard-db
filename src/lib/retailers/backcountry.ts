@@ -253,6 +253,13 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
               }
             }
           }
+
+          // Customer reviews
+          const reviews = product.customerReviews;
+          if (reviews) {
+            if (reviews.average != null) specs["rating"] = String(reviews.average);
+            if (reviews.count != null) specs["review count"] = String(reviews.count);
+          }
         }
       } catch { /* skip */ }
     }

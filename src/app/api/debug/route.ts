@@ -1366,5 +1366,317 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ action, url: row.url, htmlLength: row.body.length, nextData, bulletPoints, jsonLd });
   }
 
+  if (action === "rei-detail-test") {
+    // Test different strategies for fetching REI detail pages
+    const cheerio = await import("cheerio");
+    const { fetchPage, delay: delayFn } = await import("@/lib/scraping/utils");
+    const db = getDb();
+
+    const testUrls = body.urls || [
+      "https://www.rei.com/product/253861/jones-mountain-twin-pro-snowboard-20252026",
+      "https://www.rei.com/product/236382/jones-mind-expander-snowboard-20252026",
+    ];
+    const strategy = body.strategy || "plain-http"; // plain-http | playwright | playwright-warm
+    const delayMs = body.delayMs || 5000;
+
+    const results: Record<string, unknown>[] = [];
+
+    if (strategy === "plain-http") {
+      // Direct HTTP fetch (no browser), skip cache
+      for (const url of testUrls) {
+        try {
+          await delayFn(delayMs);
+          const html = await fetchPage(url, { cacheTtlMs: 0, timeoutMs: 20000 });
+          const $ = cheerio.load(html);
+          const title = $("title").text().trim();
+          const hasSpecs = $('[id*="spec"], [class*="spec"], [data-testid*="spec"]').length > 0;
+          results.push({
+            url, status: "ok", htmlLength: html.length, title,
+            hasSpecs,
+            blocked: html.length < 5000,
+          });
+        } catch (err) {
+          results.push({ url, status: "error", error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    } else if (strategy === "playwright") {
+      // Direct Playwright fetch, no warmup
+      const { chromium } = await import("playwright");
+      const browser = await chromium.launch({ headless: true, channel: "chrome", args: ["--no-sandbox"] });
+      const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      });
+      for (const url of testUrls) {
+        try {
+          await delayFn(delayMs);
+          const page = await context.newPage();
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.waitForTimeout(2000);
+          const html = await page.content();
+          await page.close();
+          const $ = cheerio.load(html);
+          const title = $("title").text().trim();
+          results.push({
+            url, status: "ok", htmlLength: html.length, title,
+            blocked: html.length < 5000 || html.includes("Access Denied"),
+          });
+        } catch (err) {
+          results.push({ url, status: "error", error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      await browser.close();
+    } else if (strategy === "playwright-warm") {
+      // Playwright with listing page warmup first
+      const { chromium } = await import("playwright");
+      const browser = await chromium.launch({ headless: true, channel: "chrome", args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] });
+      const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        viewport: { width: 1280, height: 720 },
+      });
+      const page = await context.newPage();
+      // Warm up on listing page
+      await page.goto("https://www.rei.com/c/snowboards", { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(3000);
+      results.push({ step: "warmup", status: "ok", title: await page.title() });
+
+      for (const url of testUrls) {
+        try {
+          await delayFn(delayMs);
+          await page.goto(url, { waitUntil: "load", timeout: 45000 });
+          await page.waitForTimeout(3000);
+          const html = await page.content();
+          const $ = cheerio.load(html);
+          const title = $("title").text().trim();
+          // Extract specs if available
+          const specs: Record<string, string> = {};
+          $("table tr").each((_, row) => {
+            const cells = $(row).find("td, th");
+            if (cells.length >= 2) {
+              const key = $(cells[0]).text().trim();
+              const val = $(cells[1]).text().trim();
+              if (key && val) specs[key] = val;
+            }
+          });
+          // Also try dt/dd
+          $("dt").each((_, dt) => {
+            const key = $(dt).text().trim();
+            const dd = $(dt).next("dd");
+            const val = dd.text().trim();
+            if (key && val) specs[key] = val;
+          });
+          results.push({
+            url, status: "ok", htmlLength: html.length, title,
+            blocked: html.length < 5000 || html.includes("Access Denied"),
+            specCount: Object.keys(specs).length,
+            specs: Object.keys(specs).length > 0 ? specs : undefined,
+          });
+        } catch (err) {
+          results.push({ url, status: "error", error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      await browser.close();
+    }
+
+    return NextResponse.json({ action, strategy, delayMs, results });
+  }
+
+  if (action === "rei-cached-detail") {
+    // Analyze the one successfully cached REI detail page to understand HTML structure
+    const cheerio = await import("cheerio");
+    const db = getDb();
+    const row = db.prepare("SELECT url, body FROM http_cache WHERE url LIKE '%rei.com/product%' AND LENGTH(body) > 5000 LIMIT 1").get() as { url: string; body: string } | undefined;
+    if (!row) return NextResponse.json({ error: "No cached REI detail page" });
+
+    const $ = cheerio.load(row.body);
+
+    // Find spec-related sections
+    const specSections: { selector: string; count: number; samples: string[] }[] = [];
+    for (const sel of [
+      "table", "dl", "dt", "[class*='spec']", "[class*='Spec']",
+      "[class*='feature']", "[class*='Feature']", "[data-testid]",
+      "[class*='detail']", "[class*='Detail']",
+      "[id*='spec']", "[id*='feature']",
+    ]) {
+      const els = $(sel);
+      if (els.length > 0) {
+        const samples: string[] = [];
+        els.each((i, el) => {
+          if (i < 3) samples.push($(el).toString().slice(0, 1500));
+        });
+        specSections.push({ selector: sel, count: els.length, samples });
+      }
+    }
+
+    // Extract all data-testid values
+    const testIds: string[] = [];
+    $("[data-testid]").each((_, el) => {
+      testIds.push($(el).attr("data-testid") || "");
+    });
+
+    // JSON-LD
+    const jsonLd: unknown[] = [];
+    $("script[type='application/ld+json']").each((_, el) => {
+      try { jsonLd.push(JSON.parse($(el).text())); } catch { /* skip */ }
+    });
+
+    // Try extracting specs via various patterns
+    const extractedSpecs: Record<string, string> = {};
+    $("table tr").each((_, row) => {
+      const cells = $(row).find("td, th");
+      if (cells.length >= 2) {
+        const key = $(cells[0]).text().trim();
+        const val = $(cells[1]).text().trim();
+        if (key && val && key.length < 50) extractedSpecs[key] = val.slice(0, 200);
+      }
+    });
+    $("dt").each((_, dt) => {
+      const key = $(dt).text().trim();
+      const dd = $(dt).next("dd");
+      const val = dd.text().trim();
+      if (key && val && key.length < 50) extractedSpecs[key] = val.slice(0, 200);
+    });
+
+    return NextResponse.json({
+      action, url: row.url, htmlLength: row.body.length,
+      uniqueTestIds: [...new Set(testIds)],
+      specSections,
+      jsonLd,
+      extractedSpecs,
+    });
+  }
+
+  if (action === "slow-scrape") {
+    // Slowly fetch rate-limited pages (REI detail pages) to populate http_cache.
+    // Fetches one uncached URL at a time with configurable delay between attempts.
+    // Stops on first WAF block. Run repeatedly (minutes apart) to build up cache.
+    //
+    // Usage: ./debug.sh '{"action":"slow-scrape"}'
+    //        ./debug.sh '{"action":"slow-scrape","delayMs":30000,"maxPages":3}'
+    //        ./debug.sh '{"action":"slow-scrape","useSystemChrome":true}'
+    const { delay: delayFn } = await import("@/lib/scraping/utils");
+    const { getHttpCache, setHttpCache } = await import("@/lib/scraping/http-cache");
+    const db = getDb();
+
+    const delayMs = body.delayMs || 20000; // 20s between requests by default
+    const maxPages = body.maxPages || 5;   // max pages per invocation
+    const useSystemChrome = body.useSystemChrome || false;
+
+    // Collect all REI product URLs from listings table
+    const reiUrls = db.prepare(
+      "SELECT DISTINCT url FROM listings WHERE retailer = 'rei' ORDER BY url"
+    ).all() as { url: string }[];
+
+    // Filter to uncached URLs
+    const uncached = reiUrls.filter(r => !getHttpCache(r.url));
+    const alreadyCached = reiUrls.length - uncached.length;
+
+    console.log(`[slow-scrape] REI: ${alreadyCached}/${reiUrls.length} cached, ${uncached.length} remaining`);
+
+    const results: { url: string; status: string; htmlLength?: number; error?: string }[] = [];
+    let blocked = false;
+
+    if (useSystemChrome) {
+      // Connect to running Chrome via CDP (launch Chrome with --remote-debugging-port=9222)
+      const { chromium } = await import("playwright");
+
+      let browser;
+      try {
+        browser = await chromium.connectOverCDP("http://localhost:9222");
+        console.log(`[slow-scrape] Connected to Chrome via CDP`);
+      } catch (err) {
+        return NextResponse.json({
+          action,
+          error: "Could not connect to Chrome. Launch Chrome with: /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      try {
+        const context = browser.contexts()[0] || await browser.newContext();
+
+        for (let i = 0; i < Math.min(uncached.length, maxPages); i++) {
+          const { url } = uncached[i];
+          if (i > 0) {
+            console.log(`[slow-scrape] Waiting ${delayMs}ms...`);
+            await delayFn(delayMs);
+          }
+
+          try {
+            console.log(`[slow-scrape] Fetching (CDP) ${url}`);
+            const page = await context.newPage();
+            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+            await delayFn(3000);
+            const html = await page.content();
+            await page.close();
+
+            if (html.length < 5000 || html.includes("Access Denied")) {
+              console.log(`[slow-scrape] Blocked (${html.length} bytes)`);
+              results.push({ url, status: "blocked", htmlLength: html.length });
+              blocked = true;
+              break;
+            }
+
+            setHttpCache(url, html);
+            console.log(`[slow-scrape] OK (${html.length} bytes), cached`);
+            results.push({ url, status: "ok", htmlLength: html.length });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.log(`[slow-scrape] Failed: ${msg}`);
+            results.push({ url, status: "error", error: msg });
+            blocked = true;
+            break;
+          }
+        }
+      } finally {
+        // Disconnect but don't close — it's the user's browser
+        browser.close().catch(() => {});
+      }
+    } else {
+      // Plain HTTP fetch (no browser)
+      const { fetchPage } = await import("@/lib/scraping/utils");
+
+      for (let i = 0; i < Math.min(uncached.length, maxPages); i++) {
+        const { url } = uncached[i];
+        if (i > 0) {
+          console.log(`[slow-scrape] Waiting ${delayMs}ms before next request...`);
+          await delayFn(delayMs);
+        }
+
+        try {
+          console.log(`[slow-scrape] Fetching ${url}`);
+          const html = await fetchPage(url, { timeoutMs: 25000 });
+
+          if (html.length < 5000) {
+            console.log(`[slow-scrape] Blocked (${html.length} bytes), stopping`);
+            results.push({ url, status: "blocked", htmlLength: html.length });
+            blocked = true;
+            break;
+          }
+
+          console.log(`[slow-scrape] OK (${html.length} bytes)`);
+          results.push({ url, status: "ok", htmlLength: html.length });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`[slow-scrape] Failed: ${msg}`);
+          results.push({ url, status: "error", error: msg });
+          blocked = true;
+          break;
+        }
+      }
+    }
+
+    return NextResponse.json({
+      action,
+      strategy: useSystemChrome ? "system-chrome" : "plain-http",
+      delayMs,
+      maxPages,
+      totalUrls: reiUrls.length,
+      alreadyCached,
+      remaining: uncached.length - results.filter(r => r.status === "ok").length,
+      fetched: results,
+      blocked,
+    });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

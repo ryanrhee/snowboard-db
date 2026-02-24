@@ -178,7 +178,7 @@ interface Resolvable {
   abilityLevelMax: string | null;
 }
 
-export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Promise<T[]> {
+export async function resolveSpecSources<T extends Resolvable>(boards: T[], opts?: { skipJudgment?: boolean }): Promise<T[]> {
   // Group boards by specKey to avoid redundant resolution
   const keyToBoards = new Map<string, T[]>();
   for (const board of boards) {
@@ -286,34 +286,40 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
   }
 
   // Second pass: resolve disagreements via LLM judgment (concurrency 3)
-  const JUDGMENT_CONCURRENCY = 3;
-  for (let i = 0; i < disagreements.length; i += JUDGMENT_CONCURRENCY) {
-    const batch = disagreements.slice(i, i + JUDGMENT_CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async (d) => {
-        console.log(`[spec-resolution] Judging disagreement: ${d.ctx.brand} ${d.ctx.model} ${d.field}`);
-        const judgment = await judgeDisagreement(d.ctx);
-        return { ...d, judgment };
-      })
-    );
+  if (opts?.skipJudgment) {
+    if (disagreements.length > 0) {
+      console.log(`[spec-resolution] Skipping ${disagreements.length} judgment calls (skipJudgment=true)`);
+    }
+  } else {
+    const JUDGMENT_CONCURRENCY = 3;
+    for (let i = 0; i < disagreements.length; i += JUDGMENT_CONCURRENCY) {
+      const batch = disagreements.slice(i, i + JUDGMENT_CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (d) => {
+          console.log(`[spec-resolution] Judging disagreement: ${d.ctx.brand} ${d.ctx.model} ${d.field}`);
+          const judgment = await judgeDisagreement(d.ctx);
+          return { ...d, judgment };
+        })
+      );
 
-    for (const { key, field, judgment } of results) {
-      if (!judgment) continue;
+      for (const { key, field, judgment } of results) {
+        if (!judgment) continue;
 
-      const fieldInfoMap = resolvedMap.get(key)!;
-      const fieldInfo = fieldInfoMap[field];
+        const fieldInfoMap = resolvedMap.get(key)!;
+        const fieldInfo = fieldInfoMap[field];
 
-      // Store judgment in spec_sources
-      setSpecSource(key, field, "judgment", judgment.chosenValue);
+        // Store judgment in spec_sources
+        setSpecSource(key, field, "judgment", judgment.chosenValue);
 
-      // Update field info with judgment
-      fieldInfo.resolved = judgment.chosenValue;
-      fieldInfo.resolvedSource = "judgment";
-      fieldInfo.judgment = judgment;
-      fieldInfo.sources.push({
-        source: "judgment",
-        value: judgment.chosenValue,
-      });
+        // Update field info with judgment
+        fieldInfo.resolved = judgment.chosenValue;
+        fieldInfo.resolvedSource = "judgment";
+        fieldInfo.judgment = judgment;
+        fieldInfo.sources.push({
+          source: "judgment",
+          value: judgment.chosenValue,
+        });
+      }
     }
   }
 

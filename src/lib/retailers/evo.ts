@@ -69,7 +69,7 @@ function parseProductCards(html: string): Partial<RawBoard>[] {
   return boards;
 }
 
-async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | null> {
+async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | RawBoard[] | null> {
   if (!partial.url) return null;
 
   try {
@@ -157,12 +157,115 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       if (m) widthMm = parseFloat(m[1]);
     }
 
+    // PowerReviews rating/review count
+    const ratingEl = $(".pr-snippet-rating-decimal").first();
+    if (ratingEl.length) {
+      const ratingText = ratingEl.text().trim();
+      if (ratingText) specs["rating"] = ratingText;
+    }
+    const reviewCountEl = $(".pr-snippet-review-count").first();
+    if (reviewCountEl.length) {
+      const countText = reviewCountEl.text().trim();
+      const countMatch = countText.match(/(\d+)/);
+      if (countMatch) specs["review count"] = countMatch[1];
+    }
+
     if (!salePrice) return null;
 
     // Description fallback
     if (!description) {
       const descEl = $(".pdp-description, .product-description").first();
       if (descEl.length) description = descEl.text().trim().slice(0, 1000);
+    }
+
+    // Parse size chart from .spec-table for per-size widthMm and rider weight
+    const sizeChart: { sizeCm: number; widthMm?: number; riderWeight?: string }[] = [];
+    const specTable = $(".spec-table").first();
+    if (specTable.length) {
+      const rows = specTable.find("tr");
+      // Build column-indexed data: first row has size labels
+      const sizeLabels: string[] = [];
+      const rowData: { label: string; values: string[] }[] = [];
+
+      rows.each((i, row) => {
+        const cells = $(row).find("td, th");
+        if (i === 0) {
+          // Size row — skip first cell (header), rest are sizes
+          cells.each((j, cell) => {
+            if (j === 0) return;
+            sizeLabels.push($(cell).text().trim());
+          });
+        } else {
+          const label = $(cells[0]).text().trim().toLowerCase();
+          const values: string[] = [];
+          cells.each((j, cell) => {
+            if (j === 0) return;
+            values.push($(cell).text().trim());
+          });
+          rowData.push({ label, values });
+        }
+      });
+
+      // Find waist width and rider weight rows
+      const waistRow = rowData.find(r => r.label.includes("waist width") || r.label.includes("waist"));
+      const weightRow = rowData.find(r => r.label.includes("rider weight") || r.label.includes("weight range"));
+
+      for (let i = 0; i < sizeLabels.length; i++) {
+        const sizeLabel = sizeLabels[i];
+        const parsed = parseLengthCm(sizeLabel);
+        if (!parsed) continue;
+
+        const width = waistRow?.values[i];
+        const weight = weightRow?.values[i];
+        const widthVal = width ? parseFloat(width) : undefined;
+
+        sizeChart.push({
+          sizeCm: parsed,
+          widthMm: widthVal && !isNaN(widthVal) ? widthVal : undefined,
+          riderWeight: weight || undefined,
+        });
+      }
+    }
+
+    // If we have a size chart with multiple entries, return one board per size
+    if (sizeChart.length > 1) {
+      const results: RawBoard[] = [];
+      for (const entry of sizeChart) {
+        const sizeSpecs = { ...specs };
+        if (entry.riderWeight) sizeSpecs["rider weight"] = entry.riderWeight;
+
+        results.push({
+          retailer: "evo",
+          region: Region.US,
+          url: partial.url,
+          imageUrl,
+          brand: brand ? normalizeBrand(brand) : "Unknown",
+          model: model || "Unknown",
+          year: undefined,
+          lengthCm: entry.sizeCm,
+          widthMm: entry.widthMm,
+          flex,
+          profile,
+          shape,
+          category,
+          abilityLevel,
+          originalPrice,
+          salePrice,
+          currency: Currency.USD,
+          availability: availability || "in_stock",
+          description: description?.slice(0, 1000),
+          specs: sizeSpecs,
+          scrapedAt: new Date().toISOString(),
+        });
+      }
+      return results;
+    }
+
+    // Single board return (no size chart or only one entry)
+    if (sizeChart.length === 1) {
+      lengthCm = lengthCm || sizeChart[0].sizeCm;
+      widthMm = widthMm || sizeChart[0].widthMm;
+      if (sizeChart[0].riderWeight) specs["rider weight"] = sizeChart[0].riderWeight;
     }
 
     return {
@@ -213,7 +316,10 @@ export const evo: RetailerModule = {
     const boards: RawBoard[] = [];
     for (const partial of withUrls) {
       const result = await fetchBoardDetails(partial);
-      if (result) boards.push(result);
+      if (result) {
+        if (Array.isArray(result)) boards.push(...result);
+        else boards.push(result);
+      }
     }
 
     console.log(`[evo] Successfully scraped ${boards.length} boards`);
