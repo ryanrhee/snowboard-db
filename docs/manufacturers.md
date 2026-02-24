@@ -261,6 +261,40 @@ Strips "Season" brand prefix, " Snowboard" suffix, and year suffixes.
 | Telos | 1 | 1 | No | 0 |
 | Weston | 1 | 4 | No | 0 |
 
+### Property coverage by scraper
+
+Total boards scraped and number with each core property filled in:
+
+| Scraper | # Boards | flex | profile | shape | category | ability level |
+|---------|----------|------|---------|-------|----------|---------------|
+| Burton | 34 | 34 (100%) | 34 (100%) | 34 (100%) | 31 (91%) | 31 (91%) |
+| CAPiTA | 39 | 39 (100%) | 30 (77%) | 31 (79%) | 31 (79%) | 39 (100%) |
+| Jones | 39 | 39 (100%) | 18 (46%) | 29 (74%) | 34 (87%) | 6 (15%) |
+| Lib Tech | 29 | 29 (100%) | 16 (55%) | 14 (48%) | 29 (100%) | 26 (90%) |
+| GNU | 25 | 24 (96%) | 15 (60%) | 13 (52%) | 25 (100%) | 2 (8%) |
+| Yes. | 22 | 1 (5%) | — | 14 (64%) | 9 (41%) | 2 (9%) |
+| Season | 5 | 3 (60%) | 2 (40%) | 4 (80%) | 5 (100%) | 1 (20%) |
+
+**Extras coverage** (non-core properties stored in `extras` field of `spec_sources`):
+
+| Scraper | Notable extras |
+|---------|----------------|
+| Burton | bend, camber, effective edge, nose/tail width, rider weight range, sidecut radius, stance location, stance width, taper, terrain, waist width (all 34/34) |
+| CAPiTA | hexagon scores: jibbing, skill level, powder, groomers, versatility, jumps (all 39/39); tags |
+| Jones | tags (39/39), gender (15/39) |
+| Lib Tech | spec table: contact length, nose/tail width, sidecut, waist width, weight range, surface area (29/29); stance setback (26–28/29) |
+| GNU | spec table: contact length, nose/tail width, sidecut, waist width, weight range (24/25); stance setback (23–24/25) |
+| Yes. | tags (22/22), gender (6/22) |
+| Season | (none) |
+
+**Key gaps:**
+
+- **Profile** is weakest for Jones (46%), Lib Tech (55%), and GNU (60%). These brands embed profile info in descriptions that don't always use detectable keywords.
+- **Shape** is weakest for Lib Tech (48%) and GNU (52%) — same issue with description-based extraction.
+- **Ability level** is very sparse for Jones (15%) and GNU (8%). Jones rarely mentions ability keywords in descriptions. GNU's infographic-based inference only covers 2 boards.
+- **Yes.** has almost no flex data (5%) — the brand simply doesn't publish flex ratings on their site.
+- **Burton** and **CAPiTA** have the most complete coverage overall, with structured data sources (Bootstrap JSON and hexagon charts respectively).
+
 ### Priority candidates for new scrapers
 
 Ranked by impact (board count × listing count × feasibility):
