@@ -1,5 +1,11 @@
 # Task 16: Separate HTTP/HTML cache from scraped data
 
+**Completed: 2026-02-24**
+
+## Summary
+
+Separated `http_cache`, `review_sitemap_cache`, and `review_url_map` tables into a new `data/http-cache.db` file (`CACHE_DB_PATH` env var). Added `getCacheDb()` singleton in `db.ts` with automatic one-time migration from the main DB. Updated all cache access sites (`http-cache.ts`, `lt-infographics/route.ts`, and review cache functions in `db.ts`) to use the new connection. Updated `.env.local` and `CLAUDE.md` documentation.
+
 ## Problem
 
 The `http_cache` table lives in the same SQLite database (`data/snowboard-finder.db`) as pipeline output tables (`boards`, `listings`, `search_runs`) and spec data (`spec_sources`, `spec_cache`). This coupling makes it awkward to reset and re-run scraping or pipeline stages independently:

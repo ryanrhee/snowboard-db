@@ -21,9 +21,16 @@ while true; do npx next dev -p 3099 2>&1 | tee output.txt; echo "--- restarted -
 
 ## Database
 
-Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env var).
+Two SQLite files:
+
+- **`data/snowboard-finder.db`** (`DB_PATH` env var) — Pipeline output and spec data. Safe to delete and re-derive.
+- **`data/http-cache.db`** (`CACHE_DB_PATH` env var) — Long-lived caches (~50MB). Expensive to rebuild.
+
+On first run after the split, cache tables are automatically migrated from the main DB to the cache DB.
 
 ### Schema
+
+#### Main DB (`data/snowboard-finder.db`)
 
 **Pipeline output** (re-derived each run, safe to clear):
 
@@ -37,7 +44,7 @@ Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env
 - **`spec_sources`** — Multi-source spec provenance. Keyed by `(brand_model, field, source)`. Sources: `manufacturer`, `review-site`, `retailer:*`, `llm`, `judgment`. Fields: flex, profile, shape, category, abilityLevel, plus extras.
 - **`spec_cache`** — Enrichment result cache keyed by input hash (hash of scraper output). Stores resolved flex/profile/shape/category/msrp with source attribution.
 
-**Caches** (avoid network requests, expensive to rebuild):
+#### Cache DB (`data/http-cache.db`)
 
 - **`http_cache`** — Raw HTML bodies keyed by URL hash. 24-hour default TTL. ~50MB for ~140 pages.
 - **`review_sitemap_cache`** — The Good Ride sitemap entries (URL → brand/model mapping). ~625 entries.
@@ -45,7 +52,7 @@ Single SQLite file at `data/snowboard-finder.db` (configurable via `DB_PATH` env
 
 ## Re-running the Pipeline from Cached HTML
 
-The HTTP cache (`http_cache` table in `data/snowboard-finder.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
+The HTTP cache (`http_cache` table in `data/http-cache.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
 
 ### Quick re-run (no enrichment)
 
@@ -66,7 +73,7 @@ Runs `runSearchPipeline({ skipEnrichment: false })` — same as above but also h
 ### Reset pipeline output + re-run
 
 ```bash
-# Clear pipeline output, keep cached HTML and spec data
+# Clear pipeline output (main DB only — cache DB is untouched)
 sqlite3 data/snowboard-finder.db "
   DELETE FROM listings;
   DELETE FROM boards;
@@ -79,24 +86,24 @@ sqlite3 data/snowboard-finder.db "
 ### Extend cache TTL (if entries are >24h old)
 
 ```bash
-sqlite3 data/snowboard-finder.db "
+sqlite3 data/http-cache.db "
   UPDATE http_cache SET ttl_ms = 7 * 24 * 60 * 60 * 1000;
 "
 ```
 
 ### Table reference
 
-| Table | Safe to clear? | Notes |
-|-------|---------------|-------|
-| `http_cache` | **No** | Raw HTML — keeps you off the network |
-| `review_sitemap_cache` | **No** | The Good Ride sitemap cache |
-| `review_url_map` | **No** | Board → review URL mappings |
-| `spec_sources` | Only to re-derive | Accumulated specs from mfr/retailer/review/llm |
-| `spec_cache` | Only to re-enrich | Enrichment results keyed by input hash |
-| `search_runs` | Yes | Pipeline run metadata |
-| `boards` | Yes | Re-derived from raw data each run |
-| `listings` | Yes | Re-derived from raw data each run |
-| `boards_legacy` | Yes | Deprecated old schema |
+| Table | DB file | Safe to clear? | Notes |
+|-------|---------|---------------|-------|
+| `http_cache` | `http-cache.db` | **No** | Raw HTML — keeps you off the network |
+| `review_sitemap_cache` | `http-cache.db` | **No** | The Good Ride sitemap cache |
+| `review_url_map` | `http-cache.db` | **No** | Board → review URL mappings |
+| `spec_sources` | `snowboard-finder.db` | Only to re-derive | Accumulated specs from mfr/retailer/review/llm |
+| `spec_cache` | `snowboard-finder.db` | Only to re-enrich | Enrichment results keyed by input hash |
+| `search_runs` | `snowboard-finder.db` | Yes | Pipeline run metadata |
+| `boards` | `snowboard-finder.db` | Yes | Re-derived from raw data each run |
+| `listings` | `snowboard-finder.db` | Yes | Re-derived from raw data each run |
+| `boards_legacy` | `snowboard-finder.db` | Yes | Deprecated old schema |
 
 ## Task Tracking
 

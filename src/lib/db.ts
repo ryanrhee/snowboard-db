@@ -7,6 +7,7 @@ import { normalizeModel } from "./normalization";
 import { canonicalizeBrand } from "./scraping/utils";
 
 let db: Database.Database | null = null;
+let cacheDb: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -26,6 +27,25 @@ export function getDb(): Database.Database {
 
   initSchema(db);
   return db;
+}
+
+export function getCacheDb(): Database.Database {
+  if (cacheDb) return cacheDb;
+
+  const dbPath = path.resolve(process.cwd(), config.cacheDbPath);
+  const dir = path.dirname(dbPath);
+
+  const fs = require("fs");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  cacheDb = new Database(dbPath);
+  cacheDb.pragma("journal_mode = WAL");
+
+  initCacheSchema(cacheDb);
+  migrateCacheFromMainDb(cacheDb);
+  return cacheDb;
 }
 
 function initSchema(db: Database.Database): void {
@@ -57,30 +77,8 @@ function initSchema(db: Database.Database): void {
   if (!colNames.has("source_url")) db.exec("ALTER TABLE spec_cache ADD COLUMN source_url TEXT");
   if (!colNames.has("updated_at")) db.exec("ALTER TABLE spec_cache ADD COLUMN updated_at TEXT");
 
-  // Review site tables, http cache, spec sources
+  // Spec sources, spec cache
   db.exec(`
-    CREATE TABLE IF NOT EXISTS review_sitemap_cache (
-      url TEXT PRIMARY KEY,
-      slug TEXT,
-      brand TEXT,
-      model TEXT,
-      fetched_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS review_url_map (
-      brand_model TEXT PRIMARY KEY,
-      review_url TEXT,
-      resolved_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS http_cache (
-      url_hash     TEXT PRIMARY KEY,
-      url          TEXT NOT NULL,
-      body         TEXT NOT NULL,
-      fetched_at   INTEGER NOT NULL,
-      ttl_ms       INTEGER NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS spec_sources (
       brand_model TEXT NOT NULL,
       field       TEXT NOT NULL,
@@ -94,6 +92,77 @@ function initSchema(db: Database.Database): void {
 
   // ===== Migration: old listing-shaped boards → new board-centric model =====
   migrateToNewModel(db);
+}
+
+function initCacheSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS http_cache (
+      url_hash     TEXT PRIMARY KEY,
+      url          TEXT NOT NULL,
+      body         TEXT NOT NULL,
+      fetched_at   INTEGER NOT NULL,
+      ttl_ms       INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS review_sitemap_cache (
+      url TEXT PRIMARY KEY,
+      slug TEXT,
+      brand TEXT,
+      model TEXT,
+      fetched_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS review_url_map (
+      brand_model TEXT PRIMARY KEY,
+      review_url TEXT,
+      resolved_at TEXT
+    );
+  `);
+}
+
+function migrateCacheFromMainDb(cacheDatabase: Database.Database): void {
+  const mainDbPath = path.resolve(process.cwd(), config.dbPath);
+  const fs = require("fs");
+  if (!fs.existsSync(mainDbPath)) return;
+
+  // Check if main DB has any of the cache tables
+  const mainDb = new Database(mainDbPath);
+  const tables = mainDb
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('http_cache', 'review_sitemap_cache', 'review_url_map')"
+    )
+    .all() as { name: string }[];
+
+  if (tables.length === 0) {
+    mainDb.close();
+    return;
+  }
+
+  const tableNames = tables.map((t) => t.name);
+  console.log(`[cache-db] Migrating cache tables from main DB: ${tableNames.join(", ")}`);
+
+  cacheDatabase.exec(`ATTACH DATABASE '${mainDbPath}' AS main_db`);
+
+  for (const table of tableNames) {
+    const count = (
+      cacheDatabase.prepare(`SELECT count(*) as c FROM main_db.${table}`).get() as { c: number }
+    ).c;
+    if (count > 0) {
+      cacheDatabase
+        .prepare(`INSERT OR IGNORE INTO ${table} SELECT * FROM main_db.${table}`)
+        .run();
+      console.log(`[cache-db] Copied ${count} rows from main_db.${table}`);
+    }
+  }
+
+  // Drop the cache tables from main DB
+  for (const table of tableNames) {
+    cacheDatabase.exec(`DROP TABLE main_db.${table}`);
+  }
+  console.log("[cache-db] Dropped cache tables from main DB");
+
+  cacheDatabase.exec("DETACH DATABASE main_db");
+  mainDb.close();
 }
 
 function migrateToNewModel(db: Database.Database): void {
@@ -657,7 +726,7 @@ export interface SitemapEntry {
 }
 
 export function getSitemapCache(): SitemapEntry[] {
-  const db = getDb();
+  const db = getCacheDb();
   const rows = db
     .prepare("SELECT url, slug, brand, model, fetched_at FROM review_sitemap_cache")
     .all() as Record<string, unknown>[];
@@ -671,7 +740,7 @@ export function getSitemapCache(): SitemapEntry[] {
 }
 
 export function setSitemapCache(entries: SitemapEntry[]): void {
-  const db = getDb();
+  const db = getCacheDb();
   // Clear old entries and insert new ones
   const clear = db.prepare("DELETE FROM review_sitemap_cache");
   const insert = db.prepare(
@@ -695,7 +764,7 @@ const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
  * Returns: string (hit), null (cached miss), undefined (not cached / expired).
  */
 export function getReviewUrlMap(brandModel: string): string | null | undefined {
-  const db = getDb();
+  const db = getCacheDb();
   const row = db
     .prepare("SELECT review_url, resolved_at FROM review_url_map WHERE brand_model = ?")
     .get(brandModel) as Record<string, unknown> | undefined;
@@ -716,7 +785,7 @@ export function getReviewUrlMap(brandModel: string): string | null | undefined {
 }
 
 export function setReviewUrlMap(brandModel: string, reviewUrl: string | null): void {
-  const db = getDb();
+  const db = getCacheDb();
   db.prepare(
     "INSERT OR REPLACE INTO review_url_map (brand_model, review_url, resolved_at) VALUES (?, ?, ?)"
   ).run(brandModel, reviewUrl, new Date().toISOString());

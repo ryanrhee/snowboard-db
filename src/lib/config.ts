@@ -1,5 +1,6 @@
 export const config = {
   dbPath: process.env.DB_PATH || "data/snowboard-finder.db",
+  cacheDbPath: process.env.CACHE_DB_PATH || "data/http-cache.db",
   scrapeDelayMs: parseInt(process.env.SCRAPE_DELAY_MS || "1000", 10),
   krwToUsdRate: parseFloat(process.env.KRW_TO_USD_RATE || "0.00074"),
   maxConcurrentRetailers: parseInt(process.env.MAX_CONCURRENT_RETAILERS || "3", 10),

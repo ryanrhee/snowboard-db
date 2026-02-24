@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { getDb } from "../db";
+import { getCacheDb } from "../db";
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -15,7 +15,7 @@ export function getHttpCache(url: string, ttlMs?: number): string | null {
   const ttl = ttlMs ?? DEFAULT_TTL_MS;
   if (ttl === 0) return null;
 
-  const db = getDb();
+  const db = getCacheDb();
   const row = db
     .prepare("SELECT body, fetched_at, ttl_ms FROM http_cache WHERE url_hash = ?")
     .get(urlHash(url)) as { body: string; fetched_at: number; ttl_ms: number } | undefined;
@@ -39,7 +39,7 @@ export function setHttpCache(
   options?: { ttlMs?: number }
 ): void {
   const ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS;
-  const db = getDb();
+  const db = getCacheDb();
   db.prepare(
     `INSERT OR REPLACE INTO http_cache (url_hash, url, body, fetched_at, ttl_ms)
      VALUES (?, ?, ?, ?, ?)`
@@ -50,7 +50,7 @@ export function setHttpCache(
  * Delete all expired entries. Returns the number of rows deleted.
  */
 export function pruneHttpCache(): number {
-  const db = getDb();
+  const db = getCacheDb();
   const result = db
     .prepare("DELETE FROM http_cache WHERE fetched_at + ttl_ms < ?")
     .run(Date.now());
@@ -64,6 +64,6 @@ export function pruneHttpCache(): number {
  * Wipe all cache entries.
  */
 export function clearHttpCache(): void {
-  const db = getDb();
+  const db = getCacheDb();
   db.prepare("DELETE FROM http_cache").run();
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getCacheDb } from "@/lib/db";
 import * as cheerio from "cheerio";
 import { inferRiderLevelFromInfographic } from "@/lib/manufacturers/lib-tech";
 import {
@@ -16,7 +16,7 @@ interface InfographicEntry {
 
 export async function GET() {
   try {
-    const db = getDb();
+    const db = getCacheDb();
     const rows = db
       .prepare(
         "SELECT url, body FROM http_cache WHERE url LIKE '%lib-tech.com/%' AND url NOT LIKE '%/snowboards'"
