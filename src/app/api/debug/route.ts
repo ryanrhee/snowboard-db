@@ -1169,5 +1169,202 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  if (action === "evo-detail-html") {
+    const { fetchPageWithBrowser } = await import("@/lib/scraping/utils");
+    const cheerio = await import("cheerio");
+    const url = body.url || "https://www.evo.com/snowboards/gnu-money-snowboard";
+    const html = await fetchPageWithBrowser(url);
+    const $ = cheerio.load(html);
+
+    // Look for spec sections
+    const specSections: { selector: string; html: string }[] = [];
+    for (const sel of [
+      "[class*='spec']", "[class*='Spec']", "[class*='detail']", "[class*='Detail']",
+      "[class*='feature']", "[class*='Feature']", "[class*='tech']", "[class*='Tech']",
+      "table", "dl", ".pdp-specs", ".product-specs",
+    ]) {
+      $(sel).each((_, el) => {
+        const h = $(el).toString();
+        if (h.length < 8000 && specSections.length < 25) {
+          specSections.push({ selector: sel, html: h.slice(0, 3000) });
+        }
+      });
+    }
+
+    // JSON-LD
+    const jsonLd: unknown[] = [];
+    $("script[type='application/ld+json']").each((_, el) => {
+      try { jsonLd.push(JSON.parse($(el).text())); } catch { /* skip */ }
+    });
+
+    // Keyword search
+    const htmlLower = html.toLowerCase();
+    const keywords = ["flex", "profile", "camber", "rocker", "shape", "terrain", "ability", "skill", "best for", "riding style"];
+    const keywordHits: Record<string, { count: number; context: string }> = {};
+    for (const kw of keywords) {
+      const idx = htmlLower.indexOf(kw);
+      if (idx >= 0) {
+        keywordHits[kw] = {
+          count: htmlLower.split(kw).length - 1,
+          context: html.slice(Math.max(0, idx - 100), idx + kw.length + 200),
+        };
+      }
+    }
+
+    return NextResponse.json({ action, url, htmlLength: html.length, specSections, jsonLd, keywordHits });
+  }
+
+  if (action === "rei-product-data") {
+    // Inspect the raw product objects from REI listing pages to see available fields
+    const db = getDb();
+    const rows = db.prepare("SELECT url, body FROM http_cache WHERE url LIKE '%rei.com/c/snowboards%'").all() as { url: string; body: string }[];
+    const products: unknown[] = [];
+    for (const row of rows) {
+      const linkPattern = /"link":"\/product\/\d+\//g;
+      const matches = [...row.body.matchAll(linkPattern)];
+      for (const match of matches.slice(0, 3)) {
+        const startIdx = match.index!;
+        let depth = 0;
+        let objStart = startIdx;
+        for (let i = startIdx; i >= Math.max(0, startIdx - 5000); i--) {
+          if (row.body[i] === "}") depth++;
+          if (row.body[i] === "{") { depth--; if (depth < 0) { objStart = i; break; } }
+        }
+        depth = 0;
+        let objEnd = startIdx;
+        for (let i = objStart; i < Math.min(row.body.length, objStart + 10000); i++) {
+          if (row.body[i] === "{") depth++;
+          if (row.body[i] === "}") { depth--; if (depth === 0) { objEnd = i + 1; break; } }
+        }
+        try {
+          const product = JSON.parse(row.body.slice(objStart, objEnd));
+          products.push(product);
+        } catch { /* skip */ }
+      }
+      if (products.length >= 3) break;
+    }
+    return NextResponse.json({ action, sampleCount: products.length, products });
+  }
+
+  if (action === "rei-detail-html") {
+    const { chromium } = await import("playwright");
+    const cheerio = await import("cheerio");
+    const targetUrl = body.url || "https://www.rei.com/product/236379/jones-flagship-snowboard-20252026";
+
+    const browser = await chromium.launch({
+      headless: true,
+      channel: "chrome",
+      args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+    });
+    const context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      viewport: { width: 1280, height: 720 },
+    });
+    const page = await context.newPage();
+
+    // Navigate to listing page first to establish cookies
+    await page.goto("https://www.rei.com/c/snowboards", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(3000);
+
+    // Now navigate to detail page in same tab
+    await page.goto(targetUrl, { waitUntil: "load", timeout: 45000 });
+    await page.waitForTimeout(3000);
+
+    const html = await page.content();
+    await browser.close();
+
+    const $ = cheerio.load(html);
+
+    // Look for spec sections
+    const specSections: { selector: string; html: string }[] = [];
+    for (const sel of [
+      "[class*='spec']", "[class*='Spec']", "[class*='detail']", "[class*='Detail']",
+      "[class*='feature']", "[class*='Feature']", "[class*='tech']", "[class*='Tech']",
+      "table", "dl", "#specs", "#product-specs",
+    ]) {
+      $(sel).each((_, el) => {
+        const h = $(el).toString();
+        if (h.length < 8000 && specSections.length < 25) {
+          specSections.push({ selector: sel, html: h.slice(0, 3000) });
+        }
+      });
+    }
+
+    // JSON-LD
+    const jsonLd: unknown[] = [];
+    $("script[type='application/ld+json']").each((_, el) => {
+      try { jsonLd.push(JSON.parse($(el).text())); } catch { /* skip */ }
+    });
+
+    // Keyword search
+    const htmlLower = html.toLowerCase();
+    const keywords = ["flex", "profile", "camber", "rocker", "shape", "terrain", "ability", "skill", "best for", "riding style"];
+    const keywordHits: Record<string, { count: number; context: string }> = {};
+    for (const kw of keywords) {
+      const idx = htmlLower.indexOf(kw);
+      if (idx >= 0) {
+        keywordHits[kw] = {
+          count: htmlLower.split(kw).length - 1,
+          context: html.slice(Math.max(0, idx - 100), idx + kw.length + 200),
+        };
+      }
+    }
+
+    return NextResponse.json({ action, url: targetUrl, htmlLength: html.length, specSections, jsonLd, keywordHits });
+  }
+
+  if (action === "bc-detail-html") {
+    const db = getDb();
+    const cheerio = await import("cheerio");
+    const row = db.prepare("SELECT url, body FROM http_cache WHERE url LIKE '%backcountry.com%' AND url NOT LIKE '%/snowboards' LIMIT 1").get() as { url: string; body: string } | undefined;
+    if (!row) return NextResponse.json({ error: "No backcountry detail page in cache" });
+
+    const $ = cheerio.load(row.body);
+
+    // Check __NEXT_DATA__ for structured product data
+    let nextData: unknown = null;
+    const nextDataScript = $("#__NEXT_DATA__");
+    if (nextDataScript.length > 0) {
+      try {
+        const parsed = JSON.parse(nextDataScript.text());
+        const pageProps = parsed?.props?.pageProps || {};
+        const apollo = pageProps.__APOLLO_STATE__;
+        if (apollo) {
+          // Find product entries with specs
+          const productEntries: Record<string, unknown>[] = [];
+          for (const [key, value] of Object.entries(apollo)) {
+            const v = value as Record<string, unknown>;
+            if (v.__typename === "Product" || v.__typename === "ProductAttribute" ||
+                v.__typename === "Specification" || v.__typename === "TechSpec" ||
+                (typeof key === "string" && (key.includes("spec") || key.includes("Spec") || key.includes("attribute")))) {
+              productEntries.push({ key, ...v });
+            }
+          }
+          // Also find all unique __typename values
+          const types = new Set<string>();
+          for (const value of Object.values(apollo)) {
+            const v = value as Record<string, unknown>;
+            if (v.__typename) types.add(v.__typename as string);
+          }
+          nextData = { typenames: [...types], productEntries: productEntries.slice(0, 20) };
+        }
+      } catch { /* skip */ }
+    }
+
+    // Also look for detailsAccordion bullet points
+    const bulletPoints: string[] = [];
+    $("[data-id='detailsAccordion'] li").each((_, el) => {
+      bulletPoints.push($(el).text().trim());
+    });
+
+    // JSON-LD
+    const jsonLd: unknown[] = [];
+    $("script[type='application/ld+json']").each((_, el) => {
+      try { jsonLd.push(JSON.parse($(el).text())); } catch { /* skip */ }
+    });
+
+    return NextResponse.json({ action, url: row.url, htmlLength: row.body.length, nextData, bulletPoints, jsonLd });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

@@ -32,6 +32,10 @@ interface ReiProduct {
     max: number;
     compareAt: number | null;
   };
+  tileAttributes?: {
+    title: string;
+    values: string[];
+  }[];
 }
 
 function extractProductsFromHtml(html: string): ReiProduct[] {
@@ -151,6 +155,23 @@ export const rei: RetailerModule = {
         if (p.rating) specs["rating"] = p.rating;
         if (p.reviewCount) specs["review count"] = p.reviewCount;
 
+        // Extract specs from tileAttributes (Style, Shape, Profile, Flex)
+        let flex: string | undefined;
+        let profile: string | undefined;
+        let shape: string | undefined;
+        let category: string | undefined;
+        if (p.tileAttributes) {
+          for (const attr of p.tileAttributes) {
+            const val = attr.values.join(", ");
+            const key = attr.title.toLowerCase();
+            specs[key] = val;
+            if (key === "flex") flex = val;
+            else if (key === "profile") profile = val;
+            else if (key === "shape") shape = val;
+            else if (key === "style" || key === "terrain" || key === "best for") category = val;
+          }
+        }
+
         return {
           retailer: "rei",
           region: Region.US,
@@ -161,10 +182,10 @@ export const rei: RetailerModule = {
           year: undefined,
           lengthCm: undefined,
           widthMm: undefined,
-          flex: undefined,
-          profile: undefined,
-          shape: undefined,
-          category: undefined,
+          flex,
+          profile,
+          shape,
+          category,
           originalPrice,
           salePrice,
           currency: Currency.USD,

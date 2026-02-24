@@ -166,7 +166,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
   return boards;
 }
 
-async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | null> {
+async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | RawBoard[] | null> {
   if (!partial.url) return null;
 
   try {
@@ -181,29 +181,111 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
     let imageUrl = partial.imageUrl;
     let description: string | undefined;
     const specs: Record<string, string> = {};
+    const variants: { size: string; price: number; availability: string }[] = [];
 
-    // JSON-LD on product page
+    // JSON-LD on product page — handle both Product and ProductGroup
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const data = JSON.parse($(el).text());
         if (data["@type"] === "Product") {
           brand = brand || data.brand?.name || data.brand;
           model = model || data.name;
-          description = data.description;
+          description = description || data.description;
           imageUrl = imageUrl || data.image;
           const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
           if (offer?.price && !salePrice) salePrice = parseFloat(offer.price);
           if (offer?.availability) specs["availability"] = offer.availability;
+        } else if (data["@type"] === "ProductGroup") {
+          brand = brand || data.brand?.name;
+          model = model || data.name;
+          description = description || data.description;
+          if (Array.isArray(data.image)) imageUrl = imageUrl || data.image[0];
+
+          // Extract size variants
+          if (Array.isArray(data.hasVariant)) {
+            for (const v of data.hasVariant) {
+              if (v["@type"] !== "Product") continue;
+              const offer = Array.isArray(v.offers) ? v.offers[0] : v.offers;
+              const price = offer?.price ? parseFloat(offer.price) : undefined;
+              const avail = offer?.availability?.includes("InStock") ? "in_stock" : "out_of_stock";
+              if (v.size && price) {
+                variants.push({ size: v.size, price, availability: avail });
+              }
+            }
+          }
         }
       } catch { /* skip */ }
     });
 
-    // Parse specs
+    // Parse structured specs from __NEXT_DATA__ → pageProps.product
+    const nextDataScript = $("#__NEXT_DATA__");
+    if (nextDataScript.length > 0) {
+      try {
+        const nextData = JSON.parse(nextDataScript.text());
+        const product = nextData?.props?.pageProps?.product;
+        if (product) {
+          brand = brand || product.brand?.name || product.brand;
+          model = model || product.title;
+          description = description || product.description;
+
+          // attributes: [{name, value}, ...] — e.g. Profile, Shape, Recommended Use
+          // Some attributes have multiple values (e.g. Skill Level: Advanced + Beginner),
+          // so we combine duplicates with ", " to avoid losing data
+          if (Array.isArray(product.attributes)) {
+            for (const attr of product.attributes) {
+              if (attr.name && attr.value) {
+                const key = attr.name.toLowerCase().trim();
+                const val = attr.value.trim();
+                if (!specs[key]) specs[key] = val;
+                else if (!specs[key].toLowerCase().includes(val.toLowerCase())) {
+                  specs[key] = `${specs[key]}, ${val}`;
+                }
+              }
+            }
+          }
+
+          // features: [{name, value}, ...] — e.g. Flex, Profile, Shape, Effective Edge
+          if (Array.isArray(product.features)) {
+            for (const feat of product.features) {
+              if (feat.name && feat.value) {
+                const key = feat.name.toLowerCase().trim();
+                if (!specs[key]) specs[key] = feat.value.trim();
+              }
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    // Parse bullet points from detailsAccordion for spec hints
+    const bulletPoints: string[] = [];
+    $("[data-id='detailsAccordion'] li").each((_, el) => {
+      bulletPoints.push($(el).text().trim());
+    });
+
+    // Extract specs from bullet points using pattern matching
+    for (const bp of bulletPoints) {
+      const lower = bp.toLowerCase();
+      if (!specs["profile"]) {
+        if (lower.includes("camber") && !lower.includes("rocker")) specs["profile"] = "camber";
+        else if (lower.includes("rocker") && lower.includes("camber")) specs["profile"] = lower.includes("camber/rocker") || lower.includes("camber between") ? "hybrid camber" : "hybrid rocker";
+        else if (lower.includes("rocker") && !lower.includes("camber")) specs["profile"] = "rocker";
+        else if (lower.includes("flat") && lower.includes("profile")) specs["profile"] = "flat";
+      }
+      if (!specs["shape"]) {
+        if (lower.includes("directional twin")) specs["shape"] = "directional twin";
+        else if (lower.includes("true twin")) specs["shape"] = "true twin";
+        else if (lower.includes("directional") && lower.includes("shape")) specs["shape"] = "directional";
+      }
+    }
+
+    // Fallback: parse specs from HTML elements
     $('[class*="spec"] li, [class*="Spec"] li, [class*="detail"] li').each((_, el) => {
       const text = $(el).text().trim();
       const parts = text.split(/:\s*/);
       if (parts.length === 2) {
-        specs[parts[0].toLowerCase().trim()] = parts[1].trim();
+        const key = parts[0].toLowerCase().trim();
+        if (!specs[key]) specs[key] = parts[1].trim();
       }
     });
 
@@ -213,36 +295,56 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       if (cells.length >= 2) {
         const key = $(cells[0]).text().trim().toLowerCase();
         const val = $(cells[1]).text().trim();
-        if (key && val) specs[key] = val;
+        if (key && val && !specs[key]) specs[key] = val;
       }
     });
 
     const flex = specs["flex rating"] || specs["flex"] || specs["stiffness"];
     const profile = specs["profile"] || specs["bend"] || specs["camber type"];
     const shape = specs["shape"] || specs["shape type"];
-    const category = specs["terrain"] || specs["best for"];
+    const category = specs["terrain"] || specs["best for"] || specs["recommended use"] || specs["intended use"];
     const abilityLevel = specs["ability level"] || specs["rider level"] || specs["skill level"];
 
-    let lengthCm: number | undefined;
-    const lengthSpec = specs["size"] || specs["length"] || specs["board length"];
-    if (lengthSpec) lengthCm = parseLengthCm(lengthSpec) || undefined;
-    if (!lengthCm) {
-      const urlMatch = partial.url.match(/(\d{3})(?:cm)?(?:[/-]|$)/);
-      if (urlMatch) {
-        const parsed = parseInt(urlMatch[1]);
-        if (parsed >= 100 && parsed <= 200) lengthCm = parsed;
+    if (!salePrice && variants.length === 0) return null;
+
+    // If we have size variants, return one board per variant (like tactics)
+    if (variants.length > 0) {
+      const results: RawBoard[] = [];
+      for (const v of variants) {
+        const sizeCm = parseLengthCm(v.size) || undefined;
+        let widthMm: number | undefined;
+        if (v.size.toLowerCase().includes("wide") || v.size.toLowerCase().includes("wid")) {
+          // Mark wide boards but we can't know exact width from "166cm wide"
+          specs["width"] = "wide";
+        }
+        results.push({
+          retailer: "backcountry",
+          region: Region.US,
+          url: partial.url,
+          imageUrl,
+          brand: brand ? normalizeBrand(brand) : "Unknown",
+          model: model || "Unknown",
+          year: undefined,
+          lengthCm: sizeCm,
+          widthMm,
+          flex,
+          profile,
+          shape,
+          category,
+          abilityLevel,
+          originalPrice: originalPrice || v.price,
+          salePrice: salePrice || v.price,
+          currency: Currency.USD,
+          availability: v.availability,
+          description: description?.slice(0, 1000),
+          specs,
+          scrapedAt: new Date().toISOString(),
+        });
       }
+      return results;
     }
 
-    let widthMm: number | undefined;
-    const widthSpec = specs["waist width"] || specs["width"];
-    if (widthSpec) {
-      const m = widthSpec.match(/([\d.]+)/);
-      if (m) widthMm = parseFloat(m[1]);
-    }
-
-    if (!salePrice) return null;
-
+    // Single board (no variant data)
     let availability: string | undefined;
     if (specs["availability"]?.includes("InStock")) availability = "in_stock";
     else if (specs["availability"]?.includes("OutOfStock")) availability = "out_of_stock";
@@ -255,15 +357,15 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       brand: brand ? normalizeBrand(brand) : "Unknown",
       model: model || "Unknown",
       year: undefined,
-      lengthCm,
-      widthMm,
+      lengthCm: undefined,
+      widthMm: undefined,
       flex,
       profile,
       shape,
       category,
       abilityLevel,
       originalPrice,
-      salePrice,
+      salePrice: salePrice || 0,
       currency: Currency.USD,
       availability,
       description: description?.slice(0, 1000),
@@ -289,31 +391,17 @@ export const backcountry: RetailerModule = {
     const partials = parseProductsFromHtml(html);
     console.log(`[backcountry] Found ${partials.length} product cards`);
 
-    // Convert listing data directly to RawBoard (skip detail pages for speed)
-    const boards: RawBoard[] = partials
-      .filter((p) => p.salePrice && p.url)
-      .map((p) => ({
-        retailer: "backcountry",
-        region: Region.US,
-        url: p.url!,
-        imageUrl: p.imageUrl,
-        brand: p.brand ? normalizeBrand(p.brand) : "Unknown",
-        model: p.model || "Unknown",
-        year: undefined,
-        lengthCm: undefined,
-        widthMm: undefined,
-        flex: undefined,
-        profile: undefined,
-        shape: undefined,
-        category: undefined,
-        originalPrice: p.originalPrice,
-        salePrice: p.salePrice!,
-        currency: Currency.USD,
-        availability: "in_stock",
-        description: undefined,
-        specs: {},
-        scrapedAt: new Date().toISOString(),
-      }));
+    const withUrls = partials.filter((p) => p.salePrice && p.url);
+    console.log(`[backcountry] Fetching details for ${withUrls.length} boards`);
+
+    const boards: RawBoard[] = [];
+    for (const partial of withUrls) {
+      const result = await fetchBoardDetails(partial);
+      if (result) {
+        if (Array.isArray(result)) boards.push(...result);
+        else boards.push(result);
+      }
+    }
 
     console.log(`[backcountry] Successfully scraped ${boards.length} boards`);
     return boards;
