@@ -22,6 +22,7 @@ Scrapers are registered in `src/lib/manufacturers/registry.ts` and invoked via `
 | Lib Tech | `lib-tech.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | ~30 |
 | CAPiTA | `capita.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~39 |
 | Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~33 |
+| GNU | `gnu.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | ~25 |
 
 ---
 
@@ -136,11 +137,37 @@ Strips gender prefixes ("Men's", "Women's", "Youth"), " Snowboard" suffix, and y
 
 ---
 
+## GNU
+
+- **File:** `src/lib/manufacturers/gnu.ts`
+- **Base URL:** `https://www.gnu.com`
+- **Catalog URLs:** `/snowboards/mens`, `/snowboards/womens`
+- **Fetch method:** HTTP + cheerio — server-rendered Magento store (same Mervin platform as Lib Tech)
+
+### Scraping strategy
+
+Two-phase: catalog pages (men's + women's), then individual detail pages (concurrency 3). Deduplicates by URL across catalogs.
+
+**Catalog pages** parse `.product-item` cards for product names, URLs, and prices (same Magento selectors as Lib Tech).
+
+**Detail pages** extract:
+- **Spec table:** columnar table with headers like "Size | Contact Length | ... | Flex (10 = Firm) | Weight Range". All columns captured into extras; flex extracted specifically.
+- **Description text:** regex-based detection of profile terms (C2, C2x, C3, BTX, B.C.), shape (true twin, directional twin, directional), category (all-mountain, freestyle, freeride, powder, park), and ability level.
+- **Infographic image:** Same Mervin system as Lib Tech — per-product terrain/riderlevel PNG. Rider level inferred from image filename via slug-to-level mapping.
+- **JSON-LD:** price from `Product` schema.
+
+### Known issues
+
+- Same infographic fragility as Lib Tech — new boards require adding slugs to the mapping.
+- GNU model names in retailer listings sometimes include "Asym" prefix (e.g. "Asym Ladies Choice") that the manufacturer omits.
+
+---
+
 ## Coverage Analysis
 
 ### Current state
 
-Only 3 of ~20 brands in the database have manufacturer scrapers. After brand normalization, the coverage looks like:
+Only 5 of ~20 brands in the database have manufacturer scrapers. After brand normalization, the coverage looks like:
 
 | Brand (normalized) | Boards in DB | Listings | Has Mfr Scraper | Mfr Spec Entries |
 |---------------------|-------------|----------|-----------------|------------------|
@@ -148,7 +175,7 @@ Only 3 of ~20 brands in the database have manufacturer scrapers. After brand nor
 | Jones | 20 | 25 | Yes | ~130 |
 | Yes. | 20 | 17+ | No | 0 |
 | Burton | 15 | 12+ | Yes | 670 |
-| GNU | 15 | 14 | No | 0 |
+| GNU | 15 | 14 | Yes | 298 |
 | Arbor | 10 | 11 | No | 0 |
 | CAPiTA | 10 | — | Yes | 468 |
 | Sims | 10 | 9 | No | 0 |
@@ -170,18 +197,7 @@ Board counts include duplicates from brand normalization issues (e.g. "GNU" + "G
 
 Ranked by impact (board count × listing count × feasibility):
 
-#### 1. GNU — Magento (same as Lib Tech)
-
-- **Website:** https://www.gnu.com
-- **Platform:** Magento 2.4.5 (Mervin Manufacturing theme — same parent company as Lib Tech)
-- **Catalog URL:** `/snowboards`, with sub-collections `/snowboards/mens`, `/snowboards/womens`
-- **Boards in DB:** 15 (after normalizing GNU/Gnu)
-- **Listings:** 14
-- **Feasibility:** Low effort — same Magento platform as Lib Tech. The existing `lib-tech.ts` scraper can be adapted with minimal changes (different base URL, different CSS selectors if any, different infographic slug mapping). Server-rendered HTML, plain fetch + cheerio, no browser needed.
-- **Spec availability:** Product pages likely have the same columnar spec table and terrain/riderlevel infographic as Lib Tech (same CMS, same company).
-- **Impact:** High — fills specs for the 4th-largest brand group. GNU boards (Headspace, Ladies Choice, Money, etc.) are popular beginner/intermediate boards that are well-represented in retailer listings.
-
-#### 2. Nitro — Shopify (same as CAPiTA)
+#### 1. Nitro — Shopify (same as CAPiTA)
 
 - **Website:** https://www.nitrosnowboards.com
 - **Platform:** Shopify (DTC setup, shop domain `dtc-2526-nitrosnowboards.myshopify.com`, Impact theme v6.6.0)
@@ -193,7 +209,7 @@ Ranked by impact (board count × listing count × feasibility):
 - **Spec availability:** Product pages have spec details in body HTML and potentially structured Shopify metafields. Detail page scraping will extract flex, profile, shape, category.
 - **Impact:** Medium-high — Nitro is a well-established brand with good retailer representation. Their boards (Optisym, Alternator, Team, etc.) frequently appear on sale.
 
-#### 3. Arbor — Shopify (same as CAPiTA)
+#### 2. Arbor — Shopify (same as CAPiTA)
 
 - **Website:** https://www.arborcollective.com
 - **Platform:** Shopify (shop domain `arbor-collective-1.myshopify.com`, Flicker theme v2.1)
