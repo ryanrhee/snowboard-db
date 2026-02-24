@@ -78,72 +78,119 @@ The rider level bar (Day 1 → Intermediate → Advanced) shows these clusters:
 
 All blue boards (peak sat ~0.56) have **identical** rider level gradients (colorStart≈32%, colorEnd=100%).
 
-## What to do next
+### 6. External ground truth research (2026-02-24)
 
-### Step 1: Map gradient coverage to ability levels using spectrum semantics
+Gathered ability level ratings from The Good Ride, evo, Whitelines, SnowboardHow,
+Old Guys Rip Too, Blauer Board Shop, and others. Compared against gradient clusters.
 
-The rider level bar is a spectrum with three labeled anchor points:
-- **0%** = Day 1 (beginner)
-- **50%** = Intermediate
-- **100%** = Advanced
+#### Important note on colorStartPct
 
-The `colorStartPct` and `colorEndPct` define the "covered" region of this spectrum.
-Ability level should be determined by **which anchor points fall within the covered
-region**, not by center of mass or other heuristics.
+`colorStartPct` is the LEFT edge of the **flat (t > 0.95) region**, not where color
+first appears. The gradient ramp starts even earlier. For example, Apex Orca at
+`colorStartPct=21%` means color is at 95%+ intensity by 21%; the ramp from gray
+likely starts around 5-10%.
 
-For example, consider Apex Orca (riderLevel start=21%, end=100%) vs Cold Brew
-(start=22%, end=81%). Both cover similar amounts of the left side — both reach
-past the 0% anchor into beginner territory. But Cold Brew's coverage stops at 81%
-(doesn't reach 100% / Advanced), while Apex Orca extends all the way to 100%.
-The current classification calls Cold Brew "beginner-intermediate" and Apex Orca
-"intermediate-advanced", but Apex Orca actually covers MORE of the beginner range
-than Cold Brew does. The distinction should be based on which endpoints are covered,
-not on center of mass.
+#### Review-site consensus vs gradient clusters
 
-#### Open questions to resolve before implementing
+| Board | Start% | End% | The Good Ride | Other Sources | Old Slug |
+|-------|--------|------|---------------|---------------|----------|
+| **Cluster 1** |
+| Skate Banana | 0 | 77 | Beginner-Expert | evo: Beginner-Intermediate | beginner-advanced |
+| **Cluster 2** |
+| Apex Orca | 21 | 100 | Beginner-Expert | | intermediate-advanced |
+| Cold Brew | 22 | 81 | Beginner/Intermediate | | beginner-intermediate |
+| Terrain Wrecker | 22 | 100 | Beginner-Expert | | beginner-advanced |
+| Golden Orca | 24 | 100 | Beginner-Expert | | intermediate-advanced |
+| Skunk Ape | 24 | 100 | Beginner-Expert | | beginner-intermediate |
+| **Cluster 3** |
+| Escalator | 29 | 81 | (touring board, implied int-adv) | | beginner-intermediate |
+| **Cluster 4** |
+| Legitimizer | 32 | 100 | Beginner-Expert | | beginner-intermediate |
+| Jamie Lynn | 32 | 100 | Advanced-Expert | | beginner-advanced |
+| Dynamo | 32 | 100 | Advanced-Expert | | intermediate-advanced |
+| EJack Knife | 32 | 100 | Advanced-Expert | | intermediate-advanced |
+| Doughboy | 32 | 100 | Expert | Blauer: Adv-Expert | beginner-intermediate |
+| Rad Ripper | 32 | 100 | | OGRT: Int-Adv | beginner-intermediate |
+| Mayhem Rocket | 32 | 100 | Advanced-Expert | | beginner-intermediate |
+| Lib Rig | 32 | 100 | Intermediate-Expert | | beginner-intermediate |
+| **Cluster 5** |
+| T.Rice Pro | 36 | 100 | Advanced-Expert | SnowboardHow: Adv-Expert | beginner-advanced |
+| T.Rice Orca | 36 | 100 | Intermediate-Expert | | intermediate-advanced |
+| Rasman | 36 | 100 | | Whitelines: Int-Adv | beginner-advanced |
+| Orca Techno Split | 36 | 100 | | (implied int-adv) | intermediate-advanced |
 
-1. **Where is "beginner" on the spectrum?** The leftmost label is "Day 1" at 0%.
-   Is "Day 1" the same as "beginner"? Or is beginner more like 10% or 25%?
-   Need to decide what position on the spectrum maps to the "beginner" concept
-   used in the ability level taxonomy.
+#### Key observations
 
-2. **What counts as "covered"?** The gradient's colored region has a start and end.
-   If the colored region reaches 30% of the way to an anchor point, is that anchor
-   covered? What about 50%? 70%? Need a principled threshold for when an anchor
-   point is considered "included" in the board's range. Options:
-   - The anchor point itself must fall within `[colorStartPct, colorEndPct]`
-   - The colored region must come within N% of the anchor point
-   - Use the gradient ramp zone (the transition from gray to color) as a "partial
-     coverage" indicator
+1. **Natural gap at 24-29%.** Cluster 2 (start ≤ 24%) and Cluster 3 (start ≥ 29%)
+   have a clear gap. Any threshold in this range separates beginner-covering from
+   non-beginner boards.
 
-3. **Does the gradient ramp zone carry semantic meaning?** The flat colored region
-   is clearly "covered". But what about the ramp-up and ramp-down zones where
-   the color fades to gray? Is a board partially suitable for those ability levels,
-   or is the ramp just cosmetic?
+2. **All boards have end ≥ 77%.** The end position doesn't meaningfully discriminate
+   — every board reaches well past intermediate (50%) toward advanced.
 
-These decisions should be informed by looking at the actual data alongside the
-infographics and the known ability levels from other sources (The Good Ride, etc.)
-to find the interpretation that best matches ground truth.
+3. **Cluster 4 (start 32-33%) is inherently ambiguous.** Same gradient position
+   contains Legitimizer (Beginner-Expert per TGR) and Jamie Lynn/Dynamo/Doughboy
+   (Advanced-Expert per TGR). The gradient cannot distinguish these. Spec resolution
+   with review-site data handles the disagreement.
+
+4. **The Good Ride uses very broad ranges.** They rate many boards "Beginner-Expert."
+   Other sources (SnowboardHow, Whitelines, OGRT) give narrower, more discriminating
+   ratings that often skew higher than TGR.
+
+5. **evo uses more conservative ratings.** Skate Banana is "Beginner-Intermediate"
+   on evo (not beginner-advanced). Need to check more evo detail pages to understand
+   their scale. Initial impression: evo may rate everything with start ≥ 20% as
+   intermediate.
 
 #### Warning: do NOT use spec_sources manufacturer data as ground truth
 
 The `spec_sources` entries with `source = 'manufacturer'` for Lib Tech ability levels
 are the **output** of the `inferRiderLevelFromInfographic()` slug mapping — the very
-function this task is replacing. Zero Lib Tech product pages contain ability level
-keywords in their description text ("beginner", "intermediate", "advanced"), so the
-infographic slug mapping is the sole manufacturer source for every board.
+function this task is replacing. Using these as ground truth is circular reasoning.
 
-Using these values as ground truth to validate the gradient analysis is circular
-reasoning: it would "prove" the gradient can't distinguish ability levels, when
-really it just proves the existing slug mapping is inconsistent with the gradient data.
+#### Proposed thresholds (draft, needs evo validation)
 
-**Independent ground truth sources:**
-- `source = 'review-site'` (The Good Ride) — independently assessed ability ranges
-- Retailer data (evo, etc.) — when available in spec_sources
-- Visual inspection of the infographic images themselves
+Using natural midpoints between spectrum anchors (0%=Day 1, 50%=Intermediate,
+100%=Advanced):
 
-### Step 2: Replace `inferRiderLevelFromInfographic`
+- `colorStartPct ≤ 25%` → min = beginner
+- `25% < colorStartPct ≤ 75%` → min = intermediate
+- `colorStartPct > 75%` → min = advanced
+- `colorEndPct ≥ 75%` → max = advanced
+- `25% ≤ colorEndPct < 75%` → max = intermediate
+- `colorEndPct < 25%` → max = beginner
 
-Replace the hardcoded slug→level mapping with the pixel analysis function
-(run at scrape time on the actual image), using the spectrum-based ability level
-mapping from Step 1.
+**These thresholds need validation against evo.com detail page ability levels.**
+evo's Skate Banana page shows "Beginner-Intermediate" — if evo rates everything
+with start ≥ 20% as intermediate, the start threshold may need to be lower
+(e.g., 15-20% instead of 25%).
+
+## What to do next
+
+### Step 1: Validate thresholds against evo detail pages
+
+Fetch evo.com detail pages for boards across all clusters and extract their
+"Ability Level" spec. evo pages have structured ability level data in
+`li.spec-ability-level`. The current scraper does NOT fetch evo detail pages
+(listing-only), so this requires either:
+- Adding a debug action that uses `fetchPageWithBrowser` on evo detail URLs
+- Manual checking of evo pages
+
+Key boards to check on evo:
+- Cluster 2: Golden Orca, Apex Orca, Skunk Ape (start 21-24%)
+- Cluster 4: Legitimizer, Jamie Lynn, Dynamo (start 32-33%)
+- Cluster 5: T.Rice Pro, T.Rice Orca (start 36-39%)
+
+### Step 2: Finalize thresholds
+
+Adjust start/end thresholds based on evo data. The start threshold is the critical
+one — need to determine if boards with start 21-24% are "beginner" or "intermediate"
+according to retailers.
+
+### Step 3: Implement the mapping and replace slug function
+
+- Add `mapRiderLevelToAbility(riderLevel: BarAnalysis)` to `lib-tech-infographic.ts`
+- Make `parseDetailHtml` in `lib-tech.ts` async
+- Replace `inferRiderLevelFromInfographic(src)` with image fetch + `analyzeInfographic()` + `mapRiderLevelToAbility()`
+- Remove the hardcoded slug mapping function
+- Update tests and API route
