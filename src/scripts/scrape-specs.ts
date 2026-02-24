@@ -21,8 +21,6 @@ async function main() {
   }
 
   const result = await runSearchPipeline({
-    skipEnrichment: true,
-    skipManufacturers: false,
     manufacturers: brands.length > 0 ? brands : undefined,
     retailers: [], // manufacturers only
   });

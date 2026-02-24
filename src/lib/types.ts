@@ -83,46 +83,6 @@ export interface RawBoard {
   stockCount?: number;
 }
 
-// ===== Canonical Board (normalized, scored, DB-ready) =====
-
-export interface CanonicalBoard {
-  id: string; // SHA-256 hash of retailer + url + lengthCm
-  runId: string;
-  retailer: string;
-  region: Region;
-  url: string;
-  imageUrl: string | null;
-  brand: string;
-  model: string;
-  year: number | null;
-  lengthCm: number | null;
-  widthMm: number | null;
-  flex: number | null; // normalized 1-10
-  profile: BoardProfile | null;
-  shape: BoardShape | null;
-  category: BoardCategory | null;
-  abilityLevelMin: string | null;
-  abilityLevelMax: string | null;
-  extras: Record<string, string>;
-  originalPriceUsd: number | null;
-  salePriceUsd: number;
-  discountPercent: number | null;
-  currency: Currency;
-  originalPrice: number | null; // in original currency
-  salePrice: number; // in original currency
-  availability: Availability;
-  description: string | null;
-  beginnerScore: number; // 0-1
-  valueScore: number; // 0-1
-  finalScore: number; // 0-1
-  scoreNotes: string | null; // human-readable scoring explanation
-  scrapedAt: string;
-  specSources: string | null; // JSON: Record<string, SpecFieldInfo>
-  condition: ListingCondition;
-  gender: GenderTarget;
-  stockCount: number | null;
-}
-
 // ===== Board-centric types (new data model) =====
 
 export interface Board {
@@ -182,9 +142,6 @@ export interface ScrapeScope {
   regions?: Region[] | null;
   retailers?: string[] | null;
   manufacturers?: string[] | null;
-  skipEnrichment?: boolean;
-  skipManufacturers?: boolean;
-  skipJudgment?: boolean;
 }
 
 // ===== Search Types =====
@@ -200,7 +157,6 @@ export interface SearchConstraints {
   excludeWomens?: boolean;
   regions?: Region[] | null;
   retailers?: string[] | null;
-  skipEnrichment?: boolean;
 }
 
 export interface SearchRun {

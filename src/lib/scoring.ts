@@ -1,5 +1,4 @@
 import {
-  CanonicalBoard,
   Board,
   BoardProfile,
   BoardShape,
@@ -127,90 +126,11 @@ export function calcBeginnerScore(board: BoardSpecs): ScoreResult {
   return { score, factors };
 }
 
-export function calcValueScore(board: CanonicalBoard): ScoreResult {
-  const factors: ScoreFactor[] = [];
-  let total = 0;
-  let weights = 0;
-
-  // Discount percentage (weight: 0.5)
-  if (board.discountPercent !== null && board.discountPercent > 0) {
-    let discountScore: number;
-    let reason: string;
-    if (board.discountPercent >= 50) { discountScore = 1.0; reason = "Incredible discount — 50%+ off"; }
-    else if (board.discountPercent >= 40) { discountScore = 0.9; reason = "Excellent discount — 40%+ off"; }
-    else if (board.discountPercent >= 30) { discountScore = 0.75; reason = "Good sale discount"; }
-    else if (board.discountPercent >= 20) { discountScore = 0.55; reason = "Moderate discount"; }
-    else if (board.discountPercent >= 10) { discountScore = 0.35; reason = "Small discount"; }
-    else { discountScore = 0.2; reason = "Minimal discount"; }
-
-    total += discountScore * 0.5;
-    weights += 0.5;
-    factors.push({ name: "Discount", value: `${board.discountPercent}% off`, score: discountScore, reason });
-  }
-
-  // Board premium tier based on original MSRP — higher-end boards are better deals when discounted (weight: 0.35)
-  const msrp = board.originalPriceUsd ?? board.salePriceUsd;
-  if (msrp > 0) {
-    let premiumScore: number;
-    let reason: string;
-    if (msrp >= 600) { premiumScore = 1.0; reason = "Top-tier board — premium construction and materials"; }
-    else if (msrp >= 500) { premiumScore = 0.85; reason = "High-end board — quality build"; }
-    else if (msrp >= 400) { premiumScore = 0.65; reason = "Mid-range board — solid quality"; }
-    else if (msrp >= 300) { premiumScore = 0.45; reason = "Budget-friendly board — basic construction"; }
-    else { premiumScore = 0.25; reason = "Entry-level board — minimal features"; }
-
-    total += premiumScore * 0.35;
-    weights += 0.35;
-    factors.push({ name: "Premium", value: `$${msrp.toFixed(0)} MSRP`, score: premiumScore, reason });
-  }
-
-  // Year: newer boards lose less value; older clearance = good value (weight: 0.15)
-  if (board.year) {
-    const currentYear = new Date().getFullYear();
-    const age = currentYear - board.year;
-    let yearScore: number;
-    let reason: string;
-    if (age >= 3) { yearScore = 0.9; reason = `${age} years old — deep clearance pricing`; }
-    else if (age >= 2) { yearScore = 0.8; reason = `${age} years old — likely clearance`; }
-    else if (age >= 1) { yearScore = 0.6; reason = `${age} year old — last season model`; }
-    else { yearScore = 0.4; reason = "Current year — less of a deal"; }
-
-    total += yearScore * 0.15;
-    weights += 0.15;
-    factors.push({ name: "Model Year", value: `${board.year} (${age}yr old)`, score: yearScore, reason });
-  }
-
-  if (weights === 0) return { score: 0.3, factors: [] }; // conservative default
-
-  const score = Math.round((total / weights) * 100) / 100;
-  return { score, factors };
-}
-
 export function calcFinalScore(
   beginnerScore: number,
   valueScore: number
 ): number {
   return Math.round((0.6 * beginnerScore + 0.4 * valueScore) * 100) / 100;
-}
-
-export function scoreBoard(board: CanonicalBoard): CanonicalBoard {
-  const beginnerResult = calcBeginnerScore(board);
-  const valueResult = calcValueScore(board);
-  const finalScore = calcFinalScore(beginnerResult.score, valueResult.score);
-
-  const scoreNotes: ScoreNotes = {
-    beginner: { score: beginnerResult.score, factors: beginnerResult.factors },
-    value: { score: valueResult.score, factors: valueResult.factors },
-    final: { score: finalScore, formula: "60% beginner + 40% value" },
-  };
-
-  return {
-    ...board,
-    beginnerScore: beginnerResult.score,
-    valueScore: valueResult.score,
-    finalScore,
-    scoreNotes: JSON.stringify(scoreNotes),
-  };
 }
 
 export function calcBeginnerScoreForBoard(board: Board): number {

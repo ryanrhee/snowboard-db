@@ -15,20 +15,12 @@ describe("getSourcePriority", () => {
     expect(getSourcePriority("review-site")).toBe(3);
   });
 
-  it("returns 3 for judgment", () => {
-    expect(getSourcePriority("judgment")).toBe(3);
-  });
-
   it("returns 2 for retailer:evo", () => {
     expect(getSourcePriority("retailer:evo")).toBe(2);
   });
 
   it("returns 2 for retailer:rei", () => {
     expect(getSourcePriority("retailer:rei")).toBe(2);
-  });
-
-  it("returns 1 for llm", () => {
-    expect(getSourcePriority("llm")).toBe(1);
   });
 
   it("returns 0 for unknown source", () => {
@@ -75,7 +67,7 @@ describe("findConsensus", () => {
     });
   });
 
-  it("returns null when fewer than 2 non-manufacturer/llm/judgment sources exist", () => {
+  it("returns null when fewer than 2 non-manufacturer sources exist", () => {
     const entries: SpecSourceEntry[] = [
       { source: "retailer:evo", value: "camber", sourceUrl: "https://evo.com/board" },
     ];
@@ -91,11 +83,9 @@ describe("findConsensus", () => {
     expect(findConsensus(entries, "profile")).toBeNull();
   });
 
-  it("excludes manufacturer, llm, and judgment sources from candidates", () => {
+  it("excludes manufacturer sources from candidates", () => {
     const entries: SpecSourceEntry[] = [
       { source: "manufacturer", value: "camber", sourceUrl: "https://brand.com/board" },
-      { source: "llm", value: "camber", sourceUrl: null },
-      { source: "judgment", value: "camber", sourceUrl: null },
       { source: "retailer:evo", value: "rocker", sourceUrl: "https://evo.com/board" },
     ];
     expect(findConsensus(entries, "profile")).toBeNull();

@@ -31,9 +31,6 @@ import * as cheerio from "cheerio";
 
 const DEFAULT_SCOPE: ScrapeScope = {
   regions: [Region.US, Region.KR],
-  skipEnrichment: true,
-  skipManufacturers: true,
-  skipJudgment: true,
 };
 
 export async function runSearchPipeline(
@@ -47,12 +44,11 @@ export async function runSearchPipeline(
   const startTime = Date.now();
   const runId = randomUUID();
 
-  // Get all scrapers (retailers + optionally manufacturers)
+  // Get all scrapers (retailers + manufacturers)
   const scrapers = getScrapers({
     regions: mergedScope.regions,
     retailers: mergedScope.retailers,
     manufacturers: mergedScope.manufacturers,
-    skipManufacturers: mergedScope.skipManufacturers,
   });
 
   const errors: RetailerError[] = [];
@@ -111,8 +107,8 @@ export async function runSearchPipeline(
   // Coalesce: group by board identity, write spec_sources, build Board + Listing entities
   const { boards, listings } = coalesce(allScrapedBoards, runId);
 
-  // Resolve spec sources: priority-based resolution + disagreement detection
-  const resolvedBoards = await resolveSpecSources(boards, { skipJudgment: mergedScope.skipJudgment });
+  // Resolve spec sources: priority-based resolution
+  const resolvedBoards = await resolveSpecSources(boards);
 
   // Calculate beginner scores now that specs are resolved
   for (const board of resolvedBoards) {

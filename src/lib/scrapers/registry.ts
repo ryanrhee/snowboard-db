@@ -39,7 +39,6 @@ export interface GetScrapersOpts {
   regions?: Region[] | null;
   retailers?: string[] | null;
   manufacturers?: string[] | null;
-  skipManufacturers?: boolean;
   sourceType?: "retailer" | "manufacturer" | "review-site";
 }
 
@@ -47,14 +46,16 @@ export interface GetScrapersOpts {
 export function getScrapers(opts?: GetScrapersOpts): ScraperModule[] {
   const result: ScraperModule[] = [];
 
-  // Wrap retailers
-  const retailers = getRetailers(opts?.regions, opts?.retailers);
-  for (const r of retailers) {
-    result.push(wrapRetailer(r));
+  // Wrap retailers (empty array = skip, undefined/null = include all)
+  if (!Array.isArray(opts?.retailers) || opts!.retailers.length > 0) {
+    const retailers = getRetailers(opts?.regions, opts?.retailers);
+    for (const r of retailers) {
+      result.push(wrapRetailer(r));
+    }
   }
 
-  // Wrap manufacturers (unless skipped)
-  if (!opts?.skipManufacturers) {
+  // Wrap manufacturers (empty array = skip, undefined/null = include all)
+  if (!Array.isArray(opts?.manufacturers) || opts!.manufacturers.length > 0) {
     const mfrs = getManufacturers(opts?.manufacturers ?? undefined);
     for (const m of mfrs) {
       result.push(wrapManufacturer(m));

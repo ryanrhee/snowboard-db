@@ -138,12 +138,6 @@ function migrateToNewModel(db: Database.Database): void {
   `);
 
   createListingsTable(db);
-
-  // Populate from boards_legacy if it exists
-  const legacyExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='boards_legacy'").get();
-  if (legacyExists) {
-    populateFromLegacy(db);
-  }
 }
 
 function createListingsTable(db: Database.Database): void {
@@ -187,97 +181,6 @@ function createListingsTable(db: Database.Database): void {
   const boardColNames2 = new Set(boardCols2.map((c) => c.name));
   if (!boardColNames2.has("gender"))
     db.exec("ALTER TABLE boards ADD COLUMN gender TEXT NOT NULL DEFAULT 'unisex'");
-}
-
-function populateFromLegacy(db: Database.Database): void {
-  console.log("[db] Populating new boards + listings from boards_legacy...");
-  const now = new Date().toISOString();
-
-  // Group legacy rows by specKey to create one board per unique product
-  const legacyRows = db.prepare(`
-    SELECT * FROM boards_legacy ORDER BY final_score DESC
-  `).all() as Record<string, unknown>[];
-
-  const boardMap = new Map<string, {
-    brand: string; model: string; year: number | null;
-    flex: number | null; profile: string | null; shape: string | null;
-    category: string | null; abilityLevelMin: string | null; abilityLevelMax: string | null;
-    description: string | null; beginnerScore: number;
-  }>();
-
-  const upsertBoard = db.prepare(`
-    INSERT OR IGNORE INTO boards (
-      board_key, brand, model, year, flex, profile, shape, category,
-      ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
-      description, beginner_score, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const insertListing = db.prepare(`
-    INSERT OR IGNORE INTO listings (
-      id, board_key, run_id, retailer, region, url, image_url,
-      length_cm, width_mm, currency, original_price, sale_price,
-      original_price_usd, sale_price_usd, discount_percent,
-      availability, scraped_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  db.transaction(() => {
-    for (const row of legacyRows) {
-      const brand = row.brand as string;
-      const model = row.model as string;
-      const key = `${brand.toLowerCase()}|${normalizeModel(model, brand).toLowerCase()}`;
-
-      if (!boardMap.has(key)) {
-        // Get MSRP from spec_cache if available
-        const specCache = db.prepare("SELECT msrp_usd, source_url FROM spec_cache WHERE brand_model = ? AND source = 'manufacturer'")
-          .get(key) as { msrp_usd: number | null; source_url: string | null } | undefined;
-
-        const boardData = {
-          brand, model,
-          year: (row.year as number) || null,
-          flex: (row.flex as number) || null,
-          profile: (row.profile as string) || null,
-          shape: (row.shape as string) || null,
-          category: (row.category as string) || null,
-          abilityLevelMin: (row.ability_level_min as string) || null,
-          abilityLevelMax: (row.ability_level_max as string) || null,
-          description: (row.description as string) || null,
-          beginnerScore: (row.beginner_score as number) || 0,
-        };
-        boardMap.set(key, boardData);
-
-        upsertBoard.run(
-          key, brand, model, boardData.year,
-          boardData.flex, boardData.profile, boardData.shape, boardData.category,
-          boardData.abilityLevelMin, boardData.abilityLevelMax,
-          specCache?.msrp_usd ?? (row.original_price_usd as number) ?? null,
-          specCache?.source_url ?? null,
-          boardData.description, boardData.beginnerScore,
-          now, now
-        );
-      }
-
-      // Create listing
-      const listingId = row.id as string;
-      const runId = row.run_id as string;
-      insertListing.run(
-        listingId, key, runId,
-        row.retailer as string, row.region as string,
-        row.url as string, (row.image_url as string) || null,
-        (row.length_cm as number) || null, (row.width_mm as number) || null,
-        row.currency as string,
-        (row.original_price as number) || null, row.sale_price as number,
-        (row.original_price_usd as number) || null, row.sale_price_usd as number,
-        (row.discount_percent as number) || null,
-        row.availability as string, row.scraped_at as string
-      );
-    }
-  })();
-
-  const boardCount = db.prepare("SELECT COUNT(*) as c FROM boards").get() as { c: number };
-  const listingCount = db.prepare("SELECT COUNT(*) as c FROM listings").get() as { c: number };
-  console.log(`[db] Migration complete: ${boardCount.c} boards, ${listingCount.c} listings`);
 }
 
 // ===== Board ID Generation =====
@@ -741,50 +644,6 @@ export function setCachedSpecs(
     now,
     now
   );
-}
-
-/**
- * Set cached specs only if no manufacturer-sourced entry already exists.
- * Manufacturer data takes priority over LLM data.
- */
-export function setCachedSpecsIfNotManufacturer(
-  brandModel: string,
-  specs: CachedSpecs
-): void {
-  const existing = getCachedSpecs(brandModel);
-  if (existing && existing.source === "manufacturer") return;
-  setCachedSpecs(brandModel, specs);
-}
-
-// ===== Source Priority =====
-
-const SOURCE_PRIORITY: Record<string, number> = {
-  manufacturer: 3,
-  "review-site": 2,
-  llm: 1,
-};
-
-function getSourcePriorityDb(source: string): number {
-  if (source.startsWith("retailer:")) return 0;
-  if (source.startsWith("manufacturer:")) return SOURCE_PRIORITY["manufacturer"];
-  return SOURCE_PRIORITY[source] ?? 0;
-}
-
-/**
- * Set cached specs only if the new source has equal or higher priority
- * than the existing entry. Priority: manufacturer > review-site > llm.
- */
-export function setCachedSpecsWithPriority(
-  brandModel: string,
-  specs: CachedSpecs
-): void {
-  const existing = getCachedSpecs(brandModel);
-  if (existing && existing.source) {
-    const existingPriority = getSourcePriorityDb(existing.source);
-    const newPriority = getSourcePriorityDb(specs.source ?? "");
-    if (newPriority < existingPriority) return;
-  }
-  setCachedSpecs(brandModel, specs);
 }
 
 // ===== Review Sitemap Cache =====

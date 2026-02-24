@@ -23,8 +23,6 @@ export async function POST(request: NextRequest) {
 
     // Run unified pipeline with only manufacturers (no retailers)
     const result = await runSearchPipeline({
-      skipEnrichment: true,
-      skipManufacturers: false,
       manufacturers: brands,
       retailers: [], // no retailers
     });

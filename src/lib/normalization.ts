@@ -1,8 +1,5 @@
-import { generateBoardId } from "./db";
 import { config } from "./config";
 import {
-  RawBoard,
-  CanonicalBoard,
   BoardProfile,
   BoardShape,
   BoardCategory,
@@ -12,8 +9,6 @@ import {
   GenderTarget,
 } from "./types";
 import { PROFILE_MAP, SHAPE_MAP, CATEGORY_MAP, CATEGORY_KEYWORDS } from "./normalization-maps";
-import { normalizeBrand } from "./scraping/utils";
-import { BoardIdentifier } from "./board-identifier";
 
 export function detectCondition(rawModel: string, url?: string): ListingCondition {
   if (/\(blem\)|- blem\b/i.test(rawModel)) return ListingCondition.BLEMISHED;
@@ -40,80 +35,6 @@ export function detectGender(rawModel: string, url?: string): GenderTarget {
   if (/kids'?|boys'?|girls'?|youth|junior/i.test(rawModel))
     return GenderTarget.KIDS;
   return GenderTarget.UNISEX;
-}
-
-export function normalizeBoard(raw: RawBoard, runId: string): CanonicalBoard {
-  const identifier = new BoardIdentifier({
-    rawModel: raw.model || "Unknown",
-    rawBrand: raw.brand || "Unknown",
-    url: raw.url,
-    conditionHint: raw.condition,
-    genderHint: raw.gender,
-    yearHint: raw.year ?? undefined,
-  });
-
-  const brand = identifier.brand;
-  const model = identifier.model;
-  const condition = identifier.condition;
-  const gender = identifier.gender;
-  const year = identifier.year;
-
-  const profile = raw.profile ? normalizeProfile(raw.profile) : null;
-  const shape = raw.shape ? normalizeShape(raw.shape) : null;
-  const category = normalizeCategory(raw.category, raw.description);
-  const flex = raw.flex ? normalizeFlex(raw.flex) : null;
-  const abilityRange = normalizeAbilityRange(raw.abilityLevel);
-
-  const salePriceUsd = convertToUsd(raw.salePrice || 0, raw.currency);
-  const originalPriceUsd = raw.originalPrice
-    ? convertToUsd(raw.originalPrice, raw.currency)
-    : null;
-  const discountPercent =
-    originalPriceUsd && salePriceUsd && originalPriceUsd > 0
-      ? Math.round(((originalPriceUsd - salePriceUsd) / originalPriceUsd) * 100)
-      : null;
-
-  const availability = normalizeAvailability(raw.availability);
-
-  const id = generateBoardId(raw.retailer, raw.url, raw.lengthCm);
-
-  return {
-    id,
-    runId,
-    retailer: raw.retailer,
-    region: raw.region,
-    url: raw.url,
-    imageUrl: raw.imageUrl || null,
-    brand,
-    model,
-    year,
-    lengthCm: raw.lengthCm || null,
-    widthMm: raw.widthMm || null,
-    flex,
-    profile,
-    shape,
-    category,
-    abilityLevelMin: abilityRange.min,
-    abilityLevelMax: abilityRange.max,
-    extras: raw.specs ?? {},
-    originalPriceUsd,
-    salePriceUsd,
-    discountPercent,
-    currency: raw.currency,
-    originalPrice: raw.originalPrice || null,
-    salePrice: raw.salePrice || 0,
-    availability,
-    description: raw.description || null,
-    beginnerScore: 0,
-    valueScore: 0,
-    finalScore: 0,
-    scoreNotes: null,
-    scrapedAt: raw.scrapedAt,
-    specSources: null,
-    condition,
-    gender,
-    stockCount: raw.stockCount ?? null,
-  };
 }
 
 export function normalizeProfile(raw: string): BoardProfile | null {

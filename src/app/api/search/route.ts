@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
     const scope: Partial<ScrapeScope> = {};
     if (body.regions) scope.regions = body.regions;
     if (body.retailers) scope.retailers = body.retailers;
-    if (body.skipEnrichment !== undefined) scope.skipEnrichment = body.skipEnrichment;
 
     // Return cached results if the latest run is less than 1 hour old
     if (!force) {
