@@ -34,7 +34,7 @@ export default function Home() {
         if (filters.maxLength) params.set("maxLength", filters.maxLength);
         if (filters.gender) params.set("gender", filters.gender);
 
-        const res = await fetch(`/api/results?${params}`);
+        const res = await fetch(`/api/boards?${params}`);
         const data = await res.json();
 
         if (data.error) {
@@ -54,7 +54,7 @@ export default function Home() {
 
   const loadRuns = async () => {
     try {
-      const res = await fetch("/api/results?listRuns=true");
+      const res = await fetch("/api/boards?listRuns=true");
       const data = await res.json();
       setRuns(data.runs || []);
     } catch {

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ run, boards });
   } catch (error) {
-    console.error("[api/results] Error:", error);
+    console.error("[api/boards] Error:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to fetch results",
