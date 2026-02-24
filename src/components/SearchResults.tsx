@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ScoreBar } from "./ScoreBar";
-import { BoardDetail, BoardData, specSourceSummary } from "./BoardDetail";
+import { BoardDetail, BoardData, specSourceSummary, genderFromBoardKey } from "./BoardDetail";
 
 interface SearchResultsProps {
   boards: BoardData[];
@@ -188,11 +188,14 @@ export function SearchResults({ boards }: SearchResultsProps) {
                           </>
                         );
                       })()}
-                      {board.gender && board.gender !== "unisex" && (
-                        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-gray-800 text-gray-400">
-                          {board.gender === "womens" ? "W" : board.gender === "mens" ? "M" : board.gender === "kids" ? "K" : ""}
-                        </span>
-                      )}
+                      {(() => {
+                        const g = genderFromBoardKey(board.boardKey);
+                        return g !== "unisex" ? (
+                          <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-gray-800 text-gray-400">
+                            {g === "womens" ? "W" : g === "mens" ? "M" : g === "kids" ? "K" : ""}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     {board.manufacturerUrl && (
                       <a

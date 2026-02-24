@@ -300,9 +300,20 @@ export function generateListingId(
 
 // ===== Spec Key =====
 
-export function specKey(brand: string, model: string): string {
+export function specKey(brand: string, model: string, gender?: string): string {
   const cb = canonicalizeBrand(brand);
-  return `${cb.toLowerCase()}|${normalizeModel(model, cb).toLowerCase()}`;
+  const base = `${cb.toLowerCase()}|${normalizeModel(model, cb).toLowerCase()}`;
+  const g = gender?.toLowerCase();
+  if (g === "womens") return `${base}|womens`;
+  if (g === "kids" || g === "youth") return `${base}|kids`;
+  if (g === "mens") return `${base}|mens`;
+  return `${base}|unisex`;
+}
+
+export function genderFromKey(boardKey: string): string {
+  const last = boardKey.split("|").pop()!;
+  if (last === "womens" || last === "kids" || last === "mens") return last;
+  return "unisex";
 }
 
 // ===== Search Run CRUD =====
@@ -366,8 +377,8 @@ export function upsertBoard(board: Board): void {
     INSERT INTO boards (
       board_key, brand, model, year, flex, profile, shape, category,
       ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
-      description, beginner_score, gender, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      description, beginner_score, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(board_key) DO UPDATE SET
       year = COALESCE(excluded.year, boards.year),
       flex = COALESCE(excluded.flex, boards.flex),
@@ -380,7 +391,6 @@ export function upsertBoard(board: Board): void {
       manufacturer_url = COALESCE(excluded.manufacturer_url, boards.manufacturer_url),
       description = COALESCE(excluded.description, boards.description),
       beginner_score = excluded.beginner_score,
-      gender = excluded.gender,
       updated_at = excluded.updated_at
   `).run(
     board.boardKey, board.brand, board.model, board.year,
@@ -388,7 +398,6 @@ export function upsertBoard(board: Board): void {
     board.abilityLevelMin, board.abilityLevelMax,
     board.msrpUsd, board.manufacturerUrl,
     board.description, board.beginnerScore,
-    board.gender,
     board.createdAt, board.updatedAt
   );
 }
@@ -475,7 +484,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.gender AS board_gender, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.created_at, b.updated_at
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -488,7 +497,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.gender AS board_gender, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.created_at, b.updated_at
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -518,7 +527,6 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
           manufacturerUrl: (row.manufacturer_url as string) || null,
           description: (row.description as string) || null,
           beginnerScore: (row.beginner_score as number) || 0,
-          gender: (row.board_gender as string) || null,
           createdAt: row.created_at as string,
           updatedAt: row.updated_at as string,
         },
@@ -647,7 +655,6 @@ function mapRowToNewBoard(row: Record<string, unknown>): Board {
     manufacturerUrl: (row.manufacturer_url as string) || null,
     description: (row.description as string) || null,
     beginnerScore: (row.beginner_score as number) || 0,
-    gender: (row.gender as string) || null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

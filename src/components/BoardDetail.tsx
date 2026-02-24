@@ -39,12 +39,17 @@ export interface BoardData {
   manufacturerUrl: string | null;
   description: string | null;
   beginnerScore: number;
-  gender: string | null;
   listings: Listing[];
   bestPrice: number;
   valueScore: number;
   finalScore: number;
   specSources?: Record<string, SpecSourceEntry[]>;
+}
+
+export function genderFromBoardKey(boardKey: string): string {
+  const last = boardKey.split("|").pop()!;
+  if (last === "womens" || last === "kids" || last === "mens") return last;
+  return "unisex";
 }
 
 interface SpecSourceEntry {

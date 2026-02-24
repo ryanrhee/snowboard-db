@@ -15,6 +15,7 @@ import {
   normalizeShape,
   normalizeCategory,
   normalizeAbilityLevel,
+  normalizeModel,
   convertToUsd,
 } from "../normalization";
 import { canonicalizeBrand } from "../scraping/utils";
@@ -36,15 +37,14 @@ export function coalesce(
 
   for (const sb of allScrapedBoards) {
     const brand = canonicalizeBrand(sb.brand);
-    const key = specKey(brand, sb.model);
+    const gender = sb.gender ?? undefined;
+    const key = specKey(brand, sb.model, gender);
 
     if (!boardGroups.has(key)) {
-      // Use the normalized brand/model from specKey for consistent identity
-      const parts = key.split("|");
       boardGroups.set(key, {
         scraped: [],
         brand: brand,
-        model: parts.slice(1).join("|"), // model portion from specKey
+        model: normalizeModel(sb.model, brand),
       });
     }
     boardGroups.get(key)!.scraped.push(sb);
@@ -200,18 +200,8 @@ export function coalesce(
       }
     }
 
-    // Resolve board gender from listings
-    const boardListings = listings.filter((l) => l.boardKey === key);
-    const genders = new Set(boardListings.map((l) => l.gender));
-    const boardGender =
-      boardListings.length > 0
-        ? genders.size === 1
-          ? [...genders][0]
-          : "unisex"
-        : // For manufacturer-only boards with no listings, use the scraped gender
-          group.scraped.find((sb) => sb.gender)?.gender ?? "unisex";
-
     // Build the Board entity — specs are left null here, filled by resolveSpecSources
+    // Gender is derived from the board_key suffix, not stored separately
     const board: Board = {
       boardKey: key,
       brand: group.brand,
@@ -227,7 +217,6 @@ export function coalesce(
       manufacturerUrl,
       description,
       beginnerScore: 0,
-      gender: boardGender,
       createdAt: now,
       updatedAt: now,
     };

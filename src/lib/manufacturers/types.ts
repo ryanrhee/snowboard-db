@@ -6,6 +6,7 @@ export interface ManufacturerSpec {
   profile: string | null;
   shape: string | null;
   category: string | null;
+  gender?: string;
   msrpUsd: number | null;
   sourceUrl: string;
   extras: Record<string, string>;

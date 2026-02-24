@@ -7,7 +7,14 @@ vi.mock("../lib/db", () => ({
   getCachedSpecs: vi.fn(),
   setCachedSpecs: vi.fn(),
   setSpecSource: vi.fn(),
-  specKey: vi.fn((brand: string, model: string) => `${brand.toLowerCase()}|${model.toLowerCase()}`),
+  specKey: vi.fn((brand: string, model: string, gender?: string) => {
+    const base = `${brand.toLowerCase()}|${model.toLowerCase()}`;
+    const g = gender?.toLowerCase();
+    if (g === "womens") return `${base}|womens`;
+    if (g === "kids" || g === "youth") return `${base}|kids`;
+    if (g === "mens") return `${base}|mens`;
+    return `${base}|unisex`;
+  }),
   upsertBoard: vi.fn(),
 }));
 
@@ -47,7 +54,7 @@ describe("ingestManufacturerSpecs", () => {
     expect(result).toEqual({ inserted: 1, updated: 0, skipped: 0 });
     expect(setCachedSpecs).toHaveBeenCalledTimes(1);
     expect(setCachedSpecs).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       expect.objectContaining({
         source: "manufacturer",
         sourceUrl: "https://burton.com/custom",
@@ -97,14 +104,14 @@ describe("ingestManufacturerSpecs", () => {
     ingestManufacturerSpecs([spec]);
 
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "ability level",
       "manufacturer",
       "intermediate",
       "https://burton.com/custom",
     );
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "abilityLevel",
       "manufacturer",
       "intermediate",
@@ -132,14 +139,14 @@ describe("ingestManufacturerSpecs", () => {
     expect(result.skipped).toBe(1);
     expect(setCachedSpecs).not.toHaveBeenCalled();
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "ability level",
       "manufacturer",
       "advanced",
       "https://burton.com/custom",
     );
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "abilityLevel",
       "manufacturer",
       "advanced",
@@ -161,7 +168,7 @@ describe("ingestManufacturerSpecs", () => {
     ingestManufacturerSpecs([spec]);
 
     expect(setCachedSpecs).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       expect.objectContaining({ flex: 5 }),
     );
   });
@@ -172,7 +179,7 @@ describe("ingestManufacturerSpecs", () => {
     ingestManufacturerSpecs([spec]);
 
     expect(setCachedSpecs).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       expect.objectContaining({ profile: "hybrid_rocker" }),
     );
   });
@@ -224,7 +231,7 @@ describe("ingestManufacturerSpecs", () => {
     ingestManufacturerSpecs([spec]);
 
     expect(setCachedSpecs).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       expect.objectContaining({
         flex: null,
         profile: null,

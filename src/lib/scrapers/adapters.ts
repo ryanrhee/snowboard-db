@@ -2,7 +2,7 @@ import { RawBoard, Currency, Region } from "../types";
 import { ManufacturerSpec } from "../manufacturers/types";
 import { ScrapedBoard, ScrapedListing } from "./types";
 import { normalizeBrand } from "../scraping/utils";
-import { normalizeModel } from "../normalization";
+import { normalizeModel, detectGender } from "../normalization";
 
 /**
  * Group RawBoard[] (one per size/listing) from a retailer into ScrapedBoard[]
@@ -18,7 +18,9 @@ export function adaptRetailerOutput(
   for (const raw of rawBoards) {
     const brand = normalizeBrand(raw.brand || "Unknown");
     const model = normalizeModel(raw.model || "Unknown", brand);
-    const groupKey = `${brand.toLowerCase()}|${model.toLowerCase()}`;
+    const detectedGender = (raw.gender || detectGender(raw.model || "", raw.url)).toLowerCase();
+    const genderSuffix = (detectedGender === "womens" || detectedGender === "kids") ? `|${detectedGender}` : "";
+    const groupKey = `${brand.toLowerCase()}|${model.toLowerCase()}${genderSuffix}`;
 
     if (!groups.has(groupKey)) {
       groups.set(groupKey, {
@@ -34,7 +36,7 @@ export function adaptRetailerOutput(
           shape: raw.shape ?? undefined,
           category: raw.category ?? undefined,
           abilityLevel: raw.abilityLevel ?? undefined,
-          gender: raw.gender ?? undefined,
+          gender: detectedGender || undefined,
           description: raw.description ?? undefined,
           extras: raw.specs ?? {},
         },
@@ -109,6 +111,7 @@ export function adaptManufacturerOutput(
     shape: spec.shape ?? undefined,
     category: spec.category ?? undefined,
     msrpUsd: spec.msrpUsd ?? undefined,
+    gender: spec.gender ?? undefined,
     extras: spec.extras,
     listings: [],
   }));

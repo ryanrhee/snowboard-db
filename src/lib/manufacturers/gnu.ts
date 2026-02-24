@@ -22,11 +22,12 @@ export const gnu: ManufacturerModule = {
     const specs: ManufacturerSpec[] = [];
 
     // Scrape both men's and women's catalog pages
-    const productLinks: { url: string; name: string; price: number | null }[] =
+    const productLinks: { url: string; name: string; price: number | null; gender: string }[] =
       [];
     const seenUrls = new Set<string>();
 
     for (const catalogUrl of CATALOG_URLS) {
+      const catalogGender = catalogUrl.includes("/womens") ? "womens" : "mens";
       try {
         const html = await fetchPage(catalogUrl, { timeoutMs: 20000 });
         const $ = cheerio.load(html);
@@ -66,6 +67,7 @@ export const gnu: ManufacturerModule = {
               url: fullUrl,
               name,
               price: price && !isNaN(price) ? price : null,
+              gender: catalogGender,
             });
           }
         });
@@ -86,11 +88,13 @@ export const gnu: ManufacturerModule = {
       const results = await Promise.all(
         batch.map(async (product) => {
           try {
-            return await scrapeDetailPage(
+            const spec = await scrapeDetailPage(
               product.url,
               product.name,
               product.price
             );
+            spec.gender = product.gender;
+            return spec;
           } catch (err) {
             console.warn(
               `[gnu] Failed to scrape ${product.name}:`,
@@ -104,6 +108,7 @@ export const gnu: ManufacturerModule = {
               profile: null,
               shape: null,
               category: null,
+              gender: product.gender,
               msrpUsd: product.price,
               sourceUrl: product.url,
               extras: {},

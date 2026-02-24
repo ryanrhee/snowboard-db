@@ -167,6 +167,7 @@ export { getSourcePriority, findConsensus, valuesMatch };
 
 /** Minimal interface for boards that can be resolved — works with both Board and CanonicalBoard */
 interface Resolvable {
+  boardKey?: string;
   brand: string;
   model: string;
   year: number | null;
@@ -176,13 +177,19 @@ interface Resolvable {
   category: BoardCategory | string | null;
   abilityLevelMin: string | null;
   abilityLevelMax: string | null;
+  gender?: string | null;
+}
+
+function resolvableKey(board: Resolvable): string {
+  if (board.boardKey) return board.boardKey;
+  return specKey(board.brand, board.model, board.gender ?? undefined);
 }
 
 export async function resolveSpecSources<T extends Resolvable>(boards: T[], opts?: { skipJudgment?: boolean }): Promise<T[]> {
   // Group boards by specKey to avoid redundant resolution
   const keyToBoards = new Map<string, T[]>();
   for (const board of boards) {
-    const key = specKey(board.brand, board.model);
+    const key = resolvableKey(board);
     const group = keyToBoards.get(key);
     if (group) {
       group.push(board);
@@ -325,7 +332,7 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[], opts
 
   // Apply resolved values to boards
   return boards.map((board) => {
-    const key = specKey(board.brand, board.model);
+    const key = resolvableKey(board);
     const fieldInfoMap = resolvedMap.get(key);
     if (!fieldInfoMap) return board;
 

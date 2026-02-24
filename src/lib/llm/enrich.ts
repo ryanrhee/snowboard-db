@@ -213,7 +213,7 @@ export async function enrichBoardSpecs(
             sourceUrl: reviewSpec.sourceUrl,
           });
           // Write individual fields to spec_sources
-          const sk = specKey(boardSample.brand, boardSample.model);
+          const sk = specKey(boardSample.brand, boardSample.model, boardSample.gender);
           if (specs.flex !== null) setSpecSource(sk, 'flex', 'review-site', String(specs.flex), reviewSpec.sourceUrl);
           if (specs.profile !== null) setSpecSource(sk, 'profile', 'review-site', specs.profile, reviewSpec.sourceUrl);
           if (specs.shape !== null) setSpecSource(sk, 'shape', 'review-site', specs.shape, reviewSpec.sourceUrl);
@@ -260,7 +260,7 @@ export async function enrichBoardSpecs(
             sourceUrl: null,
           });
           // Write individual fields to spec_sources
-          const sk = specKey(boardSample.brand, boardSample.model);
+          const sk = specKey(boardSample.brand, boardSample.model, boardSample.gender);
           if (specs.flex !== null) setSpecSource(sk, 'flex', 'llm', String(specs.flex));
           if (specs.profile !== null) setSpecSource(sk, 'profile', 'llm', specs.profile);
           if (specs.shape !== null) setSpecSource(sk, 'shape', 'llm', specs.shape);

@@ -6,8 +6,14 @@ import { setSpecSource } from "../lib/db";
 
 vi.mock("../lib/db", () => ({
   specKey: vi.fn(
-    (brand: string, model: string) =>
-      `${brand.toLowerCase()}|${model.toLowerCase()}`
+    (brand: string, model: string, gender?: string) => {
+      const base = `${brand.toLowerCase()}|${model.toLowerCase()}`;
+      const g = gender?.toLowerCase();
+      if (g === "womens") return `${base}|womens`;
+      if (g === "kids" || g === "youth") return `${base}|kids`;
+      if (g === "mens") return `${base}|mens`;
+      return `${base}|unisex`;
+    }
   ),
   setSpecSource: vi.fn(),
   generateListingId: vi.fn(
@@ -45,7 +51,7 @@ describe("coalesce", () => {
     vi.clearAllMocks();
   });
 
-  it("creates a Board entity for each unique brand|model", () => {
+  it("creates a Board entity for each unique brand|model|gender", () => {
     const scraped: ScrapedBoard[] = [
       makeScrapedBoard({ brand: "Burton", model: "Custom" }),
       makeScrapedBoard({
@@ -59,8 +65,8 @@ describe("coalesce", () => {
 
     expect(boards).toHaveLength(2);
     expect(boards.map((b) => b.boardKey).sort()).toEqual([
-      "burton|custom",
-      "burton|process",
+      "burton|custom|unisex",
+      "burton|process|unisex",
     ]);
   });
 
@@ -93,11 +99,11 @@ describe("coalesce", () => {
     const { boards, listings } = coalesce(scraped, "run-1");
 
     expect(boards).toHaveLength(1);
-    expect(boards[0].boardKey).toBe("burton|custom");
+    expect(boards[0].boardKey).toBe("burton|custom|unisex");
     expect(boards[0].msrpUsd).toBe(599);
     expect(boards[0].manufacturerUrl).toBe("https://burton.com/custom");
     expect(listings).toHaveLength(1);
-    expect(listings[0].boardKey).toBe("burton|custom");
+    expect(listings[0].boardKey).toBe("burton|custom|unisex");
   });
 
   it("creates Listing entities from ScrapedBoard.listings", () => {
@@ -150,48 +156,19 @@ describe("coalesce", () => {
     coalesce(scraped, "run-1");
 
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "flex",
       "retailer:evo",
       "5",
       "https://tactics.com/custom"
     );
     expect(setSpecSource).toHaveBeenCalledWith(
-      "burton|custom",
+      "burton|custom|unisex",
       "profile",
       "retailer:evo",
       "camber",
       "https://tactics.com/custom"
     );
-  });
-
-  it("resolves board gender from listing genders", () => {
-    const scraped: ScrapedBoard[] = [
-      makeScrapedBoard({
-        listings: [
-          {
-            url: "https://tactics.com/custom/155",
-            salePrice: 349,
-            currency: Currency.USD,
-            scrapedAt: "2025-01-01T00:00:00Z",
-            gender: "womens",
-          },
-          {
-            url: "https://tactics.com/custom/158",
-            salePrice: 369,
-            currency: Currency.USD,
-            scrapedAt: "2025-01-01T00:00:00Z",
-            gender: "womens",
-          },
-        ],
-      }),
-    ];
-
-    const { boards } = coalesce(scraped, "run-1");
-
-    // BoardIdentifier detects gender from URL/model — since these don't contain women's keywords,
-    // it will default to unisex. The test verifies the gender resolution logic works.
-    expect(boards[0].gender).toBeDefined();
   });
 
   it("returns empty arrays for empty input", () => {
@@ -237,5 +214,28 @@ describe("coalesce", () => {
     expect(boards[0].profile).toBeNull();
     expect(boards[0].shape).toBeNull();
     expect(boards[0].category).toBeNull();
+  });
+
+  it("separates mens and womens versions of the same model into different boards", () => {
+    const scraped: ScrapedBoard[] = [
+      makeScrapedBoard({
+        brand: "Jones",
+        model: "Flagship",
+        gender: "mens",
+        sourceUrl: "https://jones.com/flagship",
+      }),
+      makeScrapedBoard({
+        brand: "Jones",
+        model: "Flagship",
+        gender: "womens",
+        sourceUrl: "https://jones.com/flagship-womens",
+      }),
+    ];
+
+    const { boards } = coalesce(scraped, "run-1");
+
+    expect(boards).toHaveLength(2);
+    const keys = boards.map((b) => b.boardKey).sort();
+    expect(keys).toEqual(["jones|flagship|mens", "jones|flagship|womens"]);
   });
 });

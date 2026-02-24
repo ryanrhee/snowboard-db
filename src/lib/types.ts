@@ -141,7 +141,6 @@ export interface Board {
   manufacturerUrl: string | null;
   description: string | null;
   beginnerScore: number;
-  gender: string | null;
   createdAt: string;
   updatedAt: string;
 }

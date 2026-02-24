@@ -141,6 +141,7 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       profile: bodySpecs.profile,
       shape: bodySpecs.shape,
       category: bodySpecs.category,
+      gender: gender ?? undefined,
       msrpUsd: price && !isNaN(price) ? price : null,
       sourceUrl: `${JONES_BASE}/products/${product.handle}`,
       extras,

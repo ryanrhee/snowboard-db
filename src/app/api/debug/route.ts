@@ -1079,7 +1079,19 @@ export async function POST(request: NextRequest) {
     // Query DB for distributions
     const conditionDist = db.prepare("SELECT condition, COUNT(*) as cnt FROM listings WHERE run_id = ? GROUP BY condition ORDER BY cnt DESC").all(result.run.id) as { condition: string; cnt: number }[];
     const genderDistListings = db.prepare("SELECT gender, COUNT(*) as cnt FROM listings WHERE run_id = ? GROUP BY gender ORDER BY cnt DESC").all(result.run.id) as { gender: string; cnt: number }[];
-    const genderDistBoards = db.prepare("SELECT gender, COUNT(*) as cnt FROM boards WHERE board_key IN (SELECT DISTINCT board_key FROM listings WHERE run_id = ?) GROUP BY gender ORDER BY cnt DESC").all(result.run.id) as { gender: string; cnt: number }[];
+    const genderDistBoards = db.prepare(`
+      SELECT
+        CASE
+          WHEN board_key LIKE '%|womens' THEN 'womens'
+          WHEN board_key LIKE '%|kids' THEN 'kids'
+          WHEN board_key LIKE '%|mens' THEN 'mens'
+          ELSE 'unisex'
+        END as gender,
+        COUNT(*) as cnt
+      FROM boards
+      WHERE board_key IN (SELECT DISTINCT board_key FROM listings WHERE run_id = ?)
+      GROUP BY gender ORDER BY cnt DESC
+    `).all(result.run.id) as { gender: string; cnt: number }[];
     const stockRows = db.prepare("SELECT retailer, COUNT(*) as cnt, AVG(stock_count) as avg_stock FROM listings WHERE run_id = ? AND stock_count IS NOT NULL GROUP BY retailer").all(result.run.id) as { retailer: string; cnt: number; avg_stock: number }[];
 
     // Sample some interesting rows
@@ -1676,6 +1688,137 @@ export async function POST(request: NextRequest) {
       fetched: results,
       blocked,
     });
+  }
+
+  if (action === "jones-explore") {
+    // Explore Jones Snowboards website structure via CDP
+    const { chromium } = await import("playwright");
+    const cheerio = await import("cheerio");
+    const { setHttpCache } = await import("@/lib/scraping/http-cache");
+
+    let browser;
+    try {
+      browser = await chromium.connectOverCDP("http://localhost:9222");
+    } catch (err) {
+      return NextResponse.json({ error: "Chrome not running with --remote-debugging-port=9222", detail: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      const context = browser.contexts()[0] || await browser.newContext();
+
+      // Fetch the snowboards collection page
+      const catalogUrl = body.url || "https://www.jonessnowboards.com/collections/snowboards";
+      const page = await context.newPage();
+      await page.goto(catalogUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(3000);
+      const catalogHtml = await page.content();
+      await page.close();
+      setHttpCache(catalogUrl, catalogHtml);
+
+      const $ = cheerio.load(catalogHtml);
+
+      // Find product links
+      const productLinks: { name: string; url: string }[] = [];
+      $("a[href*='/products/']").each((_, el) => {
+        const href = $(el).attr("href") || "";
+        const name = $(el).text().trim();
+        const fullUrl = href.startsWith("http") ? href : `https://www.jonessnowboards.com${href}`;
+        if (href.includes("/products/") && !href.includes("?") && name) {
+          productLinks.push({ name, url: fullUrl });
+        }
+      });
+
+      // Dedupe by URL
+      const seen = new Set<string>();
+      const unique = productLinks.filter(p => { if (seen.has(p.url)) return false; seen.add(p.url); return true; });
+
+      // Also check if it's a Shopify store (products.json)
+      let isShopify = catalogHtml.includes("Shopify") || catalogHtml.includes("shopify");
+
+      // Try to find product cards structure
+      const cardSelectors = [
+        ".product-card", "[class*='product-card']", "[class*='ProductCard']",
+        ".grid-item", "[class*='grid-product']", ".collection-product",
+        "[class*='collection'] a[href*='/products/']",
+      ];
+      const foundCards: { selector: string; count: number; sample: string }[] = [];
+      for (const sel of cardSelectors) {
+        const els = $(sel);
+        if (els.length > 0) {
+          foundCards.push({ selector: sel, count: els.length, sample: $(els[0]).toString().slice(0, 500) });
+        }
+      }
+
+      // Now fetch ONE detail page to understand product page structure
+      let detailResult: Record<string, unknown> | null = null;
+      if (unique.length > 0) {
+        const detailUrl = body.detailUrl || unique[0].url;
+        const dPage = await context.newPage();
+        await dPage.goto(detailUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await dPage.waitForTimeout(3000);
+        const detailHtml = await dPage.content();
+        await dPage.close();
+        setHttpCache(detailUrl, detailHtml);
+
+        const d$ = cheerio.load(detailHtml);
+
+        // JSON-LD
+        const jsonLd: unknown[] = [];
+        d$("script[type='application/ld+json']").each((_, el) => {
+          try { jsonLd.push(JSON.parse(d$(el).text())); } catch { /* skip */ }
+        });
+
+        // Spec-related elements
+        const specEls: { selector: string; html: string }[] = [];
+        for (const sel of ["table", "dl", "[class*='spec']", "[class*='Spec']", "[class*='tech']", "[class*='detail']", "[class*='feature']"]) {
+          d$(sel).each((_, el) => {
+            const h = d$(el).toString();
+            if (h.length < 5000 && specEls.length < 15) specEls.push({ selector: sel, html: h.slice(0, 1500) });
+          });
+        }
+
+        // Product JSON in scripts
+        const productScripts: string[] = [];
+        d$("script:not([src])").each((_, el) => {
+          const text = d$(el).text();
+          if (text.includes("product") && (text.includes("variants") || text.includes("price"))) {
+            productScripts.push(text.slice(0, 3000));
+          }
+        });
+
+        // Keywords
+        const htmlLower = detailHtml.toLowerCase();
+        const keywords = ["flex", "camber", "rocker", "profile", "shape", "terrain", "ability", "skill", "rider level"];
+        const hits: Record<string, number> = {};
+        for (const kw of keywords) {
+          const count = htmlLower.split(kw).length - 1;
+          if (count > 0) hits[kw] = count;
+        }
+
+        detailResult = {
+          url: detailUrl,
+          htmlLength: detailHtml.length,
+          title: d$("title").text().trim(),
+          jsonLd,
+          specEls,
+          productScripts: productScripts.slice(0, 3),
+          keywordHits: hits,
+        };
+      }
+
+      return NextResponse.json({
+        action,
+        catalogUrl,
+        htmlLength: catalogHtml.length,
+        isShopify,
+        productCount: unique.length,
+        products: unique.slice(0, 30),
+        cardStructure: foundCards,
+        detailPage: detailResult,
+      });
+    } finally {
+      browser.close().catch(() => {});
+    }
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

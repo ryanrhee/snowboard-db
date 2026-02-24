@@ -3,6 +3,7 @@ import {
   BoardWithListings,
   Region,
 } from "./types";
+import { genderFromKey } from "./db";
 
 export const DEFAULT_CONSTRAINTS: SearchConstraints = {
   minLengthCm: 155,
@@ -55,14 +56,15 @@ export function filterBoardsWithListings(
     return { ...board, listings: filteredListings, bestPrice };
   }).filter((b): b is BoardWithListings => b !== null)
     .filter((board) => {
+      const boardGender = genderFromKey(board.boardKey);
       // Gender filter
-      if (filters.gender && board.gender !== filters.gender && board.gender !== "unisex") {
+      if (filters.gender && boardGender !== filters.gender && boardGender !== "unisex") {
         return false;
       }
 
       // Exclude kids boards
       if (filters.excludeKids) {
-        if (board.gender === "kids") return false;
+        if (boardGender === "kids") return false;
         const lower = `${board.model} ${board.description || ""}`.toLowerCase();
         if (
           lower.includes("kids") ||
@@ -77,7 +79,7 @@ export function filterBoardsWithListings(
 
       // Exclude women's boards
       if (filters.excludeWomens) {
-        if (board.gender === "womens") return false;
+        if (boardGender === "womens") return false;
         const lower = `${board.brand} ${board.model} ${board.description || ""}`.toLowerCase();
         if (
           lower.includes("women") ||
