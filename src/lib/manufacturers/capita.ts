@@ -144,6 +144,9 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       }
     }
 
+    // Determine gender from tags or title
+    const gender = deriveGender(product.title, tags);
+
     specs.push({
       brand: "CAPiTA",
       model: cleanModelName(product.title),
@@ -152,6 +155,7 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       profile: profileFromTags,
       shape: shapeFromTags,
       category: bodySpecs.category,
+      gender: gender ?? undefined,
       msrpUsd: price && !isNaN(price) ? price : null,
       sourceUrl: `${CAPITA_BASE}/products/${product.handle}`,
       extras,
@@ -358,6 +362,15 @@ function parseShapeFromTags(tags: string[]): string | null {
   if (tags.includes("directional twin")) return "directional twin";
   if (tags.includes("directional")) return "directional";
   if (tags.includes("tapered")) return "tapered";
+  return null;
+}
+
+function deriveGender(title: string, tags: string[]): string | null {
+  const lower = title.toLowerCase();
+  if (lower.includes("women") || lower.includes("wmns") || tags.includes("women") || tags.includes("womens"))
+    return "womens";
+  if (lower.includes("youth") || lower.includes("kid") || tags.includes("youth") || tags.includes("kids"))
+    return "kids";
   return null;
 }
 

@@ -11,7 +11,6 @@ vi.mock("../lib/db", () => ({
       const g = gender?.toLowerCase();
       if (g === "womens") return `${base}|womens`;
       if (g === "kids" || g === "youth") return `${base}|kids`;
-      if (g === "mens") return `${base}|mens`;
       return `${base}|unisex`;
     }
   ),
@@ -216,12 +215,11 @@ describe("coalesce", () => {
     expect(boards[0].category).toBeNull();
   });
 
-  it("separates mens and womens versions of the same model into different boards", () => {
+  it("separates womens version from unisex version of the same model", () => {
     const scraped: ScrapedBoard[] = [
       makeScrapedBoard({
         brand: "Jones",
         model: "Flagship",
-        gender: "mens",
         sourceUrl: "https://jones.com/flagship",
       }),
       makeScrapedBoard({
@@ -236,6 +234,6 @@ describe("coalesce", () => {
 
     expect(boards).toHaveLength(2);
     const keys = boards.map((b) => b.boardKey).sort();
-    expect(keys).toEqual(["jones|flagship|mens", "jones|flagship|womens"]);
+    expect(keys).toEqual(["jones|flagship|unisex", "jones|flagship|womens"]);
   });
 });

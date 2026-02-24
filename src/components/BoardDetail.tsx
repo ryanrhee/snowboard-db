@@ -49,7 +49,7 @@ export interface BoardData {
 
 export function genderFromBoardKey(boardKey: string): string {
   const last = boardKey.split("|").pop()!;
-  if (last === "womens" || last === "kids" || last === "mens") return last;
+  if (last === "womens" || last === "kids") return last;
   return "unisex";
 }
 
@@ -88,12 +88,18 @@ function sourceLabel(source: string): string {
   if (source.startsWith("retailer:")) {
     return source.replace("retailer:", "");
   }
+  if (source.startsWith("manufacturer:")) {
+    return SOURCE_LABELS["manufacturer"];
+  }
   return SOURCE_LABELS[source] || source;
 }
 
 function sourceColor(source: string): string {
   if (source.startsWith("retailer:")) {
     return "bg-gray-800 text-gray-300 border-gray-600/50";
+  }
+  if (source.startsWith("manufacturer:")) {
+    return SOURCE_COLORS["manufacturer"];
   }
   return SOURCE_COLORS[source] || "bg-gray-800 text-gray-300 border-gray-600/50";
 }
@@ -200,7 +206,9 @@ export function specSourceSummary(specSources?: Record<string, SpecSourceEntry[]
   for (const entries of Object.values(specSources)) {
     for (const s of entries) {
       allSources.add(s.source);
-      const p = s.source.startsWith("retailer:") ? 2 : (PRIORITY[s.source] ?? 0);
+      const p = s.source.startsWith("retailer:") ? 2
+        : s.source.startsWith("manufacturer:") ? PRIORITY["manufacturer"]
+        : (PRIORITY[s.source] ?? 0);
       if (p > bestPriority) { bestPriority = p; bestSource = s.source; }
     }
   }

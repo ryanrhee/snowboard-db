@@ -81,6 +81,7 @@ export const libTech: ManufacturerModule = {
               profile: null,
               shape: null,
               category: null,
+              gender: deriveGender(product.name, "") ?? undefined,
               msrpUsd: product.price,
               sourceUrl: product.url,
               extras: {},
@@ -235,6 +236,7 @@ function parseDetailHtml(
     profile,
     shape,
     category,
+    gender: deriveGender(name, descLower) ?? undefined,
     msrpUsd: msrp && !isNaN(msrp) ? msrp : null,
     sourceUrl: url,
     extras,
@@ -305,6 +307,15 @@ function inferRiderLevelFromInfographic(src: string): string | null {
     if (lower.includes(slug)) return "beginner-intermediate";
   }
 
+  return null;
+}
+
+function deriveGender(name: string, descLower: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower.includes("women") || lower.includes("wmns") || descLower.includes("women's"))
+    return "womens";
+  if (lower.includes("youth") || lower.includes("kid"))
+    return "kids";
   return null;
 }
 

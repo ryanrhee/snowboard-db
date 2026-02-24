@@ -1069,8 +1069,8 @@ describe("detectGender", () => {
     expect(detectGender("Women's Frosting C2 Snowboard")).toBe(GenderTarget.WOMENS);
   });
 
-  it("detects Men's prefix → MENS", () => {
-    expect(detectGender("Men's Custom Camber Snowboard")).toBe(GenderTarget.MENS);
+  it("detects Men's prefix → UNISEX (mens collapsed to unisex)", () => {
+    expect(detectGender("Men's Custom Camber Snowboard")).toBe(GenderTarget.UNISEX);
   });
 
   it("detects Kids' suffix → KIDS", () => {

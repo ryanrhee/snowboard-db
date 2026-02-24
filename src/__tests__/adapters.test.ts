@@ -95,7 +95,7 @@ describe("adaptRetailerOutput", () => {
       availability: "In Stock",
       condition: "new",
       stockCount: 3,
-      gender: "mens",
+      gender: "womens",
     });
 
     const result = adaptRetailerOutput([raw], "tactics");
@@ -109,7 +109,7 @@ describe("adaptRetailerOutput", () => {
     expect(listing.availability).toBe("In Stock");
     expect(listing.condition).toBe("new");
     expect(listing.stockCount).toBe(3);
-    expect(listing.gender).toBe("mens");
+    expect(listing.gender).toBe("womens");
   });
 });
 

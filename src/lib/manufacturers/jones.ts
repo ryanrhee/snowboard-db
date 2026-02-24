@@ -339,11 +339,13 @@ function deriveGender(
   if (
     lower.includes("women") ||
     lower.includes("wmns") ||
-    tags.includes("women")
+    tags.includes("women") ||
+    tags.includes("womens")
   )
     return "womens";
-  if (lower.includes("men's") || tags.includes("men")) return "mens";
-  if (lower.includes("youth") || lower.includes("kid")) return "youth";
+  if (lower.includes("youth") || lower.includes("kid") || lower.includes("junior"))
+    return "youth";
+  // Don't use "men" tag — most unisex boards are tagged "men" in Shopify
   return null;
 }
 

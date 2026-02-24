@@ -90,7 +90,7 @@ describe("BoardIdentifier", () => {
         rawBrand: "Burton",
         genderHint: "Men's",
       });
-      expect(id.gender).toBe(GenderTarget.MENS);
+      expect(id.gender).toBe(GenderTarget.UNISEX);
     });
 
     it("yearHint overrides model year inference", () => {

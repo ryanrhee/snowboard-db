@@ -94,7 +94,6 @@ export function Filters({ onFilterChange }: FiltersProps) {
           className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
         >
           <option value="">All Genders</option>
-          <option value="mens">Men&apos;s</option>
           <option value="womens">Women&apos;s</option>
           <option value="kids">Kids&apos;</option>
         </select>

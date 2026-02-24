@@ -27,7 +27,7 @@ export const gnu: ManufacturerModule = {
     const seenUrls = new Set<string>();
 
     for (const catalogUrl of CATALOG_URLS) {
-      const catalogGender = catalogUrl.includes("/womens") ? "womens" : "mens";
+      const catalogGender = catalogUrl.includes("/womens") ? "womens" : "unisex";
       try {
         const html = await fetchPage(catalogUrl, { timeoutMs: 20000 });
         const $ = cheerio.load(html);

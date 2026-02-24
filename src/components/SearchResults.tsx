@@ -32,11 +32,13 @@ const SOURCE_DOT_COLOR: Record<string, string> = {
 
 function specSourceShort(source: string): string {
   if (source.startsWith("retailer:")) return source.replace("retailer:", "");
+  if (source.startsWith("manufacturer:")) return SOURCE_SHORT["manufacturer"];
   return SOURCE_SHORT[source] || source;
 }
 
 function specSourceDotColor(source: string): string {
   if (source.startsWith("retailer:")) return "text-gray-400";
+  if (source.startsWith("manufacturer:")) return SOURCE_DOT_COLOR["manufacturer"];
   return SOURCE_DOT_COLOR[source] || "text-gray-500";
 }
 
@@ -192,7 +194,7 @@ export function SearchResults({ boards }: SearchResultsProps) {
                         const g = genderFromBoardKey(board.boardKey);
                         return g !== "unisex" ? (
                           <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-gray-800 text-gray-400">
-                            {g === "womens" ? "W" : g === "mens" ? "M" : g === "kids" ? "K" : ""}
+                            {g === "womens" ? "W" : g === "kids" ? "K" : ""}
                           </span>
                         ) : null;
                       })()}

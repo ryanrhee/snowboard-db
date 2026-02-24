@@ -14,6 +14,7 @@ const SOURCE_PRIORITY: Record<string, number> = {
 
 function getSourcePriority(source: string): number {
   if (source.startsWith("retailer:")) return 2;
+  if (source.startsWith("manufacturer:")) return SOURCE_PRIORITY["manufacturer"];
   return SOURCE_PRIORITY[source] ?? 0;
 }
 

@@ -12,7 +12,6 @@ vi.mock("../lib/db", () => ({
     const g = gender?.toLowerCase();
     if (g === "womens") return `${base}|womens`;
     if (g === "kids" || g === "youth") return `${base}|kids`;
-    if (g === "mens") return `${base}|mens`;
     return `${base}|unisex`;
   }),
   upsertBoard: vi.fn(),

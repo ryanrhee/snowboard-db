@@ -35,12 +35,9 @@ export function normalizeConditionString(raw: string): ListingCondition {
 }
 
 export function detectGender(rawModel: string, url?: string): GenderTarget {
-  const lower = rawModel.toLowerCase();
-  if (/women's|wmns/i.test(rawModel) || (url && /-womens\b|-women-/i.test(url)))
+  if (/women'?s|wmns/i.test(rawModel) || (url && /[\/-]womens?\b/i.test(url)))
     return GenderTarget.WOMENS;
-  if (/men's/i.test(rawModel) || (url && /-mens\b|-men-/i.test(url)))
-    return GenderTarget.MENS;
-  if (/kids'|boys'|girls'|youth|junior/i.test(rawModel))
+  if (/kids'?|boys'?|girls'?|youth|junior/i.test(rawModel))
     return GenderTarget.KIDS;
   return GenderTarget.UNISEX;
 }
@@ -325,11 +322,11 @@ export function normalizeFlex(raw: string): number | null {
   }
 
   // Text-based flex — check compound terms before simple ones
-  const lower = raw.toLowerCase();
-  if (lower.includes("very soft") || lower.includes("extra soft")) return 2;
+  const lower = raw.toLowerCase().replace(/[\s-]+/g, "-");
+  if (lower.includes("very-soft") || lower.includes("extra-soft")) return 2;
   if (lower.includes("medium-soft") || lower.includes("soft-medium")) return 4;
   if (lower.includes("soft")) return 3;
-  if (lower.includes("very stiff") || lower.includes("extra stiff")) return 9;
+  if (lower.includes("very-stiff") || lower.includes("extra-stiff")) return 9;
   if (lower.includes("medium-stiff") || lower.includes("stiff-medium")) return 6;
   if (lower.includes("stiff")) return 7;
   if (lower.includes("medium")) return 5;

@@ -189,6 +189,18 @@ function mapShape(value: string): string | null {
   return value;
 }
 
+/**
+ * Derive gender from Burton product name prefix.
+ * Burton names start with "Men's", "Women's", or "Kids'" —
+ * only tag as gendered if the name explicitly says so.
+ */
+function deriveGenderFromName(name: string): string | undefined {
+  if (/^Women's\b/i.test(name)) return "womens";
+  if (/^Kids'\b/i.test(name) || /^Boy's\b/i.test(name) || /^Girl's\b/i.test(name)) return "kids";
+  // Don't tag "Men's" as mens — Burton lists most unisex boards under men's
+  return undefined;
+}
+
 function cleanModelName(raw: string): string {
   return raw
     .replace(/^(?:Men's|Women's|Kids'|Boy's|Girl's)\s+/i, "")
@@ -309,6 +321,7 @@ export const burton: ManufacturerModule = {
         profile,
         shape,
         category,
+        gender: deriveGenderFromName(board.name),
         msrpUsd: board.msrp,
         sourceUrl: board.sourceUrl,
         extras,

@@ -49,7 +49,6 @@ export enum ListingCondition {
 }
 
 export enum GenderTarget {
-  MENS = "mens",
   WOMENS = "womens",
   KIDS = "kids",
   UNISEX = "unisex",

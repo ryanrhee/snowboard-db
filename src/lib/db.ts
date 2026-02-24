@@ -308,13 +308,12 @@ export function specKey(brand: string, model: string, gender?: string): string {
   const g = gender?.toLowerCase();
   if (g === "womens") return `${base}|womens`;
   if (g === "kids" || g === "youth") return `${base}|kids`;
-  if (g === "mens") return `${base}|mens`;
   return `${base}|unisex`;
 }
 
 export function genderFromKey(boardKey: string): string {
   const last = boardKey.split("|").pop()!;
-  if (last === "womens" || last === "kids" || last === "mens") return last;
+  if (last === "womens" || last === "kids") return last;
   return "unisex";
 }
 
@@ -765,6 +764,12 @@ const SOURCE_PRIORITY: Record<string, number> = {
   llm: 1,
 };
 
+function getSourcePriorityDb(source: string): number {
+  if (source.startsWith("retailer:")) return 0;
+  if (source.startsWith("manufacturer:")) return SOURCE_PRIORITY["manufacturer"];
+  return SOURCE_PRIORITY[source] ?? 0;
+}
+
 /**
  * Set cached specs only if the new source has equal or higher priority
  * than the existing entry. Priority: manufacturer > review-site > llm.
@@ -775,8 +780,8 @@ export function setCachedSpecsWithPriority(
 ): void {
   const existing = getCachedSpecs(brandModel);
   if (existing && existing.source) {
-    const existingPriority = SOURCE_PRIORITY[existing.source] ?? 0;
-    const newPriority = SOURCE_PRIORITY[specs.source ?? ""] ?? 0;
+    const existingPriority = getSourcePriorityDb(existing.source);
+    const newPriority = getSourcePriorityDb(specs.source ?? "");
     if (newPriority < existingPriority) return;
   }
   setCachedSpecs(brandModel, specs);
