@@ -116,17 +116,19 @@ Two-phase: catalog page, then individual detail pages (concurrency 3).
 
 Two-phase: Shopify JSON API, then individual detail pages (concurrency 3).
 
-**Primary: Shopify JSON API.** Fetches `/collections/snowboards/products.json` (paginated, up to 5 pages). Filters to snowboard products by `tags`. Extracts model name, MSRP from first variant price, and parses `body_html` for specs (flex, profile, shape, category) via keyword matching.
+**Primary: Shopify JSON API.** Fetches `/collections/snowboards/products.json` (paginated, up to 5 pages). Filters to snowboard products by `tags`. Extracts model name, MSRP from first variant price, and parses `body_html` for category via keyword matching.
 
 **Detail pages** (fetched for each product) extract:
-- **Terrain ratings:** Regex-based extraction of patterns like "On-piste / All-mountain: 7/10", "Freeride / Powder: 10/10", "Freestyle / Park: 3/10" from `.spec` elements or body text.
-- **Category derivation:** If body_html doesn't yield a category, the highest-scoring terrain rating determines the category.
+- **Flex:** From `.specs-container` with "Personality/Flex" title. Uses `.spec-ratio-value` (1–5 scale, converted to 1–10). Also captures the descriptive label (e.g. "Mid-stiff & lively") from `.spec-name` as a "flex description" extra.
+- **Profile:** From `.product-shape-content` section, under the `<h4>Profile</h4>` heading (e.g. "Directional Camber / Rocker").
+- **Shape:** From `.product-shape-content` section, under the `<h4>Shape</h4>` heading (e.g. "Directional").
+- **Terrain ratings:** From `.specs-container` with "Terrain" title. Each `.spec` element has a `.spec-name` label (e.g. "On-piste / All-mountain") and `.spec-ratio-value` score (e.g. "10"). Stored as extras (e.g. "on-piste / all-mountain": "10/10").
+- **Ability level:** From the `.specs-container.riding-level` section. Each level (Beginner, Intermediate, Expert) has a `.content-riding-level` element; active levels have `.spec-name` without the `disabled` class. Combined into a range (e.g. "intermediate-expert").
+- **Category:** Derived from the highest-scoring terrain rating via `deriveCategoryFromRatings()`.
+- **Shape extras:** Taper and 3D Contour Base from `.product-shape-content`.
 
 **Body HTML parsing** detects:
-- **Profile:** CamRock, directional rocker, directional camber, camber, rocker, flat
-- **Shape:** tapered directional, directional twin, true twin, directional, twin
-- **Category:** all-mountain, freeride, freestyle, park, powder, backcountry
-- **Ability level:** beginner, intermediate, advanced, expert (from description text)
+- **Ability level:** beginner, intermediate, advanced, expert (fallback if detail page widget absent)
 
 ### Model name cleaning
 
@@ -134,7 +136,6 @@ Strips gender prefixes ("Men's", "Women's", "Youth"), " Snowboard" suffix, and y
 
 ### Known issues
 
-- Jones body_html descriptions rarely include explicit ability level keywords — most boards have no ability level from the manufacturer source. The terrain ratings could potentially be mapped to an ability range.
 - Some products are non-board items (snowskate, packages) that pass the tag filter.
 
 ---
@@ -269,7 +270,7 @@ Total boards scraped and number with each core property filled in:
 |---------|----------|------|---------|-------|----------|---------------|
 | Burton | 34 | 34 (100%) | 34 (100%) | 34 (100%) | 31 (91%) | 31 (91%) |
 | CAPiTA | 39 | 39 (100%) | 30 (77%) | 31 (79%) | 31 (79%) | 39 (100%) |
-| Jones | 39 | 39 (100%) | 18 (46%) | 29 (74%) | 34 (87%) | 6 (15%) |
+| Jones | 39 | 39 (100%) | 37 (95%) | 37 (95%) | 39 (100%) | 39 (100%) |
 | Lib Tech | 29 | 29 (100%) | 16 (55%) | 14 (48%) | 29 (100%) | 26 (90%) |
 | GNU | 25 | 24 (96%) | 15 (60%) | 13 (52%) | 25 (100%) | 2 (8%) |
 | Yes. | 22 | 1 (5%) | — | 14 (64%) | 9 (41%) | 2 (9%) |
@@ -281,7 +282,7 @@ Total boards scraped and number with each core property filled in:
 |---------|----------------|
 | Burton | bend, camber, effective edge, nose/tail width, rider weight range, sidecut radius, stance location, stance width, taper, terrain, waist width (all 34/34) |
 | CAPiTA | hexagon scores: jibbing, skill level, powder, groomers, versatility, jumps (all 39/39); tags |
-| Jones | tags (39/39), gender (15/39) |
+| Jones | tags (39/39), gender (15/39), flex description (39/39), taper (38/39), 3D contour base (34/39) |
 | Lib Tech | spec table: contact length, nose/tail width, sidecut, waist width, weight range, surface area (29/29); stance setback (26–28/29) |
 | GNU | spec table: contact length, nose/tail width, sidecut, waist width, weight range (24/25); stance setback (23–24/25) |
 | Yes. | tags (22/22), gender (6/22) |
@@ -289,9 +290,9 @@ Total boards scraped and number with each core property filled in:
 
 **Key gaps:**
 
-- **Profile** is weakest for Jones (46%), Lib Tech (55%), and GNU (60%). These brands embed profile info in descriptions that don't always use detectable keywords.
+- **Profile** is weakest for Lib Tech (55%) and GNU (60%). These brands embed profile info in descriptions that don't always use detectable keywords.
 - **Shape** is weakest for Lib Tech (48%) and GNU (52%) — same issue with description-based extraction.
-- **Ability level** is very sparse for Jones (15%) and GNU (8%). Jones rarely mentions ability keywords in descriptions. GNU's infographic-based inference only covers 2 boards.
+- **Ability level** is very sparse for GNU (8%). GNU's infographic-based inference only covers 2 boards.
 - **Yes.** has almost no flex data (5%) — the brand simply doesn't publish flex ratings on their site.
 - **Burton** and **CAPiTA** have the most complete coverage overall, with structured data sources (Bootstrap JSON and hexagon charts respectively).
 

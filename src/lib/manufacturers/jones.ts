@@ -118,13 +118,32 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       for (const [key, value] of Object.entries(detail.terrainRatings)) {
         extras[key] = value;
       }
-      // Category from terrain ratings if not found in body
-      if (!bodySpecs.category && detail.derivedCategory) {
+      // Category from terrain ratings (preferred over body keyword matching)
+      if (detail.derivedCategory) {
         bodySpecs.category = detail.derivedCategory;
       }
-      // Flex from detail page progress bar if not found in body
-      if (!bodySpecs.flex && detail.flex) {
+      // Flex from detail page progress bar (preferred over body keyword matching)
+      if (detail.flex) {
         bodySpecs.flex = detail.flex;
+      }
+      if (detail.flexLabel) {
+        extras["flex description"] = detail.flexLabel;
+      }
+      // Ability level from detail page riding level section
+      if (!extras["ability level"] && detail.abilityLevel) {
+        extras["ability level"] = detail.abilityLevel;
+      }
+      // Profile from detail page shape section (preferred over body keyword matching)
+      if (detail.profile) {
+        bodySpecs.profile = detail.profile;
+      }
+      // Shape from detail page shape section (preferred over body keyword matching)
+      if (detail.shape) {
+        bodySpecs.shape = detail.shape;
+      }
+      // Additional shape extras (taper, 3D contour, etc.)
+      for (const [key, value] of Object.entries(detail.shapeExtras)) {
+        if (!extras[key]) extras[key] = value;
       }
     }
 
@@ -159,6 +178,11 @@ interface DetailPageData {
   terrainRatings: Record<string, string>; // e.g. { "on-piste": "7/10", "freeride": "10/10" }
   derivedCategory: string | null;
   flex: string | null; // 1-10 scale (converted from Jones' 1-5 scale)
+  flexLabel: string | null; // e.g. "Mid-stiff & lively"
+  abilityLevel: string | null; // e.g. "intermediate-expert"
+  profile: string | null; // from .product-shape-content
+  shape: string | null; // from .product-shape-content
+  shapeExtras: Record<string, string>; // taper, 3D contour, etc.
 }
 
 async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
@@ -168,35 +192,25 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
 
   const terrainRatings: Record<string, string> = {};
 
-  // Look for terrain ratings in .spec .spec-details or similar structures
-  $(".spec, [class*='spec-detail'], [class*='terrain']").each((_, el) => {
-    const text = $(el).text().trim();
-    // Match patterns like "On-piste / All-mountain: 7/10" or "Freeride / Powder: 10/10"
-    const ratingMatch = text.match(
-      /([\w\s/-]+?):\s*(\d+)\s*\/\s*(\d+)/
-    );
-    if (ratingMatch) {
-      const label = ratingMatch[1].trim().toLowerCase();
-      const score = `${ratingMatch[2]}/${ratingMatch[3]}`;
-      terrainRatings[label] = score;
-    }
+  // Extract terrain ratings from .specs-container with "Terrain" title
+  $(".specs-container").each((_, container) => {
+    const title = $(container).find(".specs-title").text().trim();
+    if (!/terrain/i.test(title)) return;
+    $(container).find(".spec").each((_, spec) => {
+      const label = $(spec).find(".spec-name").text().trim().toLowerCase();
+      const value = $(spec).find(".spec-ratio-value").text().trim();
+      const bar = $(spec).find(".progress-bar").first();
+      const max = bar.attr("aria-valuemax") || "10";
+      if (label && value) {
+        terrainRatings[label] = `${value}/${max}`;
+      }
+    });
   });
-
-  // Also try broader search for terrain rating patterns anywhere on the page
-  if (Object.keys(terrainRatings).length === 0) {
-    const bodyText = $("body").text();
-    const ratingPattern =
-      /(on-piste|all-mountain|freeride|powder|freestyle|park|backcountry)[^:]*:\s*(\d+)\s*\/\s*(\d+)/gi;
-    let match;
-    while ((match = ratingPattern.exec(bodyText)) !== null) {
-      const label = match[1].toLowerCase();
-      terrainRatings[label] = `${match[2]}/${match[3]}`;
-    }
-  }
 
   // Extract flex from Personality/Flex progress bar section
   // Jones uses a 1-5 scale; convert to 1-10 by multiplying by 2
   let flex: string | null = null;
+  let flexLabel: string | null = null;
   $(".specs-container").each((_, container) => {
     const title = $(container).find(".specs-title").text().trim();
     if (/personality\s*\/?\s*flex/i.test(title)) {
@@ -205,6 +219,29 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
       if (parsed >= 1 && parsed <= 5) {
         flex = String(parsed * 2);
       }
+      const label = $(container).find(".spec-name").first().text().trim();
+      if (label) flexLabel = label;
+    }
+  });
+
+  // Extract ability level from Riding Level section
+  // Active levels have .progress-bar.active and spec-name without .disabled
+  let abilityLevel: string | null = null;
+  $(".specs-container.riding-level, .specs-container").each((_, container) => {
+    const title = $(container).find(".specs-title").text().trim();
+    if (!/riding\s*level/i.test(title)) return;
+    const activeLevels: string[] = [];
+    $(container).find(".content-riding-level").each((_, levelEl) => {
+      const name = $(levelEl).find(".spec-name").first();
+      if (!name.hasClass("disabled")) {
+        const level = name.text().trim().toLowerCase();
+        if (level) activeLevels.push(level);
+      }
+    });
+    if (activeLevels.length > 0) {
+      abilityLevel = activeLevels.length === 1
+        ? activeLevels[0]
+        : `${activeLevels[0]}-${activeLevels[activeLevels.length - 1]}`;
     }
   });
 
@@ -214,7 +251,24 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     derivedCategory = deriveCategoryFromRatings(terrainRatings);
   }
 
-  return { terrainRatings, derivedCategory, flex };
+  // Extract profile, shape, taper from .product-shape-content
+  let profile: string | null = null;
+  let shape: string | null = null;
+  const shapeExtras: Record<string, string> = {};
+  $(".product-shape-content div").each((_, el) => {
+    const heading = $(el).find("h4").first().text().trim().toLowerCase();
+    const value = $(el).find("p").first().text().trim();
+    if (!heading || !value) return;
+    if (heading === "profile") {
+      profile = value;
+    } else if (heading === "shape") {
+      shape = value;
+    } else {
+      shapeExtras[heading] = value;
+    }
+  });
+
+  return { terrainRatings, derivedCategory, flex, flexLabel, abilityLevel, profile, shape, shapeExtras };
 }
 
 /**
@@ -268,60 +322,7 @@ function parseBodyHtml(bodyHtml: string): {
   const text = $.text().toLowerCase();
   const extras: Record<string, string> = {};
 
-  let flex: string | null = null;
-  let profile: string | null = null;
-  let shape: string | null = null;
-  let category: string | null = null;
-
-  // Flex
-  const flexMatch =
-    text.match(/flex[:\s]+(\d+(?:\.\d+)?(?:\s*(?:\/|out of)\s*10)?)/i) ||
-    text.match(/flex[:\s]+(soft|medium|stiff|very\s+(?:soft|stiff))/i);
-  if (flexMatch) flex = flexMatch[1].trim();
-
-  // Profile — Jones uses CamRock, camber, rocker
-  const profilePatterns = [
-    /\b(camrock)\b/i,
-    /\b(directional rocker)\b/i,
-    /\b(directional camber)\b/i,
-    /\b(camber)\b/i,
-    /\b(rocker)\b/i,
-    /\b(flat)\b/i,
-  ];
-  for (const pat of profilePatterns) {
-    const m = text.match(pat);
-    if (m) {
-      profile = m[1].trim();
-      break;
-    }
-  }
-
-  // Shape
-  const shapePatterns = [
-    /\b(tapered directional)\b/i,
-    /\b(directional twin)\b/i,
-    /\b(true twin)\b/i,
-    /\b(directional)\b/i,
-    /\b(twin)\b/i,
-  ];
-  for (const pat of shapePatterns) {
-    const m = text.match(pat);
-    if (m) {
-      shape = m[1].trim();
-      break;
-    }
-  }
-
-  // Category from description keywords
-  if (text.includes("all-mountain") || text.includes("all mountain"))
-    category = "all-mountain";
-  else if (text.includes("freeride")) category = "freeride";
-  else if (text.includes("freestyle")) category = "freestyle";
-  else if (text.includes("park")) category = "park";
-  else if (text.includes("powder")) category = "powder";
-  else if (text.includes("backcountry")) category = "freeride";
-
-  // Ability level from description
+  // Ability level from description (fallback if detail page widget absent)
   if (text.includes("beginner") && text.includes("intermediate"))
     extras["ability level"] = "beginner-intermediate";
   else if (text.includes("intermediate") && text.includes("advanced"))
@@ -347,7 +348,7 @@ function parseBodyHtml(bodyHtml: string): {
     }
   }
 
-  return { flex, profile, shape, category, extras };
+  return { flex: null, profile: null, shape: null, category: null, extras };
 }
 
 function deriveGender(
