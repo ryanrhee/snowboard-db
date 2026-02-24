@@ -551,6 +551,26 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     });
   }
 
+  // Find boards that have NO listings for this run
+  const effectiveRunId = runId || (getLatestRun()?.id ?? null);
+  if (effectiveRunId) {
+    const listinglessBoardRows = db.prepare(`
+      SELECT * FROM boards
+      WHERE board_key NOT IN (SELECT DISTINCT board_key FROM listings WHERE run_id = ?)
+    `).all(effectiveRunId) as Record<string, unknown>[];
+
+    for (const row of listinglessBoardRows) {
+      const board = mapRowToNewBoard(row);
+      results.push({
+        ...board,
+        listings: [],
+        bestPrice: 0,
+        valueScore: 0,
+        finalScore: Math.round(0.6 * board.beginnerScore * 100) / 100,
+      });
+    }
+  }
+
   // Sort by finalScore descending
   results.sort((a, b) => b.finalScore - a.finalScore);
   return results;

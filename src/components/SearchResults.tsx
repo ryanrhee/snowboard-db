@@ -80,6 +80,9 @@ export function SearchResults({ boards }: SearchResultsProps) {
         cmp = `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`);
         break;
       case "bestPrice":
+        // Push no-listing boards (bestPrice 0) to the bottom
+        if (a.bestPrice === 0 && b.bestPrice !== 0) return 1;
+        if (b.bestPrice === 0 && a.bestPrice !== 0) return -1;
         cmp = a.bestPrice - b.bestPrice;
         break;
       default:
@@ -116,7 +119,12 @@ export function SearchResults({ boards }: SearchResultsProps) {
     );
   }
 
-  const sortedIncomplete = [...incompleteBoards].sort((a, b) => a.bestPrice - b.bestPrice);
+  const sortedIncomplete = [...incompleteBoards].sort((a, b) => {
+    // Push no-listing boards to the bottom
+    if (a.bestPrice === 0 && b.bestPrice !== 0) return 1;
+    if (b.bestPrice === 0 && a.bestPrice !== 0) return -1;
+    return a.bestPrice - b.bestPrice;
+  });
 
   // Get unique retailers across all listings for a board
   const getRetailers = (board: BoardData) => {
@@ -160,12 +168,13 @@ export function SearchResults({ boards }: SearchResultsProps) {
               const isHighScore = board.finalScore >= 0.7;
               const summary = specSourceSummary(board.specSources);
               const retailers = getRetailers(board);
-              const bestListing = board.listings.reduce((best, l) =>
-                l.salePriceUsd < best.salePriceUsd ? l : best, board.listings[0]);
-              const discountPercent = bestListing.discountPercent ??
+              const hasListings = board.listings.length > 0;
+              const bestListing = hasListings ? board.listings.reduce((best, l) =>
+                l.salePriceUsd < best.salePriceUsd ? l : best, board.listings[0]) : null;
+              const discountPercent = bestListing ? (bestListing.discountPercent ??
                 (board.msrpUsd && board.msrpUsd > board.bestPrice
                   ? Math.round(((board.msrpUsd - board.bestPrice) / board.msrpUsd) * 100)
-                  : null);
+                  : null)) : null;
 
               return (
                 <tr
@@ -221,47 +230,65 @@ export function SearchResults({ boards }: SearchResultsProps) {
                     {board.profile?.replace(/_/g, " ") || "-"}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-green-400 font-medium">
-                        ${board.bestPrice.toFixed(0)}
-                      </span>
-                      {board.msrpUsd && board.msrpUsd > board.bestPrice && (
-                        <span className="text-gray-600 line-through text-xs">
-                          ${board.msrpUsd.toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                    {discountPercent && discountPercent > 0 && (
-                      <span className="text-red-400 text-xs">
-                        -{discountPercent}%
-                      </span>
+                    {hasListings ? (
+                      <>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-green-400 font-medium">
+                            ${board.bestPrice.toFixed(0)}
+                          </span>
+                          {board.msrpUsd && board.msrpUsd > board.bestPrice && (
+                            <span className="text-gray-600 line-through text-xs">
+                              ${board.msrpUsd.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+                        {discountPercent && discountPercent > 0 && (
+                          <span className="text-red-400 text-xs">
+                            -{discountPercent}%
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500">&mdash;</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
                     <ScoreBar score={board.beginnerScore} />
                   </td>
                   <td className="px-3 py-2">
-                    <ScoreBar score={board.valueScore} />
+                    {hasListings ? (
+                      <ScoreBar score={board.valueScore} />
+                    ) : (
+                      <span className="text-gray-500">&mdash;</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
-                    <ScoreBar score={board.finalScore} />
+                    {hasListings ? (
+                      <ScoreBar score={board.finalScore} />
+                    ) : (
+                      <span className="text-gray-500">&mdash;</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {retailers.map((r) => (
-                        <span
-                          key={r}
-                          className={`text-xs px-1.5 py-0.5 rounded ${retailerBadgeColor(r)}`}
-                        >
-                          {r}
-                        </span>
-                      ))}
-                      {board.listings.length > retailers.length && (
-                        <span className="text-[10px] text-gray-500">
-                          ({board.listings.length})
-                        </span>
-                      )}
-                    </div>
+                    {hasListings ? (
+                      <div className="flex flex-wrap gap-1">
+                        {retailers.map((r) => (
+                          <span
+                            key={r}
+                            className={`text-xs px-1.5 py-0.5 rounded ${retailerBadgeColor(r)}`}
+                          >
+                            {r}
+                          </span>
+                        ))}
+                        {board.listings.length > retailers.length && (
+                          <span className="text-[10px] text-gray-500">
+                            ({board.listings.length})
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-500 text-xs">No listings</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     {summary.sourceCount > 0 ? (
@@ -330,21 +357,29 @@ export function SearchResults({ boards }: SearchResultsProps) {
                         {board.profile?.replace(/_/g, " ") || "-"}
                       </td>
                       <td className="px-3 py-2">
-                        <span className="text-green-400/70 font-medium">
-                          ${board.bestPrice.toFixed(0)}
-                        </span>
+                        {board.bestPrice > 0 ? (
+                          <span className="text-green-400/70 font-medium">
+                            ${board.bestPrice.toFixed(0)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">&mdash;</span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {retailers.map((r) => (
-                            <span
-                              key={r}
-                              className={`text-xs px-1.5 py-0.5 rounded ${retailerBadgeColor(r)}`}
-                            >
-                              {r}
-                            </span>
-                          ))}
-                        </div>
+                        {board.listings.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {retailers.map((r) => (
+                              <span
+                                key={r}
+                                className={`text-xs px-1.5 py-0.5 rounded ${retailerBadgeColor(r)}`}
+                              >
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500 text-xs">No listings</span>
+                        )}
                       </td>
                     </tr>
                   );

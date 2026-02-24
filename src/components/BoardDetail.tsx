@@ -360,22 +360,35 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
           {/* Price summary */}
           <div className="border-t border-gray-800 pt-3">
             <div className="flex items-baseline gap-3 mb-3">
-              <span className="text-2xl font-bold text-green-400">
-                ${board.bestPrice.toFixed(0)}
-              </span>
-              {board.msrpUsd && board.msrpUsd > board.bestPrice && (
+              {board.listings.length > 0 ? (
                 <>
-                  <span className="text-gray-500 line-through">
-                    ${board.msrpUsd.toFixed(0)}
+                  <span className="text-2xl font-bold text-green-400">
+                    ${board.bestPrice.toFixed(0)}
                   </span>
-                  <span className="text-sm bg-red-900/50 text-red-300 px-2 py-0.5 rounded">
-                    -{Math.round(((board.msrpUsd - board.bestPrice) / board.msrpUsd) * 100)}%
+                  {board.msrpUsd && board.msrpUsd > board.bestPrice && (
+                    <>
+                      <span className="text-gray-500 line-through">
+                        ${board.msrpUsd.toFixed(0)}
+                      </span>
+                      <span className="text-sm bg-red-900/50 text-red-300 px-2 py-0.5 rounded">
+                        -{Math.round(((board.msrpUsd - board.bestPrice) / board.msrpUsd) * 100)}%
+                      </span>
+                    </>
+                  )}
+                  <span className="text-xs text-gray-500">
+                    from {boardOnlyListings.length} listing{boardOnlyListings.length !== 1 ? "s" : ""}
                   </span>
                 </>
+              ) : (
+                <>
+                  <span className="text-lg text-gray-500">No retail listings</span>
+                  {board.msrpUsd && (
+                    <span className="text-sm text-gray-400">
+                      MSRP ${board.msrpUsd.toFixed(0)}
+                    </span>
+                  )}
+                </>
               )}
-              <span className="text-xs text-gray-500">
-                from {boardOnlyListings.length} listing{boardOnlyListings.length !== 1 ? "s" : ""}
-              </span>
             </div>
           </div>
 
@@ -398,6 +411,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
           )}
 
           {/* Listings table */}
+          {boardOnlyListings.length > 0 && (
           <div className="border-t border-gray-800 pt-3">
             <h3 className="text-sm font-medium text-gray-300 mb-2">Available From</h3>
             <table className="w-full text-sm">
@@ -463,6 +477,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Combo listings (board + binding packages) */}
           {comboListings.length > 0 && (

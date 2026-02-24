@@ -32,6 +32,11 @@ export function filterBoardsWithListings(
   }
 ): BoardWithListings[] {
   return boards.map((board) => {
+    // Boards with no listings skip listing-level filters
+    if (board.listings.length === 0) {
+      return board;
+    }
+
     let filteredListings = board.listings;
 
     if (filters.region) {
