@@ -50,25 +50,25 @@ On first run after the split, cache tables are automatically migrated from the m
 - **`review_sitemap_cache`** — The Good Ride sitemap entries (URL → brand/model mapping). ~625 entries.
 - **`review_url_map`** — Resolved board → The Good Ride review URL mappings. ~148 entries.
 
-## Re-running the Pipeline from Cached HTML
+## Re-running the Pipeline
 
-The HTTP cache (`http_cache` table in `data/http-cache.db`) stores raw HTML from retailer pages with a 24-hour TTL. The pipeline checks this cache first and only makes network requests on a miss or expiry.
+See `docs/architecture.md` for the full list of debug actions, including how to run retailers only, manufacturers only, or both, and how to filter to specific brands/retailers. Key gotcha: `metadata-check` skips manufacturers by default (pass `"manufacturers":null` to include them).
 
-### Quick re-run (no enrichment)
+### Quick reference
 
 ```bash
+# Retailers only (default)
 ./debug.sh '{"action":"metadata-check"}'
+
+# Manufacturers only
+./debug.sh '{"action":"scrape-specs"}'
+
+# Both retailers and manufacturers
+./debug.sh '{"action":"metadata-check","manufacturers":null}'
+
+# Specific retailer + manufacturer
+./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
 ```
-
-Runs `runSearchPipeline({ skipEnrichment: true })` — scrapes all retailers (hitting cache), normalizes, resolves specs from existing `spec_sources`, stores in DB. Fast.
-
-### Full re-run (with enrichment)
-
-```bash
-./debug.sh '{"action":"full-pipeline"}'
-```
-
-Runs `runSearchPipeline({ skipEnrichment: false })` — same as above but also hits The Good Ride for review-site spec lookups on boards missing specs. LLM enrichment is currently disabled in code (`enrich.ts:102`). Slower due to review-site network requests.
 
 ### Reset pipeline output + re-run
 

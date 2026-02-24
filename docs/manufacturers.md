@@ -23,6 +23,7 @@ Scrapers are registered in `src/lib/manufacturers/registry.ts` and invoked via `
 | CAPiTA | `capita.ts` | Shopify | HTTP (JSON API + HTML) | Yes | 40 |
 | Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | 40 |
 | GNU | `gnu.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | 29 |
+| Yes. | `yes.ts` | Shopify | HTTP (JSON API only) | No | 12 |
 
 ---
 
@@ -163,11 +164,44 @@ Two-phase: catalog pages (men's + women's), then individual detail pages (concur
 
 ---
 
+## Yes.
+
+- **File:** `src/lib/manufacturers/yes.ts`
+- **Base URL:** `https://www.yessnowboards.com`
+- **Catalog URL:** `/collections/snowboards/products.json` (Shopify JSON API)
+- **Fetch method:** HTTP — Shopify JSON API only, no detail page scraping
+
+### Scraping strategy
+
+Single-phase: Shopify JSON API only. Detail pages have size charts but no spec widgets worth extracting.
+
+**Shopify JSON API.** Fetches `/collections/snowboards/products.json` (paginated, up to 5 pages). All products in this collection are snowboards; non-board items (bindings, apparel) are filtered out by title keywords. Extracts model name, MSRP from first variant price, and parses `body_html` for specs via keyword matching.
+
+**Body HTML parsing** detects:
+- **Profile:** hybrid camber, hybrid rocker, camber, rocker, flat
+- **Shape:** true twin, asymmetrical twin (→ true twin), directional volume twin (→ directional twin), directional twin, directional
+- **Category:** all-mountain freestyle (→ all-mountain), freestyle park (→ freestyle), all-mountain, freeride, freestyle, park, powder, backcountry
+- **Flex:** soft/medium/stiff keywords (sparse — most descriptions don't mention flex)
+- **Ability level:** beginner, intermediate, advanced, expert keywords
+
+**Gender derivation:** from title ("Women's" → womens, "Youth"/"Kid" → youth) and Shopify tags (`2526-snowboards-women`, `2526-snowboards-kids`).
+
+### Model name cleaning
+
+Strips "Yes." brand prefix, gender prefixes/suffixes ("Men's", "Women's", "Youth", "Kid's"), " Snowboard" suffix, and year suffixes.
+
+### Known issues
+
+- Yes. does not publish flex ratings anywhere on their site — flex coverage is 0 from this scraper.
+- Tags contain only year and gender — no spec data in tags.
+
+---
+
 ## Coverage Analysis
 
 ### Current state (2026-02-25)
 
-5 of 20 brands in the database have manufacturer scrapers. Coverage by brand:
+6 of 21 brands in the database have manufacturer scrapers. Coverage by brand:
 
 | Brand (normalized) | Boards in DB | Listings | Has Mfr Scraper | Mfr Spec Entries |
 |---------------------|-------------|----------|-----------------|------------------|
@@ -176,7 +210,7 @@ Two-phase: catalog pages (men's + women's), then individual detail pages (concur
 | Burton | 35 | 15 | Yes | 632 |
 | Lib Tech | 30 | 43 | Yes | 361 |
 | GNU | 29 | 16 | Yes | 298 |
-| Yes. | 12 | 44 | No | 0 |
+| Yes. | 12 | 44 | Yes | ~60 |
 | Season | 6 | 43 | No | 0 |
 | Sims | 6 | 24 | No | 0 |
 | Arbor | 5 | 10 | No | 0 |
@@ -197,28 +231,21 @@ Two-phase: catalog pages (men's + women's), then individual detail pages (concur
 
 Ranked by impact (board count × listing count × feasibility):
 
-#### 1. Yes. — highest listing count among uncovered brands
-
-- **Boards in DB:** 12
-- **Listings:** 44
-- **Feasibility:** Website platform unknown. Needs investigation.
-- **Impact:** High — most listings of any uncovered brand.
-
-#### 2. Season — high listing count
+#### 1. Season — high listing count
 
 - **Boards in DB:** 6
 - **Listings:** 43
 - **Feasibility:** Website platform unknown. Needs investigation.
 - **Impact:** High listing count relative to board count.
 
-#### 3. Rossignol — well-represented at retailers
+#### 2. Rossignol — well-represented at retailers
 
 - **Boards in DB:** 5
 - **Listings:** 25
 - **Feasibility:** Large corporate site, likely complex.
 - **Impact:** Medium-high — good retailer representation.
 
-#### 4. Nitro — Shopify (same as CAPiTA)
+#### 3. Nitro — Shopify (same as CAPiTA)
 
 - **Website:** https://www.nitrosnowboards.com
 - **Platform:** Shopify (DTC setup, shop domain `dtc-2526-nitrosnowboards.myshopify.com`, Impact theme v6.6.0)
@@ -229,7 +256,7 @@ Ranked by impact (board count × listing count × feasibility):
 - **Feasibility:** Low effort — standard Shopify implementation. The existing `capita.ts` scraper pattern (JSON API → detail pages) can be reused almost directly. Pricing is in EUR (Nitro is a European brand), will need currency note.
 - **Impact:** Medium — well-established brand but currently low retailer representation.
 
-#### 5. Arbor — Shopify (same as CAPiTA)
+#### 4. Arbor — Shopify (same as CAPiTA)
 
 - **Website:** https://www.arborcollective.com
 - **Platform:** Shopify (shop domain `arbor-collective-1.myshopify.com`, Flicker theme v2.1)
@@ -273,7 +300,7 @@ Ranked by impact (board count × listing count × feasibility):
 2. Register in `src/lib/manufacturers/registry.ts`:
    ```typescript
    import { myBrand } from "./my-brand";
-   const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones, gnu, myBrand];
+   const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones, gnu, yes, myBrand];
    ```
 
 3. The `ManufacturerSpec` fields:

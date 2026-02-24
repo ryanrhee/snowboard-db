@@ -10,59 +10,13 @@ Overall spec coverage across 233 boards: flex 167 (72%), profile 193 (83%), shap
 
 ### Brands with manufacturer scrapers
 
-| Brand | Boards | flex | profile | shape | category | Notes |
-|-------|--------|------|---------|-------|----------|-------|
-| Jones | 40 | 39 ✅ | 27 | 31 | 36 | Flex from detail page Personality/Flex progress bar (1-5 scale → 1-10) |
-| CAPiTA | 40 | 39 ✅ | 32 | 33 | 34 | Good coverage |
-| Burton | 35 | 34 ✅ | 35 ✅ | 35 ✅ | 32 | Good coverage via Personality slider |
-| Lib Tech | 30 | 25 ✅ | 21 | 19 | 30 | Profile/shape gaps on some boards |
-| GNU | 29 | 24 ✅ | 19 | 17 | 29 | Same Mervin platform gaps as Lib Tech |
+See `docs/manufacturers.md` for full per-scraper details, coverage table, and priority candidates.
 
-### Brands WITHOUT manufacturer scrapers (15 brands, 59 boards)
+Active: Burton, Lib Tech, CAPiTA, Jones, GNU, Yes. (6 scrapers).
 
-Yes. (12 boards, 44 listings), Season (6, 43), Sims (6, 24), Arbor (5, 10), Rossignol (5, 25), Dinosaurs Will Die (4, 5), Salomon (4, 13), Nitro (3, 3), Ride (3, 5), Rome (3, 9), Bataleon (2, 13), Never Summer (2, 2), K2 (1, 1), Roxy (1, 2), Telos (1, 1), Weston (1, 4).
+### Brands WITHOUT manufacturer scrapers (15 brands, 47 boards)
 
-### What each scraper extracts
-
-**CAPiTA** (`src/lib/manufacturers/capita.ts`):
-- Source: Shopify products.json API + detail pages
-- flex: ✅ from body_html regex or hexagon chart
-- profile: ✅ parsed from product tags (hybrid camber, camber, rocker, etc.)
-- shape: ✅ parsed from product tags (true twin, directional, directional twin)
-- category: partial from text keywords
-- extras: tags, hexagon scores (jibbing/groomers/powder/jumps/versatility/skill level)
-
-**Burton** (`src/lib/manufacturers/burton.ts`):
-- Source: burton.com catalog + `window.__bootstrap` JSON on detail pages
-- flex: ✅ from `productSliders` "Personality" slider (0–100 scale → 1–10 via midpoint)
-- profile: ✅ mapped from "Board Bend" attr (Flying V → hybrid_rocker, PurePop → hybrid_rocker, etc.)
-- shape: ✅ mapped from "Board Shape" attr
-- category: ✅ mapped from "Board Terrain" attr
-- extras: bend, camber, skill level, weight range, dimensions, stance
-
-**Lib Tech** (`src/lib/manufacturers/lib-tech.ts`):
-- Source: lib-tech.com catalog + detail pages + spec tables
-- flex: ✅ from spec table column header containing "flex"
-- profile: ✅ from full page text + contour image filenames (C2/C2x/C3/BTX)
-- shape: partial — regex (true twin/directional) from full page text
-- category: ✅ text keywords
-- extras: all spec table columns, infographic-based ability level
-
-**Jones** (`src/lib/manufacturers/jones.ts`):
-- Source: Shopify products.json API + detail pages
-- flex: ✅ from detail page "Personality/Flex" progress bar (1-5 scale × 2 → 1-10)
-- profile: ✅ CamRock, camber, rocker keywords from body_html
-- shape: ✅ tapered directional, directional twin, etc. from body_html
-- category: ✅ from body_html keywords or derived from terrain ratings
-- extras: terrain ratings (on-piste, freeride, freestyle scores)
-
-**GNU** (`src/lib/manufacturers/gnu.ts`):
-- Source: gnu.com catalog + detail pages (Mervin Magento, same as Lib Tech)
-- flex: ✅ from spec table
-- profile: from description text + contour images (C2/C2x/C3/BTX)
-- shape: partial — regex from full page text
-- category: ✅ text keywords
-- extras: spec table columns, infographic-based ability level
+Season (6, 43), Sims (6, 24), Arbor (5, 10), Rossignol (5, 25), Dinosaurs Will Die (4, 5), Salomon (4, 13), Nitro (3, 3), Ride (3, 5), Rome (3, 9), Bataleon (2, 13), Never Summer (2, 2), K2 (1, 1), Roxy (1, 2), Telos (1, 1), Weston (1, 4).
 
 ## Completed subtasks
 
@@ -90,4 +44,6 @@ Done — Jones flex 0→39. Detail pages have a "Personality/Flex" section with 
 Shape coverage is still incomplete (Lib Tech 19/30, GNU 17/29). The regex-based detection misses boards where shape info is in non-standard locations.
 
 ### 8. Add manufacturer scrapers for top missing brands
-Yes. (12 boards, 44 listings), Season (6, 43), Rossignol (5, 25) — would cover the highest-listing uncovered brands. See `docs/manufacturers.md` for full priority list.
+Yes. ✅ (12 boards, 44 listings), Season (6, 43), Rossignol (5, 25) — would cover the highest-listing uncovered brands. See `docs/manufacturers.md` for full priority list.
+
+**Yes.** — Done. Shopify JSON scraper (`src/lib/manufacturers/yes.ts`). Extracts MSRP from variants, shape/category/profile from body_html keyword matching, gender from title + tags. No detail page scraping (size charts only).
