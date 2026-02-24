@@ -12,11 +12,11 @@ Overall spec coverage across 233 boards: flex 167 (72%), profile 193 (83%), shap
 
 See `docs/manufacturers.md` for full per-scraper details, coverage table, and priority candidates.
 
-Active: Burton, Lib Tech, CAPiTA, Jones, GNU, Yes. (6 scrapers).
+Active: Burton, Lib Tech, CAPiTA, Jones, GNU, Yes., Season (7 scrapers).
 
-### Brands WITHOUT manufacturer scrapers (15 brands, 47 boards)
+### Brands WITHOUT manufacturer scrapers (14 brands, 41 boards)
 
-Season (6, 43), Sims (6, 24), Arbor (5, 10), Rossignol (5, 25), Dinosaurs Will Die (4, 5), Salomon (4, 13), Nitro (3, 3), Ride (3, 5), Rome (3, 9), Bataleon (2, 13), Never Summer (2, 2), K2 (1, 1), Roxy (1, 2), Telos (1, 1), Weston (1, 4).
+Sims (6, 24), Arbor (5, 10), Rossignol (5, 25), Dinosaurs Will Die (4, 5), Salomon (4, 13), Nitro (3, 3), Ride (3, 5), Rome (3, 9), Bataleon (2, 13), Never Summer (2, 2), K2 (1, 1), Roxy (1, 2), Telos (1, 1), Weston (1, 4).
 
 ## Completed subtasks
 
@@ -44,6 +44,8 @@ Done — Jones flex 0→39. Detail pages have a "Personality/Flex" section with 
 Shape coverage is still incomplete (Lib Tech 19/30, GNU 17/29). The regex-based detection misses boards where shape info is in non-standard locations.
 
 ### 8. Add manufacturer scrapers for top missing brands
-Yes. ✅ (12 boards, 44 listings), Season (6, 43), Rossignol (5, 25) — would cover the highest-listing uncovered brands. See `docs/manufacturers.md` for full priority list.
+Yes. ✅ (12 boards, 44 listings), Season ✅ (6, 43), Rossignol (5, 25) — would cover the highest-listing uncovered brands. See `docs/manufacturers.md` for full priority list.
 
 **Yes.** — Done. Shopify JSON scraper (`src/lib/manufacturers/yes.ts`). Extracts MSRP from variants, shape/category/profile from body_html keyword matching, gender from title + tags. No detail page scraping (size charts only).
+
+**Season** — Done. Shopify JSON scraper (`src/lib/manufacturers/season.ts`). Extracts MSRP from variants, flex/shape/category/profile from body_html keyword matching. No detail pages or gender derivation needed. 5 boards scraped (Forma, Kin, Lolo, Nexus, Primer).

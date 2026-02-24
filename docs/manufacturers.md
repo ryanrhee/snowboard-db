@@ -24,6 +24,7 @@ Scrapers are registered in `src/lib/manufacturers/registry.ts` and invoked via `
 | Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | 40 |
 | GNU | `gnu.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | 29 |
 | Yes. | `yes.ts` | Shopify | HTTP (JSON API only) | No | 12 |
+| Season | `season.ts` | Shopify | HTTP (JSON API only) | No | 5 |
 
 ---
 
@@ -197,11 +198,44 @@ Strips "Yes." brand prefix, gender prefixes/suffixes ("Men's", "Women's", "Youth
 
 ---
 
+## Season
+
+- **File:** `src/lib/manufacturers/season.ts`
+- **Base URL:** `https://seasoneqpt.com`
+- **Catalog URL:** `/collections/snowboards/products.json` (Shopify JSON API)
+- **Fetch method:** HTTP — Shopify JSON API only, no detail page scraping
+
+### Scraping strategy
+
+Single-phase: Shopify JSON API only.
+
+**Shopify JSON API.** Fetches `/collections/snowboards/products.json` (paginated, up to 5 pages). Filters by `product_type` ("Snowboards" only, skips "Bundle") and title keywords (skips splitboards). Extracts model name, MSRP from first variant price, and parses `body_html` for specs via keyword matching.
+
+**Body HTML parsing** detects:
+- **Flex:** "medium-stiff" → medium-stiff, "soft-flexing" / "softer flex" / "soft flex" → soft, "stiff" → stiff, "medium" (near "flex") → medium
+- **Shape:** true twin, freestyle twin (→ true twin), directional twin, directional
+- **Profile:** hybrid camber, hybrid rocker, camber, rocker, flat
+- **Category:** all-mountain freestyle (→ all-mountain), freestyle park (→ freestyle), all-mountain, freeride, freestyle, park (→ freestyle), powder (→ freeride), backcountry (→ freeride)
+- **Ability level:** beginner, intermediate, advanced, expert keywords
+
+**No gender derivation** — Season doesn't have gendered product lines.
+
+### Model name cleaning
+
+Strips "Season" brand prefix, " Snowboard" suffix, and year suffixes.
+
+### Known issues
+
+- Profile coverage is sparse — only a few boards mention camber explicitly in `body_html`. Most boards' profiles come from other sources.
+- The Pass Splitboard is listed as a separate product and is filtered out by title keyword.
+
+---
+
 ## Coverage Analysis
 
 ### Current state (2026-02-25)
 
-6 of 21 brands in the database have manufacturer scrapers. Coverage by brand:
+7 of 21 brands in the database have manufacturer scrapers. Coverage by brand:
 
 | Brand (normalized) | Boards in DB | Listings | Has Mfr Scraper | Mfr Spec Entries |
 |---------------------|-------------|----------|-----------------|------------------|
@@ -211,7 +245,7 @@ Strips "Yes." brand prefix, gender prefixes/suffixes ("Men's", "Women's", "Youth
 | Lib Tech | 30 | 43 | Yes | 361 |
 | GNU | 29 | 16 | Yes | 298 |
 | Yes. | 12 | 44 | Yes | ~60 |
-| Season | 6 | 43 | No | 0 |
+| Season | 6 | 43 | Yes | ~25 |
 | Sims | 6 | 24 | No | 0 |
 | Arbor | 5 | 10 | No | 0 |
 | Rossignol | 5 | 25 | No | 0 |
@@ -231,21 +265,14 @@ Strips "Yes." brand prefix, gender prefixes/suffixes ("Men's", "Women's", "Youth
 
 Ranked by impact (board count × listing count × feasibility):
 
-#### 1. Season — high listing count
-
-- **Boards in DB:** 6
-- **Listings:** 43
-- **Feasibility:** Website platform unknown. Needs investigation.
-- **Impact:** High listing count relative to board count.
-
-#### 2. Rossignol — well-represented at retailers
+#### 1. Rossignol — well-represented at retailers
 
 - **Boards in DB:** 5
 - **Listings:** 25
 - **Feasibility:** Large corporate site, likely complex.
 - **Impact:** Medium-high — good retailer representation.
 
-#### 3. Nitro — Shopify (same as CAPiTA)
+#### 2. Nitro — Shopify (same as CAPiTA)
 
 - **Website:** https://www.nitrosnowboards.com
 - **Platform:** Shopify (DTC setup, shop domain `dtc-2526-nitrosnowboards.myshopify.com`, Impact theme v6.6.0)
@@ -256,7 +283,7 @@ Ranked by impact (board count × listing count × feasibility):
 - **Feasibility:** Low effort — standard Shopify implementation. The existing `capita.ts` scraper pattern (JSON API → detail pages) can be reused almost directly. Pricing is in EUR (Nitro is a European brand), will need currency note.
 - **Impact:** Medium — well-established brand but currently low retailer representation.
 
-#### 4. Arbor — Shopify (same as CAPiTA)
+#### 3. Arbor — Shopify (same as CAPiTA)
 
 - **Website:** https://www.arborcollective.com
 - **Platform:** Shopify (shop domain `arbor-collective-1.myshopify.com`, Flicker theme v2.1)

@@ -5,8 +5,9 @@ import { capita } from "./capita";
 import { jones } from "./jones";
 import { gnu } from "./gnu";
 import { yes } from "./yes";
+import { season } from "./season";
 
-const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones, gnu, yes];
+const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones, gnu, yes, season];
 
 export function getManufacturers(brands?: string[]): ManufacturerModule[] {
   if (!brands || brands.length === 0) return ALL_MANUFACTURERS;
