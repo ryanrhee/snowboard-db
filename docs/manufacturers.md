@@ -16,13 +16,13 @@ Scrapers are registered in `src/lib/manufacturers/registry.ts` and invoked via `
 
 ## Active Scrapers
 
-| Brand | File | Platform | Fetch Method | Detail Pages | Boards Scraped |
-|-------|------|----------|--------------|--------------|----------------|
-| Burton | `burton.ts` | Custom (`__bootstrap` JSON) | HTTP | Yes | ~38 |
-| Lib Tech | `lib-tech.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | ~30 |
-| CAPiTA | `capita.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~39 |
-| Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | ~33 |
-| GNU | `gnu.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | ~25 |
+| Brand | File | Platform | Fetch Method | Detail Pages | Boards in DB |
+|-------|------|----------|--------------|--------------|--------------|
+| Burton | `burton.ts` | Custom (`__bootstrap` JSON) | HTTP | Yes | 35 |
+| Lib Tech | `lib-tech.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | 30 |
+| CAPiTA | `capita.ts` | Shopify | HTTP (JSON API + HTML) | Yes | 40 |
+| Jones | `jones.ts` | Shopify | HTTP (JSON API + HTML) | Yes | 40 |
+| GNU | `gnu.ts` | Magento 2 (Mervin) | HTTP + cheerio | Yes | 29 |
 
 ---
 
@@ -50,7 +50,7 @@ Two-phase: catalog page, then individual detail pages.
 
 ### Known issues
 
-- Burton includes the profile variant in the product name (e.g. "Custom Camber", "Custom Flying V"), producing keys like `burton|custom camber` that don't match retailer keys (`burton|custom`). See TASKS.md #3.
+- Burton includes the profile variant in the product name (e.g. "Custom Camber", "Custom Flying V"), producing keys like `burton|custom camber` that don't match retailer keys (`burton|custom`). Fixed in task 3.
 - `__bootstrap` JSON on detail pages is sometimes malformed, requiring regex extraction instead of JSON.parse.
 
 ---
@@ -76,7 +76,7 @@ Two-phase: catalog page, then individual detail pages (concurrency 3).
 
 ### Known issues
 
-- Lib Tech uses the base model name without profile code (e.g. `legitimizer`), while retailers append the code (e.g. `legitimizer c3`). See TASKS.md #3.
+- Lib Tech uses the base model name without profile code (e.g. `legitimizer`), while retailers append the code (e.g. `legitimizer c3`). Fixed in task 3.
 - Rider level inference from infographic filenames is fragile — new boards require adding slugs to the mapping.
 
 ---
@@ -99,7 +99,7 @@ Two-phase: catalog page, then individual detail pages (concurrency 3).
 
 ### Known issues
 
-- Retailer keys sometimes include artist prefixes (e.g. `arthur longo aeronaut`) that the manufacturer omits (`aeronaut`). See TASKS.md #3.
+- Retailer keys sometimes include artist prefixes (e.g. `arthur longo aeronaut`) that the manufacturer omits (`aeronaut`). Fixed in task 3.
 
 ---
 
@@ -165,72 +165,91 @@ Two-phase: catalog pages (men's + women's), then individual detail pages (concur
 
 ## Coverage Analysis
 
-### Current state
+### Current state (2026-02-25)
 
-Only 5 of ~20 brands in the database have manufacturer scrapers. After brand normalization, the coverage looks like:
+5 of 20 brands in the database have manufacturer scrapers. Coverage by brand:
 
 | Brand (normalized) | Boards in DB | Listings | Has Mfr Scraper | Mfr Spec Entries |
 |---------------------|-------------|----------|-----------------|------------------|
-| Lib Tech | 26 | 10+ | Yes | 318 |
-| Jones | 20 | 25 | Yes | ~130 |
-| Yes. | 20 | 17+ | No | 0 |
-| Burton | 15 | 12+ | Yes | 670 |
-| GNU | 15 | 14 | Yes | 298 |
-| Arbor | 10 | 11 | No | 0 |
-| CAPiTA | 10 | — | Yes | 468 |
-| Sims | 10 | 9 | No | 0 |
-| Season | 10 | 6 | No | 0 |
-| Nitro | 8 | 10 | No | 0 |
-| Rossignol | 8 | 5 | No | 0 |
-| Salomon | 7 | 6 | No | 0 |
-| DWD | 7 | 7 | No | 0 |
-| Rome | 6 | 4 | No | 0 |
-| Ride | 5 | 7 | No | 0 |
-| K2 | 5 | 6 | No | 0 |
-| Never Summer | 4 | 4 | No | 0 |
-| Bataleon | 4 | 3 | No | 0 |
-| Nidecker | 2 | 2 | No | 0 |
-
-Board counts include duplicates from brand normalization issues (e.g. "GNU" + "Gnu" = 15). See TASKS.md #1.
+| CAPiTA | 40 | 18 | Yes | 560 |
+| Jones | 40 | 70 | Yes | 148 |
+| Burton | 35 | 15 | Yes | 632 |
+| Lib Tech | 30 | 43 | Yes | 361 |
+| GNU | 29 | 16 | Yes | 298 |
+| Yes. | 12 | 44 | No | 0 |
+| Season | 6 | 43 | No | 0 |
+| Sims | 6 | 24 | No | 0 |
+| Arbor | 5 | 10 | No | 0 |
+| Rossignol | 5 | 25 | No | 0 |
+| Dinosaurs Will Die | 4 | 5 | No | 0 |
+| Salomon | 4 | 13 | No | 0 |
+| Nitro | 3 | 3 | No | 0 |
+| Ride | 3 | 5 | No | 0 |
+| Rome | 3 | 9 | No | 0 |
+| Bataleon | 2 | 13 | No | 0 |
+| Never Summer | 2 | 2 | No | 0 |
+| K2 | 1 | 1 | No | 0 |
+| Roxy | 1 | 2 | No | 0 |
+| Telos | 1 | 1 | No | 0 |
+| Weston | 1 | 4 | No | 0 |
 
 ### Priority candidates for new scrapers
 
 Ranked by impact (board count × listing count × feasibility):
 
-#### 1. Nitro — Shopify (same as CAPiTA)
+#### 1. Yes. — highest listing count among uncovered brands
+
+- **Boards in DB:** 12
+- **Listings:** 44
+- **Feasibility:** Website platform unknown. Needs investigation.
+- **Impact:** High — most listings of any uncovered brand.
+
+#### 2. Season — high listing count
+
+- **Boards in DB:** 6
+- **Listings:** 43
+- **Feasibility:** Website platform unknown. Needs investigation.
+- **Impact:** High listing count relative to board count.
+
+#### 3. Rossignol — well-represented at retailers
+
+- **Boards in DB:** 5
+- **Listings:** 25
+- **Feasibility:** Large corporate site, likely complex.
+- **Impact:** Medium-high — good retailer representation.
+
+#### 4. Nitro — Shopify (same as CAPiTA)
 
 - **Website:** https://www.nitrosnowboards.com
 - **Platform:** Shopify (DTC setup, shop domain `dtc-2526-nitrosnowboards.myshopify.com`, Impact theme v6.6.0)
 - **Catalog URL:** `/collections/snowboards`, with sub-collections for men's, women's, step-on
 - **JSON API:** Confirmed working at `/collections/snowboards.json`
-- **Boards in DB:** 8
-- **Listings:** 10
+- **Boards in DB:** 3
+- **Listings:** 3
 - **Feasibility:** Low effort — standard Shopify implementation. The existing `capita.ts` scraper pattern (JSON API → detail pages) can be reused almost directly. Pricing is in EUR (Nitro is a European brand), will need currency note.
-- **Spec availability:** Product pages have spec details in body HTML and potentially structured Shopify metafields. Detail page scraping will extract flex, profile, shape, category.
-- **Impact:** Medium-high — Nitro is a well-established brand with good retailer representation. Their boards (Optisym, Alternator, Team, etc.) frequently appear on sale.
+- **Impact:** Medium — well-established brand but currently low retailer representation.
 
-#### 2. Arbor — Shopify (same as CAPiTA)
+#### 5. Arbor — Shopify (same as CAPiTA)
 
 - **Website:** https://www.arborcollective.com
 - **Platform:** Shopify (shop domain `arbor-collective-1.myshopify.com`, Flicker theme v2.1)
 - **Catalog URL:** `/collections/featured-snowboards`, with sub-collections for men's, women's, Coda collection
 - **JSON API:** Standard Shopify, likely available at `/collections/featured-snowboards.json`
-- **Boards in DB:** 10
-- **Listings:** 11
+- **Boards in DB:** 5
+- **Listings:** 10
 - **Feasibility:** Low effort — same Shopify pattern as CAPiTA and Nitro. Can reuse the JSON API + detail page approach.
-- **Spec availability:** ~32 boards visible on featured collection. Product pages should have spec data in body HTML.
-- **Impact:** Medium-high — Arbor has solid retailer coverage and their boards (Element, Foundation, Westmark, Bryan Iguchi Pro) are popular across ability levels.
+- **Impact:** Medium — Arbor has solid retailer coverage and their boards (Element, Foundation, Westmark, Bryan Iguchi Pro) are popular across ability levels.
 
 ### Other notable candidates (not prioritized)
 
-| Brand | Boards | Why not top 4 |
-|-------|--------|---------------|
-| **Yes.** (20 boards, 17 listings) | Website platform unknown. Needs investigation. High board count but unknown feasibility. |
-| **Rossignol** (8 boards, 43% avg discount) | Large corporate site, likely complex. Best discounts but moderate board count. |
-| **Ride** (5 boards, 7 listings) | Custom Nuxt.js + Amplience headless CMS — requires reverse-engineering undocumented API. Medium-high effort. |
-| **Salomon** (7 boards) | Large corporate site (Amer Sports group), likely complex. |
-| **Season** (10 boards) | Smaller brand, website platform unknown. |
-| **Sims** (10 boards) | Smaller brand, website platform unknown. |
+| Brand | Boards | Listings | Notes |
+|-------|--------|----------|-------|
+| Sims | 6 | 24 | Smaller brand, website platform unknown |
+| Salomon | 4 | 13 | Large corporate site (Amer Sports group), likely complex |
+| Bataleon | 2 | 13 | Moderate listings but low board count |
+| Rome | 3 | 9 | Moderate listings |
+| Ride | 3 | 5 | Custom Nuxt.js + Amplience headless CMS — requires reverse-engineering undocumented API |
+| Dinosaurs Will Die | 4 | 5 | Small brand |
 
 ---
 
@@ -254,7 +273,7 @@ Ranked by impact (board count × listing count × feasibility):
 2. Register in `src/lib/manufacturers/registry.ts`:
    ```typescript
    import { myBrand } from "./my-brand";
-   const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, myBrand];
+   const ALL_MANUFACTURERS: ManufacturerModule[] = [burton, libTech, capita, jones, gnu, myBrand];
    ```
 
 3. The `ManufacturerSpec` fields:
