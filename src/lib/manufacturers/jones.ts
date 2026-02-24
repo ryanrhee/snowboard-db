@@ -122,6 +122,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       if (!bodySpecs.category && detail.derivedCategory) {
         bodySpecs.category = detail.derivedCategory;
       }
+      // Flex from detail page progress bar if not found in body
+      if (!bodySpecs.flex && detail.flex) {
+        bodySpecs.flex = detail.flex;
+      }
     }
 
     const tags = product.tags?.map((t) => t.toLowerCase()) || [];
@@ -154,6 +158,7 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
 interface DetailPageData {
   terrainRatings: Record<string, string>; // e.g. { "on-piste": "7/10", "freeride": "10/10" }
   derivedCategory: string | null;
+  flex: string | null; // 1-10 scale (converted from Jones' 1-5 scale)
 }
 
 async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
@@ -189,13 +194,27 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     }
   }
 
+  // Extract flex from Personality/Flex progress bar section
+  // Jones uses a 1-5 scale; convert to 1-10 by multiplying by 2
+  let flex: string | null = null;
+  $(".specs-container").each((_, container) => {
+    const title = $(container).find(".specs-title").text().trim();
+    if (/personality\s*\/?\s*flex/i.test(title)) {
+      const ratioValue = $(container).find(".spec-ratio-value").first().text().trim();
+      const parsed = parseInt(ratioValue, 10);
+      if (parsed >= 1 && parsed <= 5) {
+        flex = String(parsed * 2);
+      }
+    }
+  });
+
   // Derive category from terrain ratings
   let derivedCategory: string | null = null;
   if (Object.keys(terrainRatings).length > 0) {
     derivedCategory = deriveCategoryFromRatings(terrainRatings);
   }
 
-  return { terrainRatings, derivedCategory };
+  return { terrainRatings, derivedCategory, flex };
 }
 
 /**

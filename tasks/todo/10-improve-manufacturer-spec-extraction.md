@@ -6,13 +6,13 @@ Flex coverage remains the weakest spec across all brands. Jones (the largest bra
 
 ## Current state (2026-02-25)
 
-Overall spec coverage across 233 boards: flex 128 (55%), profile 193 (83%), shape 194 (83%), category 219 (94%).
+Overall spec coverage across 233 boards: flex 167 (72%), profile 193 (83%), shape 194 (83%), category 219 (94%).
 
 ### Brands with manufacturer scrapers
 
 | Brand | Boards | flex | profile | shape | category | Notes |
 |-------|--------|------|---------|-------|----------|-------|
-| Jones | 40 | 0 ❌ | 27 | 31 | 36 | No flex in body_html; needs detail page extraction |
+| Jones | 40 | 39 ✅ | 27 | 31 | 36 | Flex from detail page Personality/Flex progress bar (1-5 scale → 1-10) |
 | CAPiTA | 40 | 39 ✅ | 32 | 33 | 34 | Good coverage |
 | Burton | 35 | 34 ✅ | 35 ✅ | 35 ✅ | 32 | Good coverage via Personality slider |
 | Lib Tech | 30 | 25 ✅ | 21 | 19 | 30 | Profile/shape gaps on some boards |
@@ -50,7 +50,7 @@ Yes. (12 boards, 44 listings), Season (6, 43), Sims (6, 24), Arbor (5, 10), Ross
 
 **Jones** (`src/lib/manufacturers/jones.ts`):
 - Source: Shopify products.json API + detail pages
-- flex: ❌ not found in body_html; Jones doesn't include flex ratings in descriptions
+- flex: ✅ from detail page "Personality/Flex" progress bar (1-5 scale × 2 → 1-10)
 - profile: ✅ CamRock, camber, rocker keywords from body_html
 - shape: ✅ tapered directional, directional twin, etc. from body_html
 - category: ✅ from body_html keywords or derived from terrain ratings
@@ -83,8 +83,8 @@ Done (task 20) — GNU now has 29 boards with flex from spec tables and profile/
 
 ## Remaining subtasks
 
-### 6. Extract Jones flex from detail pages
-Jones product pages may have flex info in structured elements not captured by body_html parsing. Needs investigation of actual detail page HTML.
+### 6. ✅ Extract Jones flex from detail pages
+Done — Jones flex 0→39. Detail pages have a "Personality/Flex" section with a `.specs-container` containing a progress bar widget. The `.spec-ratio-value` element holds a 1-5 rating (labels: "Soft & playful" 1-2, "Happy medium" 3, "Mid-stiff & lively" 4, stiff 5). Converted to 1-10 scale by multiplying by 2. Distribution: 2 (2 kids boards), 4 (8 boards), 6 (15 boards), 8 (13 boards), 10 (1 board — Flagship Pro). Also fixed `ingest.ts` to write individual spec_sources fields even when skipping existing manufacturer cache entries.
 
 ### 7. Improve Lib Tech/GNU shape coverage
 Shape coverage is still incomplete (Lib Tech 19/30, GNU 17/29). The regex-based detection misses boards where shape info is in non-standard locations.

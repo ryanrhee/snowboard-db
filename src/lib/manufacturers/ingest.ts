@@ -33,8 +33,17 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
       }
     }
 
-    // Don't overwrite existing manufacturer data
+    // Don't overwrite existing manufacturer data, but still update individual
+    // spec_sources fields that may be newly available (e.g. flex from detail pages)
     if (existing && existing.source === "manufacturer") {
+      const nFlex = spec.flex ? normalizeFlex(spec.flex) : null;
+      const nProfile = spec.profile ? normalizeProfile(spec.profile) : null;
+      const nShape = spec.shape ? normalizeShape(spec.shape) : null;
+      const nCategory = normalizeCategory(spec.category ?? undefined, null);
+      if (nFlex !== null) setSpecSource(key, 'flex', 'manufacturer', String(nFlex), spec.sourceUrl);
+      if (nProfile !== null) setSpecSource(key, 'profile', 'manufacturer', nProfile, spec.sourceUrl);
+      if (nShape !== null) setSpecSource(key, 'shape', 'manufacturer', nShape, spec.sourceUrl);
+      if (nCategory !== null) setSpecSource(key, 'category', 'manufacturer', nCategory, spec.sourceUrl);
       stats.skipped++;
       continue;
     }
