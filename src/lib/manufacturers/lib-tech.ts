@@ -291,7 +291,6 @@ function inferRiderLevelFromInfographic(src: string): string | null {
   const begInt = [
     "libzilla",
     "dough-boy", "doughboy",
-    "legitimizer",
     "offramp", "off-ramp",
     "mayhem-rad-ripper", "rad-ripper",
     "dpr-terrain", "dpr-",
@@ -300,6 +299,7 @@ function inferRiderLevelFromInfographic(src: string): string | null {
     "mayhem-rocket",
     "skunkapecamber", "skunk-ape-camber",
     "escalator",
+    "legitimizer",
   ];
   for (const slug of begInt) {
     if (lower.includes(slug)) return "beginner-intermediate";
