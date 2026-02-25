@@ -3,6 +3,8 @@ import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 import { jonesToTerrain } from "../terrain";
+import { extractShopifyListings } from "./shopify-utils";
+import { Currency } from "../types";
 
 const JONES_BASE = "https://www.jonessnowboards.com";
 
@@ -44,6 +46,8 @@ interface ShopifyProduct {
   variants: {
     title: string;
     price: string;
+    compare_at_price: string | null;
+    available: boolean;
   }[];
 }
 
@@ -108,9 +112,11 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
 
   // Merge JSON API data with detail page data
   for (const { product } of products) {
-    const price = product.variants?.[0]?.price
-      ? parseFloat(product.variants[0].price)
-      : null;
+    const { listings, msrpUsd } = extractShopifyListings(
+      product.variants ?? [],
+      `${JONES_BASE}/products/${product.handle}`,
+      Currency.USD
+    );
 
     const detail = detailData.get(product.handle);
     const extras: Record<string, string> = {};
@@ -167,9 +173,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       shape,
       category,
       gender: gender ?? undefined,
-      msrpUsd: price && !isNaN(price) ? price : null,
+      msrpUsd: msrpUsd ?? null,
       sourceUrl: `${JONES_BASE}/products/${product.handle}`,
       extras,
+      listings,
     });
   }
 

@@ -14,6 +14,7 @@ export interface ManufacturerSpec {
   msrpUsd: number | null;
   sourceUrl: string;
   extras: Record<string, string>;
+  listings?: ScrapedListing[];
 }
 import { normalizeBrand } from "../scraping/utils";
 import { normalizeModel, detectGender, extractComboContents } from "../normalization";
@@ -111,7 +112,7 @@ export function adaptRetailerOutput(
 }
 
 /**
- * Map ManufacturerSpec[] to ScrapedBoard[] (listings always empty).
+ * Map ManufacturerSpec[] to ScrapedBoard[] (listings from spec or empty).
  */
 export function adaptManufacturerOutput(
   specs: ManufacturerSpec[],
@@ -130,6 +131,6 @@ export function adaptManufacturerOutput(
     msrpUsd: spec.msrpUsd ?? undefined,
     gender: spec.gender ?? undefined,
     extras: spec.extras,
-    listings: [],
+    listings: spec.listings ?? [],
   }));
 }

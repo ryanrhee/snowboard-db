@@ -1,6 +1,7 @@
-import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ScraperModule, ScrapedBoard, ScrapedListing } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
+import { Currency } from "../types";
 
 const BURTON_BASE = "https://www.burton.com";
 const MENS_URL = `${BURTON_BASE}/us/en/c/mens-boards?start=0&sz=100`;
@@ -75,6 +76,90 @@ function extractDetailAttrs(html: string): Record<string, string[]> {
 interface DetailPageResult {
   attrs: Record<string, string[]>;
   flex: number | null;
+  listings: ScrapedListing[];
+}
+
+/**
+ * Extract per-size variant listings from Burton's __bootstrap JSON.
+ * Uses bracket-counting to extract the variationAttributes array,
+ * since the surrounding JSON is often malformed.
+ */
+function extractBurtonListings(html: string, productUrl: string): ScrapedListing[] {
+  const listings: ScrapedListing[] = [];
+
+  // Find variationAttributes array using bracket-counting
+  const marker = '"variationAttributes"';
+  const markerIdx = html.indexOf(marker);
+  if (markerIdx < 0) return listings;
+
+  const arrayStart = html.indexOf('[', markerIdx);
+  if (arrayStart < 0) return listings;
+
+  let depth = 0;
+  let arrayEnd = -1;
+  for (let i = arrayStart; i < html.length && i < arrayStart + 50000; i++) {
+    if (html[i] === '[') depth++;
+    else if (html[i] === ']') {
+      depth--;
+      if (depth === 0) { arrayEnd = i + 1; break; }
+    }
+  }
+  if (arrayEnd < 0) return listings;
+
+  let varAttrs: { attributeId: string; values: { displayValue: string; selectable: boolean; orderable: boolean }[] }[];
+  try {
+    varAttrs = JSON.parse(html.slice(arrayStart, arrayEnd));
+  } catch {
+    return listings;
+  }
+
+  const sizeAttr = varAttrs.find((a) => a.attributeId === "variationSize");
+  if (!sizeAttr?.values) return listings;
+
+  // Extract price: "list":{"value":N} and "sales":{"value":N}
+  // Use a pattern that finds these within a "price" object context
+  const listMatch = html.match(/"list"\s*:\s*\{[^}]*"value"\s*:\s*([\d.]+)/);
+  const salesMatch = html.match(/"sales"\s*:\s*\{[^}]*"value"\s*:\s*([\d.]+)/);
+  const listPrice = listMatch ? parseFloat(listMatch[1]) : 0;
+  const salesPrice = salesMatch ? parseFloat(salesMatch[1]) : listPrice;
+
+  const onSale = listPrice > 0 && salesPrice > 0 && listPrice > salesPrice;
+  const effectivePrice = salesPrice || listPrice;
+
+  const now = new Date().toISOString();
+  const sizeMap = new Map<string, { lengthCm: number; orderable: boolean }>();
+
+  for (const sizeVal of sizeAttr.values) {
+    const label = sizeVal.displayValue;
+    const sizeMatch = label.match(/(\d+(?:\.\d+)?)\s*([Ww])?/);
+    if (!sizeMatch) continue;
+
+    const lengthCm = parseFloat(sizeMatch[1]);
+    const key = label;
+
+    // If any variant for this size is orderable, mark as in_stock
+    const existing = sizeMap.get(key);
+    if (!existing) {
+      sizeMap.set(key, { lengthCm, orderable: sizeVal.orderable });
+    } else if (sizeVal.orderable) {
+      existing.orderable = true;
+    }
+  }
+
+  for (const { lengthCm, orderable } of sizeMap.values()) {
+    listings.push({
+      url: productUrl,
+      lengthCm,
+      originalPrice: onSale ? listPrice : undefined,
+      salePrice: effectivePrice,
+      currency: Currency.USD,
+      availability: orderable ? "in_stock" : "out_of_stock",
+      condition: "new",
+      scrapedAt: now,
+    });
+  }
+
+  return listings;
 }
 
 async function scrapeDetailPage(boardUrl: string): Promise<DetailPageResult> {
@@ -82,6 +167,7 @@ async function scrapeDetailPage(boardUrl: string): Promise<DetailPageResult> {
   return {
     attrs: extractDetailAttrs(html),
     flex: extractPersonalityFlex(html),
+    listings: extractBurtonListings(html, boardUrl),
   };
 }
 
@@ -275,9 +361,11 @@ export const burton: ScraperModule = {
       let profile: string | null = null;
       let shape: string | null = null;
       let category: string | null = null;
+      let listings: ScrapedListing[] = [];
 
       if (detail) {
         flex = detail.flex;
+        listings = detail.listings;
 
         const attrs = detail.attrs;
 
@@ -320,6 +408,7 @@ export const burton: ScraperModule = {
         msrpUsd: board.msrp,
         sourceUrl: board.sourceUrl,
         extras,
+        listings,
       });
     }
 

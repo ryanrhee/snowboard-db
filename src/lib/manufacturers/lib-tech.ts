@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
-import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ScraperModule, ScrapedBoard, ScrapedListing } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
+import { Currency } from "../types";
 
 const LIB_TECH_BASE = "https://www.lib-tech.com";
 const CATALOG_URL = `${LIB_TECH_BASE}/snowboards`;
@@ -204,6 +205,9 @@ function parseDetailHtml(
     }
   });
 
+  // Extract per-size listings from Magento's jsonConfig JS variable
+  const listings = extractMagentoListings(html, url);
+
   return {
     brand: "Lib Tech",
     model: cleanModelName(name),
@@ -216,7 +220,88 @@ function parseDetailHtml(
     msrpUsd: msrp && !isNaN(msrp) ? msrp : null,
     sourceUrl: url,
     extras,
+    listings,
   };
+}
+
+/**
+ * Extract per-size listings from the spec table.
+ * Lib Tech uses simple (non-configurable) Magento products with a single price.
+ * Size data comes from the spec table rows — each row is a size variant.
+ * All sizes share the same price (from JSON-LD or page price).
+ */
+function extractMagentoListings(html: string, productUrl: string): ScrapedListing[] {
+  const listings: ScrapedListing[] = [];
+  const $ = cheerio.load(html);
+
+  // Get price from JSON-LD or page price elements
+  let price = 0;
+  let oldPrice: number | undefined;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const data = JSON.parse($(el).text());
+      if (data["@type"] === "Product" && data.offers) {
+        const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+        if (offer?.price) price = parseFloat(offer.price);
+      }
+    } catch { /* skip */ }
+  });
+
+  // Check for old/special price (sale detection)
+  const oldPriceMatch = html.match(/"oldPrice"\s*:\s*\{\s*"amount"\s*:\s*([\d.]+)/);
+  const finalPriceMatch = html.match(/"finalPrice"\s*:\s*\{\s*"amount"\s*:\s*([\d.]+)/);
+  if (finalPriceMatch) {
+    const finalAmt = parseFloat(finalPriceMatch[1]);
+    if (finalAmt > 0) price = finalAmt;
+  }
+  if (oldPriceMatch) {
+    const oldAmt = parseFloat(oldPriceMatch[1]);
+    if (oldAmt > price) oldPrice = oldAmt;
+  }
+
+  if (price === 0) return listings;
+
+  // Parse sizes from spec table — look for the "size" column
+  $("table").each((_, table) => {
+    const headers: string[] = [];
+    $(table).find("th").each((__, th) => {
+      headers.push($(th).text().toLowerCase().trim());
+    });
+
+    const sizeIdx = headers.findIndex((h) => h === "size" || h.startsWith("size") || h === "length" || h === "board size");
+    if (sizeIdx < 0) return;
+
+    const now = new Date().toISOString();
+
+    $(table).find("tbody tr").each((__, tr) => {
+      const cells: string[] = [];
+      $(tr).find("td").each((___, td) => {
+        cells.push($(td).text().trim());
+      });
+
+      if (sizeIdx >= cells.length) return;
+      const sizeLabel = cells[sizeIdx];
+      const isBGrade = /b-?\s*grade/i.test(sizeLabel);
+      const sizeStr = sizeLabel.replace(/\s*-?\s*b-?\s*grade/i, "").trim();
+      const sizeMatch = sizeStr.match(/(\d+(?:\.\d+)?)\s*([Ww]|UW)?/);
+      if (!sizeMatch) return;
+
+      const lengthCm = parseFloat(sizeMatch[1]);
+
+      listings.push({
+        url: productUrl,
+        lengthCm,
+        originalPrice: oldPrice,
+        salePrice: price,
+        currency: Currency.USD,
+        availability: "in_stock", // Lib Tech doesn't expose per-size stock
+        condition: isBGrade ? "blemished" : "new",
+        scrapedAt: now,
+      });
+    });
+  });
+
+  return listings;
 }
 
 function isShapeTerm(s: string): boolean {

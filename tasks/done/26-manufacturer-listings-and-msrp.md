@@ -1,8 +1,57 @@
 # Task 26: Capture manufacturer listings and distinguish MSRP from sale price
 
-## Goal
+**Completed: 2026-02-25**
 
-1. Manufacturer scrapers should produce `listings` (price, sizes, availability, URL) just like retailer scrapers do.
+## Summary
+
+All 7 manufacturer scrapers now extract per-size listings (price, availability, condition) alongside spec data. Previously they returned `listings: []`.
+
+### What was done
+
+**Shared infrastructure:**
+- Created `src/lib/manufacturers/shopify-utils.ts` — `extractShopifyListings()` converts Shopify variants to `ScrapedListing[]`, handling `compare_at_price` for sale detection, size parsing with W/UW wide detection, and MSRP extraction.
+- Updated `ManufacturerSpec` in `src/lib/scrapers/adapters.ts` with optional `listings` field; `adaptManufacturerOutput()` passes them through.
+
+**Shopify scrapers (CAPiTA, Jones, Yes., Season):**
+- Extended `ShopifyProduct.variants` type with `compare_at_price` and `available`.
+- Replaced manual `variants[0].price` parsing with `extractShopifyListings()`.
+- Listings and MSRP now flow into `ManufacturerSpec`.
+
+**Magento scrapers (Lib Tech, GNU):**
+- Added `extractMagentoListings()` — parses sizes from spec table rows (not Magento swatch config, which doesn't exist on these simple-product pages). Each size row becomes a listing with the product's JSON-LD price.
+- B-grade detection from size labels (e.g. "161 - B-Grade" → `condition: "blemished"`) is implemented but no B-grade sizes were present in the current catalog.
+- Sale price detection via `oldPrice` vs `finalPrice` in page JS.
+
+**Burton:**
+- Added `extractBurtonListings()` — uses bracket-counting to extract the `variationAttributes` array from `__bootstrap` JSON (regex fails due to malformed JSON).
+- Uses `orderable` field for per-size availability, `list.value` vs `sales.value` for sale detection.
+- Deduplicates sizes across color variants.
+
+**No pipeline/DB changes needed** — manufacturer listings flow through the existing `listings` table with `retailer` = `"manufacturer:capita"` etc.
+
+### Verification results
+
+| Manufacturer | Listings | Boards |
+|---|---|---|
+| Burton | 178 | 34 |
+| CAPiTA | 218 | 39 |
+| GNU | 129 | 25 |
+| Jones | 222 | 39 |
+| Lib Tech | 129 | 25 |
+| Season | 38 | 5 |
+| Yes. | 121 | 22 |
+| **Total** | **1,035** | **189** |
+
+### Files changed
+- `src/lib/manufacturers/shopify-utils.ts` (new)
+- `src/lib/scrapers/adapters.ts`
+- `src/lib/manufacturers/capita.ts`
+- `src/lib/manufacturers/jones.ts`
+- `src/lib/manufacturers/yes.ts`
+- `src/lib/manufacturers/season.ts`
+- `src/lib/manufacturers/lib-tech.ts`
+- `src/lib/manufacturers/gnu.ts`
+- `src/lib/manufacturers/burton.ts`
 2. When a manufacturer shows both an original price and a sale/discount price, record the original as MSRP and the discounted price as the listing price.
 
 ## Current State Analysis

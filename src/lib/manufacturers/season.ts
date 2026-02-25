@@ -2,6 +2,8 @@ import * as cheerio from "cheerio";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
+import { extractShopifyListings } from "./shopify-utils";
+import { Currency } from "../types";
 
 const SEASON_BASE = "https://seasoneqpt.com";
 
@@ -44,6 +46,8 @@ interface ShopifyProduct {
   variants: {
     title: string;
     price: string;
+    compare_at_price: string | null;
+    available: boolean;
   }[];
 }
 
@@ -123,9 +127,11 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
 
   // Merge Shopify JSON with detail page data
   for (const { product } of products) {
-    const price = product.variants?.[0]?.price
-      ? parseFloat(product.variants[0].price)
-      : null;
+    const { listings, msrpUsd } = extractShopifyListings(
+      product.variants ?? [],
+      `${SEASON_BASE}/products/${product.handle}`,
+      Currency.USD
+    );
 
     const extras: Record<string, string> = {};
     const detail = detailData.get(product.handle);
@@ -138,9 +144,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       profile: detail?.profile ?? null,
       shape: detail?.shape ?? null,
       category: detail?.category ?? null,
-      msrpUsd: price && !isNaN(price) ? price : null,
+      msrpUsd: msrpUsd ?? null,
       sourceUrl: `${SEASON_BASE}/products/${product.handle}`,
       extras,
+      listings,
     });
   }
 
