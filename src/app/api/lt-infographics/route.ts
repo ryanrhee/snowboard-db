@@ -74,10 +74,7 @@ export async function GET() {
         .trim();
       const boardKeyPattern = `lib tech|${cleanName.toLowerCase()}|%`;
       const listings = listingStmt.all(boardKeyPattern) as { retailer: string; url: string }[];
-      entry.links = [
-        { label: "Manufacturer", url: entry.pageUrl },
-        ...listings.map((l) => ({ label: l.retailer, url: l.url })),
-      ];
+      entry.links = listings.map((l) => ({ label: l.retailer, url: l.url }));
     }
 
     // Fetch and analyze each infographic image (3 concurrent)

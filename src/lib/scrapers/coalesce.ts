@@ -246,7 +246,9 @@ export function coalesce(
 
         const retailerName = sb.source.startsWith("retailer:")
           ? sb.source.slice("retailer:".length)
-          : sb.source;
+          : sb.source.startsWith("manufacturer:")
+            ? sb.source.slice("manufacturer:".length)
+            : sb.source;
 
         const salePriceUsd = convertToUsd(sl.salePrice, sl.currency);
         const originalPriceUsd = sl.originalPrice

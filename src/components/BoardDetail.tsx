@@ -312,17 +312,6 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
             <h2 className="text-lg font-semibold">
               {board.brand} {board.model}
             </h2>
-            {board.manufacturerUrl && (
-              <a
-                href={board.manufacturerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:text-blue-300"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Manufacturer page
-              </a>
-            )}
           </div>
           <button
             onClick={onClose}
