@@ -6,8 +6,8 @@ const YES_BASE = "https://www.yessnowboards.com";
 
 /**
  * Yes. Snowboards scraper.
- * Shopify store — uses /collections/snowboards/products.json API.
- * No detail page scraping needed (size charts don't contain useful spec data).
+ * Shopify store — uses /collections/snowboards/products.json API
+ * plus detail page scraping for flex, shape, and profile.
  */
 export const yes: ManufacturerModule = {
   brand: "Yes.",
@@ -45,10 +45,17 @@ interface ShopifyProduct {
   }[];
 }
 
+interface DetailPageData {
+  flex: string | null;
+  shape: string | null;
+  category: string | null;
+}
+
 async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
   const specs: ManufacturerSpec[] = [];
   let page = 1;
   const seenHandles = new Set<string>();
+  const products: { product: ShopifyProduct; handle: string }[] = [];
 
   while (page <= 5) {
     const url = `${YES_BASE}/collections/snowboards/products.json?page=${page}&limit=250`;
@@ -84,152 +91,156 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
         continue;
       }
 
-      const price = product.variants?.[0]?.price
-        ? parseFloat(product.variants[0].price)
-        : null;
-
-      const bodySpecs = parseBodyHtml(product.body_html);
-      const tags = product.tags?.map((t) => t.toLowerCase()) || [];
-      const extras: Record<string, string> = { ...bodySpecs.extras };
-
-      if (tags.length > 0) {
-        extras["tags"] = product.tags.join(", ");
-      }
-
-      const gender = deriveGender(product.title, tags);
-      if (gender) extras["gender"] = gender;
-
-      specs.push({
-        brand: "Yes.",
-        model: cleanModelName(product.title),
-        year: null,
-        flex: bodySpecs.flex,
-        profile: bodySpecs.profile,
-        shape: bodySpecs.shape,
-        category: bodySpecs.category,
-        gender: gender ?? undefined,
-        msrpUsd: price && !isNaN(price) ? price : null,
-        sourceUrl: `${YES_BASE}/products/${product.handle}`,
-        extras,
-      });
+      products.push({ product, handle: product.handle });
     }
 
     page++;
   }
 
+  // Fetch detail pages with concurrency 3
+  const CONCURRENCY = 3;
+  const detailData = new Map<string, DetailPageData>();
+  for (let i = 0; i < products.length; i += CONCURRENCY) {
+    const batch = products.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async ({ handle }) => {
+        try {
+          const data = await scrapeDetailPage(handle);
+          return { handle, data };
+        } catch (err) {
+          console.warn(
+            `[yes] Failed to scrape detail page for ${handle}:`,
+            err instanceof Error ? err.message : err
+          );
+          return { handle, data: null };
+        }
+      })
+    );
+    for (const { handle, data } of results) {
+      if (data) detailData.set(handle, data);
+    }
+  }
+
+  // Merge Shopify JSON with detail page data
+  for (const { product } of products) {
+    const price = product.variants?.[0]?.price
+      ? parseFloat(product.variants[0].price)
+      : null;
+
+    const tags = product.tags?.map((t) => t.toLowerCase()) || [];
+    const extras: Record<string, string> = {};
+
+    if (tags.length > 0) {
+      extras["tags"] = product.tags.join(", ");
+    }
+
+    const detail = detailData.get(product.handle);
+
+    const gender = deriveGender(product.title, tags);
+    if (gender) extras["gender"] = gender;
+
+    specs.push({
+      brand: "Yes.",
+      model: cleanModelName(product.title),
+      year: null,
+      flex: detail?.flex ?? null,
+      profile: null,
+      shape: detail?.shape ?? null,
+      category: detail?.category ?? null,
+      gender: gender ?? undefined,
+      msrpUsd: price && !isNaN(price) ? price : null,
+      sourceUrl: `${YES_BASE}/products/${product.handle}`,
+      extras,
+    });
+  }
+
   return specs;
 }
 
-function parseBodyHtml(bodyHtml: string): {
-  flex: string | null;
-  profile: string | null;
-  shape: string | null;
-  category: string | null;
-  extras: Record<string, string>;
-} {
-  if (!bodyHtml)
-    return { flex: null, profile: null, shape: null, category: null, extras: {} };
-
-  const $ = cheerio.load(bodyHtml);
-  const text = $.text().toLowerCase();
-  const extras: Record<string, string> = {};
+async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
+  const url = `${YES_BASE}/products/${handle}`;
+  const html = await fetchPage(url, { timeoutMs: 15000 });
+  const $ = cheerio.load(html);
 
   let flex: string | null = null;
-  let profile: string | null = null;
   let shape: string | null = null;
   let category: string | null = null;
 
-  // Flex — check for keywords or numeric flex rating
-  const flexMatch =
-    text.match(/flex[:\s]+(\d+(?:\.\d+)?(?:\s*(?:\/|out of)\s*10)?)/i) ||
-    text.match(/flex[:\s]+(soft|medium|stiff|very\s+(?:soft|stiff))/i);
-  if (flexMatch) {
-    flex = flexMatch[1].trim();
-  } else if (/\bvery\s+stiff\b/.test(text)) {
-    flex = "very stiff";
-  } else if (/\bvery\s+soft\b/.test(text)) {
-    flex = "very soft";
-  } else if (/\bstiff\b/.test(text) && !/\bstiff\s+(?:boot|binding)/i.test(text)) {
-    flex = "stiff";
-  } else if (/\bsoft\b/.test(text) && !/\bsoft\s+(?:boot|binding|snow|goods)/i.test(text)) {
-    flex = "soft";
-  } else if (/\bmedium\b/.test(text) && /\bflex\b/.test(text)) {
-    flex = "medium";
+  // Flex: extract from bar chart data-total attribute (0-100 → 1-10)
+  // e.g. <div class="bar-chart" data-total="60"> → 6
+  const barChart = $(".bar-chart[data-total]").first();
+  const dataTotal = barChart.attr("data-total");
+  if (dataTotal) {
+    const totalNum = parseInt(dataTotal, 10);
+    if (!isNaN(totalNum) && totalNum >= 0 && totalNum <= 100) {
+      flex = String(Math.round(totalNum / 10));
+    }
   }
-
-  // Shape — order matters, check specific shapes first
-  const shapePatterns: [RegExp, string][] = [
-    [/\btrue\s+twin\b/, "true twin"],
-    [/\basymmetrical\s+twin\b/, "true twin"],
-    [/\basym\s+twin\b/, "true twin"],
-    [/\bdirectional\s+volume\s+twin\b/, "directional twin"],
-    [/\bdirectional\s+twin\b/, "directional twin"],
-    [/\btapered\s+directional\b/, "directional"],
-    [/\bdirectional\b/, "directional"],
-    [/\btwin\b/, "true twin"],
-  ];
-  for (const [pat, val] of shapePatterns) {
-    if (pat.test(text)) {
-      shape = val;
-      break;
+  // Fallback: look for text like "6/10" in the bar chart area
+  if (!flex) {
+    const flexText = $(".bar-chart-indice, .bar-chart").text();
+    const flexMatch = flexText.match(/(\d+)\s*\/\s*10/);
+    if (flexMatch) {
+      flex = flexMatch[1];
     }
   }
 
-  // Profile
-  const profilePatterns: [RegExp, string][] = [
-    [/\bhybrid\s+camber\b/, "hybrid camber"],
-    [/\bhybrid\s+rocker\b/, "hybrid rocker"],
-    [/\bcamrock\b/, "hybrid camber"],
-    [/\brocker[/-]camber[/-]rocker\b/, "hybrid camber"],
-    [/\bcamber[/-]rocker[/-]camber\b/, "hybrid camber"],
-    [/\bcamber\b/, "camber"],
-    [/\brocker\b/, "rocker"],
-    [/\bflat\b/, "flat"],
-  ];
-  for (const [pat, val] of profilePatterns) {
-    if (pat.test(text)) {
-      profile = val;
-      break;
+  // Shape: extract from heading in #contentShape
+  // e.g. <h3>Shape: True Twin</h3>
+  const shapeSection = $("#contentShape");
+  if (shapeSection.length) {
+    const shapeText = shapeSection.find("h3, h4, .shape-title").text().trim();
+    const shapeMatch = shapeText.match(/shape\s*:\s*(.+)/i);
+    if (shapeMatch) {
+      shape = normalizeShape(shapeMatch[1].trim());
+    } else if (shapeText) {
+      shape = normalizeShape(shapeText);
     }
   }
 
-  // Category — check compound terms first
-  if (/\ball[- ]mountain\s+freestyle\b/.test(text)) category = "all-mountain";
-  else if (/\bfreestyle\s+park\b/.test(text)) category = "freestyle";
-  else if (/\ball[- ]mountain\b/.test(text)) category = "all-mountain";
-  else if (/\bfreeride\b/.test(text)) category = "freeride";
-  else if (/\bfreestyle\b/.test(text)) category = "freestyle";
-  else if (/\bpark\b/.test(text)) category = "freestyle";
-  else if (/\bpowder\b/.test(text)) category = "freeride";
-  else if (/\bbackcountry\b/.test(text)) category = "freeride";
+  // Category: look in #contentTerrain or page-wide terrain sections
+  const terrainSection = $("#contentTerrain");
+  if (terrainSection.length) {
+    const terrainText = terrainSection.text().toLowerCase();
+    category = categorizeFromText(terrainText);
+  }
 
-  // Ability level from description
-  if (text.includes("beginner") && text.includes("intermediate"))
-    extras["ability level"] = "beginner-intermediate";
-  else if (text.includes("intermediate") && text.includes("advanced"))
-    extras["ability level"] = "intermediate-advanced";
-  else if (text.includes("beginner") || text.includes("entry level"))
-    extras["ability level"] = "beginner";
-  else if (text.includes("intermediate"))
-    extras["ability level"] = "intermediate";
-  else if (text.includes("expert") || text.includes("pro level"))
-    extras["ability level"] = "expert";
-  else if (text.includes("advanced"))
-    extras["ability level"] = "advanced";
+  // If no category from dedicated section, scan the whole page's tab content
+  if (!category) {
+    const tabText = $(".tab-content, .product-tabs").text().toLowerCase();
+    category = categorizeFromText(tabText);
+  }
 
-  // Capture key: value patterns from body
-  const kvMatches = $.text().matchAll(
-    /([A-Za-z][A-Za-z\s]+?)\s*[:]\s*([^\n<]+)/g
+  console.log(
+    `[yes] Detail ${handle}: flex=${flex}, shape=${shape}, category=${category}`
   );
-  for (const m of kvMatches) {
-    const key = m[1].trim().toLowerCase();
-    const val = m[2].trim();
-    if (key && val && key.length < 30 && val.length < 100) {
-      if (!extras[key]) extras[key] = val;
-    }
-  }
 
-  return { flex, profile, shape, category, extras };
+  return { flex, shape, category };
+}
+
+function normalizeShape(raw: string): string | null {
+  const lower = raw.toLowerCase().trim();
+  if (/\btrue\s+twin\b/.test(lower) || /\basym(?:metrical)?\s+twin\b/.test(lower))
+    return "true twin";
+  if (/\bdirectional\s+twin\b/.test(lower)) return "directional twin";
+  if (/\btapered\s+directional\b/.test(lower)) return "directional";
+  if (/\bdirectional\b/.test(lower)) return "directional";
+  if (/\btwin\b/.test(lower)) return "true twin";
+  // Return the raw text if it looks like a shape name
+  if (lower.length > 0 && lower.length < 40) return raw.trim();
+  return null;
+}
+
+function categorizeFromText(text: string): string | null {
+  if (/\ball[- ]mountain\s+freestyle\b/.test(text)) return "all-mountain";
+  if (/\bfreestyle\s+park\b/.test(text)) return "freestyle";
+  if (/\ball[- ]mountain\b/.test(text)) return "all-mountain";
+  if (/\bfreeride\b/.test(text)) return "freeride";
+  if (/\bfreestyle\b/.test(text)) return "freestyle";
+  if (/\bpark\b/.test(text)) return "freestyle";
+  if (/\bpowder\b/.test(text)) return "freeride";
+  if (/\bbackcountry\b/.test(text)) return "freeride";
+  return null;
 }
 
 function deriveGender(title: string, tags: string[]): string | null {
@@ -262,4 +273,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { parseBodyHtml, cleanModelName, deriveGender };
+export { cleanModelName, deriveGender };
