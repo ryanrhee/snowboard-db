@@ -111,3 +111,4 @@ Each task is its own markdown file:
 
 - **Open tasks**: `tasks/todo/` — one `.md` file per task.
 - **Completed tasks**: `tasks/done/` — move the file from `todo/` to `done/` when finished, adding a completion date and summary of what was done.
+- **Creating tasks**: Run `tasks/new.sh "slug" "Title"` to create a file with the next available number. Never pick a number manually.
