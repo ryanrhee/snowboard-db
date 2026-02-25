@@ -29,8 +29,8 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
     expect(result.model).toBe("Skate Banana");
   });
 
-  it("flex is 5 (from the spec table first data row)", () => {
-    expect(result.flex).toBe("5");
+  it("flex is null (extracted from infographic pixel analysis, not scraper)", () => {
+    expect(result.flex).toBeNull();
   });
 
   it("profile is Original Banana (from contour image alt text)", () => {
@@ -64,8 +64,8 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
     expect(result.extras["contactlength (cm)"]).toBe("112");
   });
 
-  it("extras contains ability level beginner-advanced from infographic", () => {
-    expect(result.extras["ability level"]).toBe("beginner-advanced");
+  it("extras does not contain ability level (extracted from infographic pixel analysis)", () => {
+    expect(result.extras["ability level"]).toBeUndefined();
   });
 
   it("extras contains flex column keyed by its full header text", () => {

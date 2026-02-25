@@ -136,14 +136,15 @@ function parseDetailHtml(
     $("h1.page-title, h1[class*='product-name'], h1").first().text().trim() ||
     fallbackName;
 
-  let flex: string | null = null;
   let profile: string | null = null;
   let shape: string | null = null;
   let category: string | null = null;
   let msrp = fallbackPrice;
   const extras: Record<string, string> = {};
 
-  // GNU uses the same columnar spec table as Lib Tech
+  // GNU uses the same columnar spec table as Lib Tech.
+  // Flex, terrain, and ability level are extracted from infographic
+  // pixel analysis instead (see task 12).
   $("table").each((_, table) => {
     const headers: string[] = [];
     $(table)
@@ -151,8 +152,6 @@ function parseDetailHtml(
       .each((__, th) => {
         headers.push($(th).text().toLowerCase().trim());
       });
-
-    const flexCol = headers.findIndex((h) => h.includes("flex"));
 
     const firstRow: string[] = [];
     $(table)
@@ -167,10 +166,6 @@ function parseDetailHtml(
       if (headers[i] && firstRow[i]) {
         extras[headers[i]] = firstRow[i];
       }
-    }
-
-    if (flexCol >= 0 && firstRow[flexCol]) {
-      flex = firstRow[flexCol];
     }
   });
 
@@ -227,34 +222,6 @@ function parseDetailHtml(
     }
   }
 
-  // Ability level from description text
-  const descLower = descText?.toLowerCase() || "";
-  if (descLower && !descLower.includes("all ability level")) {
-    if (descLower.includes("beginner") && descLower.includes("intermediate")) {
-      extras["ability level"] = "beginner-intermediate";
-    } else if (
-      descLower.includes("intermediate") &&
-      descLower.includes("advanced")
-    ) {
-      extras["ability level"] = "intermediate-advanced";
-    } else if (
-      descLower.includes("beginner") ||
-      descLower.includes("entry level")
-    ) {
-      extras["ability level"] = "beginner";
-    } else if (descLower.includes("advanced")) {
-      extras["ability level"] = "advanced";
-    }
-  }
-
-  // Infer rider level from infographic image (same system as Lib Tech)
-  const infographicImg = $("img[src*='terrain'][src*='riderlevel']").first();
-  const infographicSrc = (infographicImg.attr("src") || "").toLowerCase();
-  if (infographicSrc && !extras["ability level"]) {
-    const level = inferRiderLevelFromInfographic(infographicSrc);
-    if (level) extras["ability level"] = level;
-  }
-
   // Price from JSON-LD
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -272,7 +239,7 @@ function parseDetailHtml(
     brand: "GNU",
     model: cleanModelName(name),
     year: null,
-    flex,
+    flex: null,
     profile,
     shape,
     category,
@@ -321,51 +288,6 @@ async function scrapeDetailPage(
   return parseDetailHtml(html, url, fallbackName, fallbackPrice);
 }
 
-/**
- * Infer rider level from GNU infographic image filename.
- * GNU uses the same Mervin infographic system as Lib Tech.
- * Mapping built from GNU product page visual analysis.
- */
-function inferRiderLevelFromInfographic(src: string): string | null {
-  const lower = src.toLowerCase();
-
-  // Intermediate-Advanced boards
-  const intAdv = [
-    "hyper",
-    "pro-choice",
-    "riders-choice",
-  ];
-  for (const slug of intAdv) {
-    if (lower.includes(slug)) return "intermediate-advanced";
-  }
-
-  // All-levels / Beginner-Advanced boards
-  const allLevels = [
-    "headspace",
-    "money",
-    "antigravity",
-    "ladies-choice",
-    "b-nice",
-  ];
-  for (const slug of allLevels) {
-    if (lower.includes(slug)) return "beginner-advanced";
-  }
-
-  // Beginner-Intermediate boards
-  const begInt = [
-    "frosting",
-    "gloss",
-    "young-money",
-    "klassy",
-    "forest-bailey-head",
-  ];
-  for (const slug of begInt) {
-    if (lower.includes(slug)) return "beginner-intermediate";
-  }
-
-  return null;
-}
-
 function cleanModelName(raw: string): string {
   return raw
     .replace(/^GNU\s+/i, "")
@@ -374,4 +296,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml, mapGnuCategory, mapGnuShape };
+export { cleanModelName, parseDetailHtml, mapGnuCategory, mapGnuShape };

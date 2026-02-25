@@ -20,15 +20,8 @@ interface GnuInfographicAnalysis {
 interface GnuInfographicEntry {
   boardName: string;
   imgUrl: string;
-  abilityLevel: string | null;
   analysis: GnuInfographicAnalysis | null;
 }
-
-const LEVEL_COLORS: Record<string, string> = {
-  "beginner-intermediate": "bg-green-800 text-green-200",
-  "beginner-advanced": "bg-blue-800 text-blue-200",
-  "intermediate-advanced": "bg-orange-800 text-orange-200",
-};
 
 function ExtentBar({
   bar,
@@ -156,7 +149,6 @@ export default function GnuInfographicsPage() {
                   <th className="py-2 pr-4 w-44">Board</th>
                   <th className="py-2 pr-4 w-48">Original</th>
                   <th className="py-2 pr-4 w-64">Reconstructed</th>
-                  <th className="py-2 w-28">Slug-mapped Level</th>
                 </tr>
               </thead>
               <tbody>
@@ -202,19 +194,6 @@ export default function GnuInfographicsPage() {
                       ) : (
                         <span className="text-gray-500 text-xs">
                           no analysis
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3">
-                      {entry.abilityLevel ? (
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${LEVEL_COLORS[entry.abilityLevel] || "bg-gray-700 text-gray-300"}`}
-                        >
-                          {entry.abilityLevel}
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 rounded text-xs font-medium bg-red-900/50 text-red-300 border border-red-700">
-                          unmapped
                         </span>
                       )}
                     </td>

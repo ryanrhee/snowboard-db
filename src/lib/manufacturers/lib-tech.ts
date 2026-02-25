@@ -109,7 +109,6 @@ function parseDetailHtml(
     $("h1.page-title, h1[class*='product-name'], h1").first().text().trim() ||
     fallbackName;
 
-  let flex: string | null = null;
   let profile: string | null = null;
   let shape: string | null = null;
   let category: string | null = null;
@@ -118,12 +117,11 @@ function parseDetailHtml(
 
   // Lib Tech uses a columnar spec table with headers like:
   //   Size | Contact Length | ... | Flex (10 = Firm) | Weight Range
-  // Capture ALL columns into extras, and pull flex out specifically.
+  // Capture ALL columns into extras (flex, terrain, ability level are
+  // extracted from infographic pixel analysis instead — see task 12).
   $("table").each((_, table) => {
     const headers: string[] = [];
     $(table).find("th").each((__, th) => { headers.push($(th).text().toLowerCase().trim()); });
-
-    const flexCol = headers.findIndex((h) => h.includes("flex"));
 
     // Read the first data row for representative values
     const firstRow: string[] = [];
@@ -134,10 +132,6 @@ function parseDetailHtml(
       if (headers[i] && firstRow[i]) {
         extras[headers[i]] = firstRow[i];
       }
-    }
-
-    if (flexCol >= 0 && firstRow[flexCol]) {
-      flex = firstRow[flexCol];
     }
   });
 
@@ -195,28 +189,6 @@ function parseDetailHtml(
     }
   }
 
-  // Ability level from description text (conservative)
-  const descLower = descText?.toLowerCase() || "";
-  if (descLower && !descLower.includes("all ability level")) {
-    if (descLower.includes("beginner") && descLower.includes("intermediate")) {
-      extras["ability level"] = "beginner-intermediate";
-    } else if (descLower.includes("intermediate") && descLower.includes("advanced")) {
-      extras["ability level"] = "intermediate-advanced";
-    } else if (descLower.includes("beginner") || descLower.includes("entry level")) {
-      extras["ability level"] = "beginner";
-    } else if (descLower.includes("advanced")) {
-      extras["ability level"] = "advanced";
-    }
-  }
-
-  // Infer rider level from the infographic image
-  const infographicImg = $("img[src*='terrain'][src*='riderlevel']").first();
-  const infographicSrc = (infographicImg.attr("src") || "").toLowerCase();
-  if (infographicSrc && !extras["ability level"]) {
-    const level = inferRiderLevelFromInfographic(infographicSrc);
-    if (level) extras["ability level"] = level;
-  }
-
   // Price from JSON-LD
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -234,11 +206,11 @@ function parseDetailHtml(
     brand: "Lib Tech",
     model: cleanModelName(name),
     year: null,
-    flex,
+    flex: null,
     profile,
     shape,
     category,
-    gender: deriveGender(name, descLower) ?? undefined,
+    gender: deriveGender(name, descText?.toLowerCase() || "") ?? undefined,
     msrpUsd: msrp && !isNaN(msrp) ? msrp : null,
     sourceUrl: url,
     extras,
@@ -284,64 +256,6 @@ async function scrapeDetailPage(
   return parseDetailHtml(html, url, fallbackName, fallbackPrice);
 }
 
-/**
- * Infer rider level from the Lib Tech infographic image filename.
- * Each board has a unique terrain-riderlevel-flex PNG/JPG.
- * The mapping was built by visual analysis of the gradient ranges:
- *   - Color covers Day 1→Advanced = "beginner-advanced"
- *   - Color covers Day 1→Intermediate = "beginner-intermediate"
- *   - Color covers Intermediate→Advanced = "intermediate-advanced"
- */
-function inferRiderLevelFromInfographic(src: string): string | null {
-  const lower = src.toLowerCase();
-
-  // Intermediate-Advanced boards (color emphasizes right side)
-  const intAdv = [
-    "golden-orca", "trice-golden-orca",
-    "t-rice-orca",                        // Orca family
-    "apex-orca", "t-rice-apex-orca",
-    "dynamo",
-    "ejack-knife",
-    "tr-orca-techno-split", "orca-techno-split",
-  ];
-  for (const slug of intAdv) {
-    if (lower.includes(slug)) return "intermediate-advanced";
-  }
-
-  // All-levels / Beginner-Advanced boards (color covers full range)
-  const allLevels = [
-    "skate-banana",
-    "t-rice-pro",
-    "terrain-wrecker",
-    "jamie-lynn",
-    "rasman",
-    "skunkape-terrain",   // Skunk Ape (BTX)
-  ];
-  for (const slug of allLevels) {
-    if (lower.includes(slug)) return "beginner-advanced";
-  }
-
-  // Beginner-Intermediate boards (color emphasizes left/center)
-  const begInt = [
-    "libzilla",
-    "dough-boy", "doughboy",
-    "offramp", "off-ramp",
-    "mayhem-rad-ripper", "rad-ripper",
-    "dpr-terrain", "dpr-",
-    "coldbrew", "cold-brew",
-    "lib-rig",
-    "mayhem-rocket",
-    "skunkapecamber", "skunk-ape-camber",
-    "escalator",
-    "legitimizer",
-  ];
-  for (const slug of begInt) {
-    if (lower.includes(slug)) return "beginner-intermediate";
-  }
-
-  return null;
-}
-
 function deriveGender(name: string, descLower: string): string | null {
   const lower = name.toLowerCase();
   if (lower.includes("women") || lower.includes("wmns") || descLower.includes("women's"))
@@ -359,4 +273,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml, mapLibTechCategory, mapLibTechShape };
+export { cleanModelName, parseDetailHtml, mapLibTechCategory, mapLibTechShape };

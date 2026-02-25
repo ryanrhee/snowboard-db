@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCacheDb } from "@/lib/db";
 import * as cheerio from "cheerio";
-import { inferRiderLevelFromInfographic } from "@/lib/manufacturers/lib-tech";
 import {
   analyzeInfographic,
   InfographicAnalysis,
@@ -10,7 +9,6 @@ import {
 interface InfographicEntry {
   boardName: string;
   imgUrl: string;
-  abilityLevel: string | null;
   analysis: InfographicAnalysis | null;
 }
 
@@ -41,7 +39,6 @@ export async function GET() {
           entries.push({
             boardName: title,
             imgUrl: fullUrl,
-            abilityLevel: inferRiderLevelFromInfographic(src),
             analysis: null,
           });
         }

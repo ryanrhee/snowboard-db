@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCacheDb } from "@/lib/db";
 import * as cheerio from "cheerio";
-import { inferRiderLevelFromInfographic } from "@/lib/manufacturers/gnu";
 import {
   analyzeGnuInfographic,
   GnuInfographicAnalysis,
@@ -10,7 +9,6 @@ import {
 interface GnuInfographicEntry {
   boardName: string;
   imgUrl: string;
-  abilityLevel: string | null;
   analysis: GnuInfographicAnalysis | null;
 }
 
@@ -39,7 +37,6 @@ export async function GET() {
           entries.push({
             boardName: title,
             imgUrl: fullUrl,
-            abilityLevel: inferRiderLevelFromInfographic(src),
             analysis: null,
           });
         }
