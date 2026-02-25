@@ -76,40 +76,55 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "slow-scrape") {
-    // Slowly fetch rate-limited pages (REI detail pages) to populate http_cache.
-    // Fetches one uncached URL at a time with configurable delay between attempts.
-    // Stops on first WAF block. Run repeatedly (minutes apart) to build up cache.
+    // REI scraper that works without launching Playwright's Chromium:
+    //   Phase 1: Fetch listing pages (if uncached) → parse → run pipeline → populate DB
+    //   Phase 2: Fetch uncached detail pages via CDP (system Chrome) or plain HTTP
     //
     // Usage: ./debug.sh '{"action":"slow-scrape"}'
-    //        ./debug.sh '{"action":"slow-scrape","delayMs":30000,"maxPages":3}'
     //        ./debug.sh '{"action":"slow-scrape","useSystemChrome":true}'
+    //        ./debug.sh '{"action":"slow-scrape","delayMs":10000}'
     const { delay: delayFn } = await import("@/lib/scraping/utils");
     const { getHttpCache, setHttpCache } = await import("@/lib/scraping/http-cache");
     const db = getDb();
 
-    const delayMs = body.delayMs || 20000; // 20s between requests by default
-    const maxPages = body.maxPages || 5;   // max pages per invocation
+    const delayMs = body.delayMs ?? 5000;
     const useSystemChrome = body.useSystemChrome || false;
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
-    // Collect all REI product URLs from listings table
-    const reiUrls = db.prepare(
-      "SELECT DISTINCT url FROM listings WHERE retailer = 'rei' ORDER BY url"
-    ).all() as { url: string }[];
-
-    // Filter to uncached URLs
-    const uncached = reiUrls.filter(r => !getHttpCache(r.url));
-    const alreadyCached = reiUrls.length - uncached.length;
-
-    console.log(`[slow-scrape] REI: ${alreadyCached}/${reiUrls.length} cached, ${uncached.length} remaining`);
-
-    const results: { url: string; status: string; htmlLength?: number; error?: string }[] = [];
+    type FetchResult = { url: string; status: string; htmlLength?: number; error?: string };
+    const results: FetchResult[] = [];
     let blocked = false;
 
-    if (useSystemChrome) {
-      // Connect to running Chrome via CDP (launch Chrome with --remote-debugging-port=9222)
-      const { chromium } = await import("playwright");
+    // Shared fetch function — fetches a URL, caches it, returns result
+    async function fetchAndCache(
+      url: string,
+      fetcher: (url: string) => Promise<string>
+    ): Promise<FetchResult> {
+      try {
+        console.log(`[slow-scrape] Fetching ${url}`);
+        const html = await fetcher(url);
 
-      let browser;
+        if (html.length < 5000 || html.includes("Access Denied")) {
+          console.log(`[slow-scrape] Blocked (${html.length} bytes)`);
+          return { url, status: "blocked", htmlLength: html.length };
+        }
+
+        setHttpCache(url, html);
+        console.log(`[slow-scrape] OK (${html.length} bytes), cached`);
+        return { url, status: "ok", htmlLength: html.length };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`[slow-scrape] Failed: ${msg}`);
+        return { url, status: "error", error: msg };
+      }
+    }
+
+    // Set up fetcher (CDP browser or plain HTTP)
+    let browser: any = null;
+    let fetcher: (url: string) => Promise<string>;
+
+    if (useSystemChrome) {
+      const { chromium } = await import("playwright");
       try {
         browser = await chromium.connectOverCDP("http://localhost:9222");
         console.log(`[slow-scrape] Connected to Chrome via CDP`);
@@ -120,92 +135,101 @@ export async function POST(request: NextRequest) {
           detail: err instanceof Error ? err.message : String(err),
         });
       }
-
-      try {
-        const context = browser.contexts()[0] || await browser.newContext();
-
-        for (let i = 0; i < Math.min(uncached.length, maxPages); i++) {
-          const { url } = uncached[i];
-          if (i > 0) {
-            console.log(`[slow-scrape] Waiting ${delayMs}ms...`);
-            await delayFn(delayMs);
-          }
-
-          try {
-            console.log(`[slow-scrape] Fetching (CDP) ${url}`);
-            const page = await context.newPage();
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-            await delayFn(3000);
-            const html = await page.content();
-            await page.close();
-
-            if (html.length < 5000 || html.includes("Access Denied")) {
-              console.log(`[slow-scrape] Blocked (${html.length} bytes)`);
-              results.push({ url, status: "blocked", htmlLength: html.length });
-              blocked = true;
-              break;
-            }
-
-            setHttpCache(url, html);
-            console.log(`[slow-scrape] OK (${html.length} bytes), cached`);
-            results.push({ url, status: "ok", htmlLength: html.length });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.log(`[slow-scrape] Failed: ${msg}`);
-            results.push({ url, status: "error", error: msg });
-            blocked = true;
-            break;
-          }
-        }
-      } finally {
-        // Disconnect but don't close — it's the user's browser
-        browser.close().catch(() => {});
-      }
+      const context = browser.contexts()[0] || await browser.newContext();
+      fetcher = async (url: string) => {
+        const page = await context.newPage();
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await delayFn(3000);
+        const html = await page.content();
+        await page.close();
+        return html;
+      };
     } else {
-      // Plain HTTP fetch (no browser)
       const { fetchPage } = await import("@/lib/scraping/utils");
-
-      for (let i = 0; i < Math.min(uncached.length, maxPages); i++) {
-        const { url } = uncached[i];
-        if (i > 0) {
-          console.log(`[slow-scrape] Waiting ${delayMs}ms before next request...`);
-          await delayFn(delayMs);
-        }
-
-        try {
-          console.log(`[slow-scrape] Fetching ${url}`);
-          const html = await fetchPage(url, { timeoutMs: 25000 });
-
-          if (html.length < 5000) {
-            console.log(`[slow-scrape] Blocked (${html.length} bytes), stopping`);
-            results.push({ url, status: "blocked", htmlLength: html.length });
-            blocked = true;
-            break;
-          }
-
-          console.log(`[slow-scrape] OK (${html.length} bytes)`);
-          results.push({ url, status: "ok", htmlLength: html.length });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.log(`[slow-scrape] Failed: ${msg}`);
-          results.push({ url, status: "error", error: msg });
-          blocked = true;
-          break;
-        }
-      }
+      fetcher = (url: string) => fetchPage(url, { timeoutMs: 25000 });
     }
 
-    return NextResponse.json({
-      action,
-      strategy: useSystemChrome ? "system-chrome" : "plain-http",
-      delayMs,
-      maxPages,
-      totalUrls: reiUrls.length,
-      alreadyCached,
-      remaining: uncached.length - results.filter(r => r.status === "ok").length,
-      fetched: results,
-      blocked,
-    });
+    try {
+      // Phase 1: Populate REI listings from cached (or freshly fetched) listing pages
+      const existingReiCount = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM listings WHERE retailer = 'rei'"
+      ).get() as { cnt: number }).cnt;
+
+      let phase1Summary: { products: number; boards: number; listings: number } | null = null;
+
+      if (existingReiCount === 0) {
+        console.log(`[slow-scrape] Phase 1: No REI listings in DB`);
+
+        const { scrapeRei } = await import("@/lib/retailers/rei");
+
+        // Fetcher that checks cache first, falls back to CDP/HTTP
+        let fetchCount = 0;
+        const cacheThenFetch = async (url: string): Promise<string> => {
+          const cached = getHttpCache(url, SEVEN_DAYS);
+          if (cached) return cached;
+          if (blocked) return "";
+
+          if (fetchCount > 0) await delayFn(delayMs);
+          const result = await fetchAndCache(url, fetcher);
+          results.push(result);
+          fetchCount++;
+          if (result.status !== "ok") { blocked = true; return ""; }
+          return getHttpCache(url, SEVEN_DAYS) || "";
+        };
+
+        const scrapedBoards = await scrapeRei(
+          cacheThenFetch,
+          async (url) => {
+            const html = await cacheThenFetch(url);
+            return (html && html.length >= 5000) ? html : null;
+          },
+        );
+
+        if (scrapedBoards.length > 0) {
+          const { runSearchPipeline } = await import("@/lib/pipeline");
+          const pipelineResult = await runSearchPipeline({
+            retailers: [],
+            manufacturers: [],
+            extraScrapedBoards: scrapedBoards,
+          });
+          phase1Summary = {
+            products: scrapedBoards.length,
+            boards: pipelineResult.boards.length,
+            listings: pipelineResult.boards.reduce((s, b) => s + b.listings.length, 0),
+          };
+          console.log(`[slow-scrape] Phase 1 complete: ${phase1Summary.boards} boards, ${phase1Summary.listings} listings`);
+        }
+      }
+
+      // Phase 2: Fetch any remaining uncached detail pages
+      const reiUrls = db.prepare(
+        "SELECT DISTINCT url FROM listings WHERE retailer = 'rei' ORDER BY url"
+      ).all() as { url: string }[];
+      const uncached = reiUrls.filter(r => !getHttpCache(r.url));
+      const alreadyCached = reiUrls.length - uncached.length;
+
+      console.log(`[slow-scrape] REI details: ${alreadyCached}/${reiUrls.length} cached, ${uncached.length} remaining`);
+
+      for (let i = 0; i < uncached.length; i++) {
+        if (blocked) break;
+        if (i > 0 || results.length > 0) await delayFn(delayMs);
+        const result = await fetchAndCache(uncached[i].url, fetcher);
+        results.push(result);
+        if (result.status !== "ok") { blocked = true; }
+      }
+
+      return NextResponse.json({
+        action,
+        strategy: useSystemChrome ? "system-chrome" : "plain-http",
+        phase1: phase1Summary,
+        totalDetailUrls: reiUrls.length,
+        detailsCached: alreadyCached,
+        fetched: results,
+        blocked,
+      });
+    } finally {
+      if (browser) browser.close().catch(() => {});
+    }
   }
 
   if (action === "scrape-status") {

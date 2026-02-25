@@ -17,6 +17,8 @@ import {
   normalizeAbilityLevel,
   normalizeModel,
   convertToUsd,
+  extractProfileSuffix,
+  PROFILE_SUFFIX_RE,
 } from "../normalization";
 import { canonicalizeBrand } from "../scraping/utils";
 import { calcBeginnerScoreForBoard } from "../scoring";
@@ -52,6 +54,87 @@ export function coalesce(
     const group = boardGroups.get(key)!;
     group.scraped.push(sb);
     if (sb.rawModel) group.rawModels.push(sb.rawModel);
+  }
+
+  // --- Profile variant collision detection and splitting ---
+  // If a board group has multiple distinct manufacturer source URLs, the model
+  // has profile variants (e.g. "Custom Camber" and "Custom Flying V") that
+  // were collapsed into the same key. Split them into separate groups.
+  for (const [key, group] of Array.from(boardGroups.entries())) {
+    const mfrUrls = new Set<string>();
+    for (const sb of group.scraped) {
+      if (sb.source.startsWith("manufacturer:")) {
+        mfrUrls.add(sb.sourceUrl);
+      }
+    }
+    if (mfrUrls.size <= 1) continue;
+
+    // This group has profile variant collisions — split it
+    boardGroups.delete(key);
+
+    // Collect known profile suffixes from manufacturer rawModels
+    const mfrSuffixes = new Map<string, string>(); // suffix → variant model name
+    for (const sb of group.scraped) {
+      if (!sb.source.startsWith("manufacturer:")) continue;
+      const raw = sb.rawModel ?? sb.model;
+      const suffix = extractProfileSuffix(raw, group.brand);
+      if (suffix) {
+        mfrSuffixes.set(suffix, normalizeModel(raw, group.brand, { keepProfile: true }));
+      }
+    }
+
+    // Build a profile value → suffix lookup from manufacturer boards
+    const profileToSuffix = new Map<string, string>();
+    for (const sb of group.scraped) {
+      if (!sb.source.startsWith("manufacturer:")) continue;
+      const raw = sb.rawModel ?? sb.model;
+      const suffix = extractProfileSuffix(raw, group.brand);
+      if (suffix && sb.profile) {
+        const normalizedProfile = normalizeProfile(sb.profile);
+        if (normalizedProfile) {
+          profileToSuffix.set(normalizedProfile, suffix);
+        }
+      }
+    }
+
+    // Default suffix: for Burton use "camber", for Lib Tech/GNU use "c2"
+    const brandLower = group.brand.toLowerCase();
+    const defaultSuffix = (brandLower === "lib tech" || brandLower === "gnu") ? "c2" : "camber";
+
+    for (const sb of group.scraped) {
+      const raw = sb.rawModel ?? sb.model;
+      let suffix = extractProfileSuffix(raw, group.brand);
+
+      // If no suffix in the name, try matching via profile spec
+      if (!suffix && sb.profile) {
+        const normalizedProfile = normalizeProfile(sb.profile);
+        if (normalizedProfile && profileToSuffix.has(normalizedProfile)) {
+          suffix = profileToSuffix.get(normalizedProfile)!;
+        }
+      }
+
+      // Last resort: use the default (standard) variant
+      if (!suffix) {
+        suffix = defaultSuffix;
+      }
+
+      const variantModel = `${group.model} ${suffix.replace(/\b\w/g, c => c.toUpperCase())}`;
+      // Build variant key: replace the model portion of the original key
+      const keyParts = key.split("|");
+      const variantKey = `${keyParts[0]}|${variantModel.toLowerCase()}|${keyParts[keyParts.length - 1]}`;
+
+      if (!boardGroups.has(variantKey)) {
+        boardGroups.set(variantKey, {
+          scraped: [],
+          brand: group.brand,
+          model: variantModel,
+          rawModels: [],
+        });
+      }
+      const variantGroup = boardGroups.get(variantKey)!;
+      variantGroup.scraped.push(sb);
+      if (sb.rawModel) variantGroup.rawModels.push(sb.rawModel);
+    }
   }
 
   const boards: Board[] = [];

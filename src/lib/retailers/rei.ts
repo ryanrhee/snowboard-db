@@ -113,26 +113,127 @@ function parseReiDetailSpecs($: cheerio.CheerioAPI, board: RawBoard): void {
   board.specs = specs;
 }
 
-async function tryFetchDetailPage(board: RawBoard): Promise<void> {
-  if (reiDetailBlocked) return;
+function productsToRawBoards(allProducts: ReiProduct[]): RawBoard[] {
+  console.log(`[rei] Found ${allProducts.length} total product entries`);
 
-  try {
-    // Use plain HTTP with default cache TTL (24h) — cached pages are served instantly
-    const html = await fetchPage(board.url, { timeoutMs: 20000 });
+  // Deduplicate by prodId (products can appear on multiple pages)
+  const seen = new Set<string>();
+  const uniqueProducts = allProducts.filter((p) => {
+    if (seen.has(p.prodId)) return false;
+    seen.add(p.prodId);
+    return true;
+  });
 
-    if (html.length < 5000) {
-      console.log(`[rei] Detail page blocked by WAF, stopping detail fetches`);
-      reiDetailBlocked = true;
-      return;
-    }
+  console.log(`[rei] ${uniqueProducts.length} unique products after dedup`);
 
-    const $ = cheerio.load(html);
-    parseReiDetailSpecs($, board);
-    console.log(`[rei] Parsed detail specs for ${board.model}`);
-  } catch (error) {
-    console.log(`[rei] Detail page fetch failed, stopping detail fetches:`, error instanceof Error ? error.message : error);
-    reiDetailBlocked = true;
+  return uniqueProducts
+    .filter((p) => {
+      if (!p.displayPrice?.min) return false;
+      // Only include boards that are actually discounted
+      if (!p.sale && !p.clearance && !parseFloat(p.percentageOff || "0")) return false;
+      return true;
+    })
+    .map((p) => {
+      const salePrice = p.displayPrice.min;
+      const originalPrice = p.displayPrice.compareAt || parseFloat(p.regularPrice) || undefined;
+
+      // Capture available metadata into specs
+      const specs: Record<string, string> = {};
+      if (p.rating) specs["rating"] = p.rating;
+      if (p.reviewCount) specs["review count"] = p.reviewCount;
+
+      // Extract specs from tileAttributes (Style, Shape, Profile, Flex)
+      let flex: string | undefined;
+      let profile: string | undefined;
+      let shape: string | undefined;
+      let category: string | undefined;
+      if (p.tileAttributes) {
+        for (const attr of p.tileAttributes) {
+          const val = attr.values.join(", ");
+          const key = attr.title.toLowerCase();
+          specs[key] = val;
+          if (key === "flex") flex = val;
+          else if (key === "profile") profile = val;
+          else if (key === "shape") shape = val;
+          else if (key === "style" || key === "terrain" || key === "best for") category = val;
+        }
+      }
+
+      return {
+        retailer: "rei",
+        region: Region.US,
+        url: `${REI_BASE_URL}${p.link}`,
+        imageUrl: p.thumbnailImageLink || undefined,
+        brand: normalizeBrand(p.brand || "Unknown"),
+        model: (p.cleanTitle || p.title || "Unknown").replace(/\/+$/, ""),
+        year: undefined,
+        lengthCm: undefined,
+        widthMm: undefined,
+        flex,
+        profile,
+        shape,
+        category,
+        originalPrice,
+        salePrice,
+        currency: Currency.USD,
+        availability: p.available ? "in_stock" : "out_of_stock",
+        description: (p.benefit || p.description || "").slice(0, 1000) || undefined,
+        specs,
+        scrapedAt: new Date().toISOString(),
+        condition: p.clearance ? "closeout" : undefined,
+      };
+    });
+}
+
+/**
+ * Core scrape logic: fetch listing pages, extract products, enrich with
+ * detail pages, return ScrapedBoard[].
+ *
+ * @param fetchListingPage - async function to fetch a listing page URL → HTML
+ * @param fetchDetailPage - async function to fetch a detail page URL → HTML or null
+ */
+export async function scrapeRei(
+  fetchListingPage: (url: string) => Promise<string>,
+  fetchDetailPage: (url: string) => Promise<string | null>,
+): Promise<ScrapedBoard[]> {
+  const page1Url = buildSearchUrl();
+  console.log(`[rei] Fetching page 1 from ${page1Url}`);
+
+  const page1Html = await fetchListingPage(page1Url);
+
+  const totalPages = extractTotalPages(page1Html);
+  console.log(`[rei] ${totalPages} total pages`);
+
+  let allProducts = extractProductsFromHtml(page1Html);
+
+  for (let page = 2; page <= totalPages; page++) {
+    await delay(config.scrapeDelayMs);
+    const pageUrl = buildSearchUrl(page);
+    console.log(`[rei] Fetching page ${page} from ${pageUrl}`);
+    const html = await fetchListingPage(pageUrl);
+    const products = extractProductsFromHtml(html);
+    console.log(`[rei] Page ${page}: ${products.length} products`);
+    allProducts = allProducts.concat(products);
   }
+
+  const boards = productsToRawBoards(allProducts);
+  console.log(`[rei] Successfully scraped ${boards.length} boards`);
+
+  // Enrich with detail pages
+  let detailSuccessCount = 0;
+  for (const board of boards) {
+    const html = await fetchDetailPage(board.url);
+    if (html && html.length >= 5000) {
+      const $ = cheerio.load(html);
+      parseReiDetailSpecs($, board);
+      detailSuccessCount++;
+    }
+  }
+  if (detailSuccessCount > 0) {
+    console.log(`[rei] Parsed detail specs for ${detailSuccessCount} boards`);
+  }
+
+  return adaptRetailerOutput(boards, "rei");
 }
 
 export const rei: ScraperModule = {
@@ -142,118 +243,32 @@ export const rei: ScraperModule = {
   region: Region.US,
 
   async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-    const page1Url = buildSearchUrl();
-    console.log(`[rei] Fetching page 1 from ${page1Url}`);
+    reiDetailBlocked = false;
 
-    const page1Html = await fetchPageWithBrowser(page1Url, {
-      waitUntil: "domcontentloaded",
-      channel: "chrome",
-    });
-
-    const totalPages = extractTotalPages(page1Html);
-    console.log(`[rei] ${totalPages} total pages`);
-
-    let allProducts = extractProductsFromHtml(page1Html);
-
-    for (let page = 2; page <= totalPages; page++) {
-      await delay(config.scrapeDelayMs);
-      const pageUrl = buildSearchUrl(page);
-      console.log(`[rei] Fetching page ${page} from ${pageUrl}`);
-      const html = await fetchPageWithBrowser(pageUrl, {
+    return scrapeRei(
+      // Listing pages: browser fetch
+      (url) => fetchPageWithBrowser(url, {
         waitUntil: "domcontentloaded",
         channel: "chrome",
-      });
-      const products = extractProductsFromHtml(html);
-      console.log(`[rei] Page ${page}: ${products.length} products`);
-      allProducts = allProducts.concat(products);
-    }
-
-    console.log(`[rei] Found ${allProducts.length} total product entries`);
-
-    // Deduplicate by prodId (products can appear on multiple pages)
-    const seen = new Set<string>();
-    const uniqueProducts = allProducts.filter((p) => {
-      if (seen.has(p.prodId)) return false;
-      seen.add(p.prodId);
-      return true;
-    });
-
-    console.log(`[rei] ${uniqueProducts.length} unique products after dedup`);
-
-    const boards: RawBoard[] = uniqueProducts
-      .filter((p) => {
-        if (!p.displayPrice?.min) return false;
-        // Only include boards that are actually discounted
-        if (!p.sale && !p.clearance && !parseFloat(p.percentageOff || "0")) return false;
-        return true;
-      })
-      .map((p) => {
-        const salePrice = p.displayPrice.min;
-        const originalPrice = p.displayPrice.compareAt || parseFloat(p.regularPrice) || undefined;
-
-        // Capture available metadata into specs
-        const specs: Record<string, string> = {};
-        if (p.rating) specs["rating"] = p.rating;
-        if (p.reviewCount) specs["review count"] = p.reviewCount;
-
-        // Extract specs from tileAttributes (Style, Shape, Profile, Flex)
-        let flex: string | undefined;
-        let profile: string | undefined;
-        let shape: string | undefined;
-        let category: string | undefined;
-        if (p.tileAttributes) {
-          for (const attr of p.tileAttributes) {
-            const val = attr.values.join(", ");
-            const key = attr.title.toLowerCase();
-            specs[key] = val;
-            if (key === "flex") flex = val;
-            else if (key === "profile") profile = val;
-            else if (key === "shape") shape = val;
-            else if (key === "style" || key === "terrain" || key === "best for") category = val;
+      }),
+      // Detail pages: plain HTTP, stop on first failure
+      async (url) => {
+        if (reiDetailBlocked) return null;
+        try {
+          const html = await fetchPage(url, { timeoutMs: 20000 });
+          if (html.length < 5000) {
+            console.log(`[rei] Detail page blocked by WAF, stopping detail fetches`);
+            reiDetailBlocked = true;
+            return null;
           }
+          return html;
+        } catch (error) {
+          console.log(`[rei] Detail page fetch failed, stopping detail fetches:`, error instanceof Error ? error.message : error);
+          reiDetailBlocked = true;
+          return null;
         }
-
-        return {
-          retailer: "rei",
-          region: Region.US,
-          url: `${REI_BASE_URL}${p.link}`,
-          imageUrl: p.thumbnailImageLink || undefined,
-          brand: normalizeBrand(p.brand || "Unknown"),
-          model: (p.cleanTitle || p.title || "Unknown").replace(/\/+$/, ""),
-          year: undefined,
-          lengthCm: undefined,
-          widthMm: undefined,
-          flex,
-          profile,
-          shape,
-          category,
-          originalPrice,
-          salePrice,
-          currency: Currency.USD,
-          availability: p.available ? "in_stock" : "out_of_stock",
-          description: (p.benefit || p.description || "").slice(0, 1000) || undefined,
-          specs,
-          scrapedAt: new Date().toISOString(),
-          condition: p.clearance ? "closeout" : undefined,
-        };
-      });
-
-    console.log(`[rei] Successfully scraped ${boards.length} boards`);
-
-    // Attempt detail page fetches for additional specs.
-    // Uses plain HTTP with 24h cache. First uncached URL that gets blocked
-    // stops all further fetches. Cached pages are served instantly.
-    reiDetailBlocked = false;
-    let detailSuccessCount = 0;
-    for (const board of boards) {
-      await tryFetchDetailPage(board);
-      if (!reiDetailBlocked) detailSuccessCount++;
-      if (reiDetailBlocked) break;
-    }
-    if (detailSuccessCount > 0) {
-      console.log(`[rei] Parsed detail specs for ${detailSuccessCount} boards`);
-    }
-
-    return adaptRetailerOutput(boards, "rei");
+      },
+    );
   },
 };
+

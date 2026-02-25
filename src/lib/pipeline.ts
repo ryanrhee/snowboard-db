@@ -65,7 +65,9 @@ export async function runSearchPipeline(
   );
 
   // Collect all ScrapedBoards and errors
-  const allScrapedBoards: ScrapedBoard[] = [];
+  const allScrapedBoards: ScrapedBoard[] = [
+    ...(mergedScope.extraScrapedBoards ?? []),
+  ];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "fulfilled") {

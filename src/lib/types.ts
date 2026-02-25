@@ -154,6 +154,7 @@ export interface ScrapeScope {
   retailers?: string[] | null;
   manufacturers?: string[] | null;
   sites?: string[] | null;
+  extraScrapedBoards?: import("./scrapers/types").ScrapedBoard[];
 }
 
 // ===== Search Types =====

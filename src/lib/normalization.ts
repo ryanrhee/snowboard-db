@@ -167,7 +167,10 @@ export function extractComboContents(raw: string): string | null {
   return contents || null;
 }
 
-export function normalizeModel(raw: string, brand?: string): string {
+export const PROFILE_SUFFIX_RE =
+  /\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i;
+
+export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile?: boolean }): string {
   if (!raw || raw === "Unknown") return raw;
 
   let model = raw;
@@ -216,10 +219,9 @@ export function normalizeModel(raw: string, brand?: string): string {
   model = model.replace(/T\.Rice/g, "T. Rice");
 
   // Strip trailing profile designators (profile is stored as a separate field)
-  model = model.replace(
-    /\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i,
-    ""
-  );
+  if (!opts?.keepProfile) {
+    model = model.replace(PROFILE_SUFFIX_RE, "");
+  }
 
   // Clean up leftover dashes, slashes, and whitespace
   model = model.replace(/\/+$/, "");
@@ -227,6 +229,18 @@ export function normalizeModel(raw: string, brand?: string): string {
   model = model.replace(/\s{2,}/g, " ").trim();
 
   return model || raw;
+}
+
+/**
+ * Extract the profile suffix that normalizeModel() would strip.
+ * Returns the lowercased suffix (e.g. "camber", "flying v", "c2") or null.
+ */
+export function extractProfileSuffix(rawModel: string, brand?: string): string | null {
+  if (!rawModel) return null;
+  const withProfile = normalizeModel(rawModel, brand, { keepProfile: true });
+  const match = withProfile.match(PROFILE_SUFFIX_RE);
+  if (!match) return null;
+  return match[0].trim().toLowerCase();
 }
 
 export function normalizeFlex(raw: string): number | null {
