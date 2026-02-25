@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runSearchPipeline } from "@/lib/pipeline";
-import { getAllManufacturerBrands } from "@/lib/manufacturers/registry";
+import { getManufacturerBrands } from "@/lib/scrapers/registry";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const brands: string[] | undefined = body.brands;
 
     if (brands && brands.length > 0) {
-      const available = getAllManufacturerBrands();
+      const available = getManufacturerBrands();
       const lower = new Set(brands.map((b) => b.toLowerCase()));
       const matching = available.filter((b) => lower.has(b.toLowerCase()));
       if (matching.length === 0) {

@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
-import { RetailerModule } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { adaptRetailerOutput } from "../scrapers/adapters";
 import { fetchPage, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const BS_BASE_URL = "https://www.bestsnowboard.co.kr";
@@ -228,12 +229,13 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
   }
 }
 
-export const bestsnowboard: RetailerModule = {
-  name: "bestsnowboard",
-  region: Region.KR,
+export const bestsnowboard: ScraperModule = {
+  name: "retailer:bestsnowboard",
+  sourceType: "retailer",
   baseUrl: BS_BASE_URL,
+  region: Region.KR,
 
-  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+  async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
     const searchUrl = buildSearchUrl();
     console.log(`[bestsnowboard] Fetching search results from ${searchUrl}`);
 
@@ -250,6 +252,6 @@ export const bestsnowboard: RetailerModule = {
     }
 
     console.log(`[bestsnowboard] Successfully scraped ${boards.length} boards`);
-    return boards;
+    return adaptRetailerOutput(boards, "bestsnowboard");
   },
 };

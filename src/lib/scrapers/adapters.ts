@@ -1,6 +1,20 @@
-import { RawBoard, Currency, Region } from "../types";
-import { ManufacturerSpec } from "../manufacturers/types";
+import { RawBoard } from "../types";
 import { ScrapedBoard, ScrapedListing } from "./types";
+
+/** Internal intermediate type used by manufacturer scrapers */
+export interface ManufacturerSpec {
+  brand: string;
+  model: string;
+  year: number | null;
+  flex: string | null;
+  profile: string | null;
+  shape: string | null;
+  category: string | null;
+  gender?: string;
+  msrpUsd: number | null;
+  sourceUrl: string;
+  extras: Record<string, string>;
+}
 import { normalizeBrand } from "../scraping/utils";
 import { normalizeModel, detectGender, extractComboContents } from "../normalization";
 

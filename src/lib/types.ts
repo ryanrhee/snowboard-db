@@ -153,6 +153,7 @@ export interface ScrapeScope {
   regions?: Region[] | null;
   retailers?: string[] | null;
   manufacturers?: string[] | null;
+  sites?: string[] | null;
 }
 
 // ===== Search Types =====

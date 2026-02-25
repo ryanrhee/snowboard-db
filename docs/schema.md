@@ -256,46 +256,42 @@ The TypeScript types mirror the DB schema:
 - **`Board`** — one row from `boards` table
 - **`Listing`** — one row from `listings` table
 - **`BoardWithListings`** — a `Board` with its `Listing[]` array, plus computed `bestPrice`, `valueScore`, `finalScore`, and optional `specSources` provenance
-- **`CanonicalBoard`** — pipeline internal, represents a single normalized retailer scrape result before being split into Board + Listing
-- **`RawBoard`** — retailer scraper output before normalization
+- **`ScrapedBoard`** — unified scraper output (one per board model per source, with listings array for retailers)
+- **`ScraperModule`** — unified scraper interface (name, sourceType, baseUrl, scrape())
+- **`RawBoard`** — internal intermediate type within retailer scrapers (one per size/listing)
 
 ## Data Flow
 
 ```
 Retailers (Evo, Tactics, ...)    Manufacturers (Burton,     Review Sites (The Good Ride)
-         │                        Lib Tech, CAPiTA)                    │
-         ▼                                │                            │
-     RawBoard[]                           ▼                            │
-         │                       ManufacturerSpec[]                    │
-    normalizeBoard()                      │                            │
-         │                     ingestManufacturerSpecs()               │
-         ▼                                │                            │
-   CanonicalBoard[]                       ▼                            │
-         │                        spec_cache + spec_sources            │
-         │                          + boards (upsert)                  │
-    saveRetailerSpecs()──────►spec_sources                             │
-         │                                                             │
-    enrichBoardSpecs()─────────────────────────────────────────────────┘
-         │                    (for boards missing specs:
-         │                     tryReviewSiteLookup() → spec_cache
-         │                     + spec_sources with source="review-site")
-         │
-    resolveSpecSources()◄───reads────── spec_sources
-         │
-   splitIntoBoardsAndListings()
-         │
-    ┌────┴─────┐
-    ▼          ▼
- Board[]    Listing[]
-    │          │
- upsertBoards()  insertListings()
-    │          │
-    ▼          ▼
-  boards     listings
-    table      table
-         │
-    getBoardsWithListings()
-         │
-         ▼
-   BoardWithListings[]  ──►  API response  ──►  UI
+         │                        Lib Tech, CAPiTA, ...)               │
+         │                                │                            │
+         ▼                                ▼                            │
+    ScrapedBoard[]               ScrapedBoard[]                        │
+         │                                │                            │
+         └────────────┬───────────────────┘                            │
+                      │                                                │
+                 coalesce()                                            │
+                      │                                                │
+              spec_sources + boards + listings                         │
+                      │                                                │
+             resolveSpecSources()◄─────────────────────────────────────┘
+                      │               (tryReviewSiteLookup()
+                      │                → spec_sources with
+                      │                  source="review-site")
+                      │
+                 ┌────┴─────┐
+                 ▼          ▼
+              Board[]    Listing[]
+                 │          │
+              upsertBoards()  insertListings()
+                 │          │
+                 ▼          ▼
+               boards     listings
+                 table      table
+                      │
+                 getBoardsWithListings()
+                      │
+                      ▼
+                BoardWithListings[]  ──►  API response  ──►  UI
 ```

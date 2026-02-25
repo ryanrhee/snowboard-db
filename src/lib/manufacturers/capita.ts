@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 import { capitaToTerrain } from "../terrain";
 
@@ -9,11 +10,12 @@ const CAPITA_BASE = "https://www.capitasnowboarding.com";
  * CAPiTA scraper.
  * Shopify store — try /products.json first (structured data), fall back to HTML.
  */
-export const capita: ManufacturerModule = {
-  brand: "CAPiTA",
+export const capita: ScraperModule = {
+  name: "manufacturer:capita",
+  sourceType: "manufacturer",
   baseUrl: CAPITA_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[capita] Scraping manufacturer specs...");
 
     // Try Shopify products.json API first
@@ -21,7 +23,7 @@ export const capita: ManufacturerModule = {
       const specs = await scrapeShopifyJson();
       if (specs.length > 0) {
         console.log(`[capita] Got ${specs.length} boards from Shopify JSON`);
-        return specs;
+        return adaptManufacturerOutput(specs, "CAPiTA");
       }
     } catch (err) {
       console.warn(
@@ -33,7 +35,7 @@ export const capita: ManufacturerModule = {
     // Fallback: HTML scraping
     const specs = await scrapeHtmlCatalog();
     console.log(`[capita] Got ${specs.length} boards from HTML catalog`);
-    return specs;
+    return adaptManufacturerOutput(specs, "CAPiTA");
   },
 };
 

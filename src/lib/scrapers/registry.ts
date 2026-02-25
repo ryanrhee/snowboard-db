@@ -1,71 +1,92 @@
-import { Region, ScrapeScope } from "../types";
-import { RetailerModule } from "../retailers/types";
-import { ManufacturerModule } from "../manufacturers/types";
-import { ScraperModule, ScrapedBoard } from "./types";
-import { adaptRetailerOutput, adaptManufacturerOutput } from "./adapters";
+import { Region } from "../types";
+import { ScraperModule } from "./types";
 
-// Import existing registries
-import { getRetailers } from "../retailers/registry";
-import { getManufacturers } from "../manufacturers/registry";
+// Manufacturer scrapers
+import { burton } from "../manufacturers/burton";
+import { libTech } from "../manufacturers/lib-tech";
+import { capita } from "../manufacturers/capita";
+import { jones } from "../manufacturers/jones";
+import { gnu } from "../manufacturers/gnu";
+import { yes } from "../manufacturers/yes";
+import { season } from "../manufacturers/season";
 
-/** Wrap a RetailerModule as a unified ScraperModule */
-function wrapRetailer(retailer: RetailerModule): ScraperModule {
-  return {
-    name: `retailer:${retailer.name}`,
-    sourceType: "retailer",
-    baseUrl: retailer.baseUrl,
-    region: retailer.region,
-    async scrape(scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-      const rawBoards = await retailer.searchBoards(scope ?? {});
-      return adaptRetailerOutput(rawBoards, retailer.name);
-    },
-  };
-}
+// Retailer scrapers
+import { tactics } from "../retailers/tactics";
+import { evo } from "../retailers/evo";
+import { backcountry } from "../retailers/backcountry";
+import { rei } from "../retailers/rei";
+import { bestsnowboard } from "../retailers/bestsnowboard";
 
-/** Wrap a ManufacturerModule as a unified ScraperModule */
-function wrapManufacturer(mfr: ManufacturerModule): ScraperModule {
-  return {
-    name: `manufacturer:${mfr.brand.toLowerCase()}`,
-    sourceType: "manufacturer",
-    baseUrl: mfr.baseUrl,
-    async scrape(): Promise<ScrapedBoard[]> {
-      const specs = await mfr.scrapeSpecs();
-      return adaptManufacturerOutput(specs, mfr.brand);
-    },
-  };
-}
+const ALL_SCRAPERS: ScraperModule[] = [
+  // Retailers
+  tactics, evo, backcountry, rei, bestsnowboard,
+  // Manufacturers
+  burton, libTech, capita, jones, gnu, yes, season,
+];
+
+// Scrapers that are actually working (not blocked by Cloudflare/bot protection)
+const BLOCKED_SCRAPERS = new Set(["retailer:bestsnowboard"]);
 
 export interface GetScrapersOpts {
   regions?: Region[] | null;
   retailers?: string[] | null;
   manufacturers?: string[] | null;
+  sites?: string[] | null;
   sourceType?: "retailer" | "manufacturer" | "review-site";
 }
 
 /** Get all unified scrapers, filtered by options */
 export function getScrapers(opts?: GetScrapersOpts): ScraperModule[] {
-  const result: ScraperModule[] = [];
+  let result = ALL_SCRAPERS.filter((s) => !BLOCKED_SCRAPERS.has(s.name));
 
-  // Wrap retailers (empty array = skip, undefined/null = include all)
-  if (!Array.isArray(opts?.retailers) || opts!.retailers.length > 0) {
-    const retailers = getRetailers(opts?.regions, opts?.retailers);
-    for (const r of retailers) {
-      result.push(wrapRetailer(r));
+  // If sites is provided, filter by exact scraper name
+  if (opts?.sites && opts.sites.length > 0) {
+    const siteSet = new Set(opts.sites);
+    return result.filter((s) => siteSet.has(s.name));
+  }
+
+  // Filter by retailers (empty array = skip retailers, null/undefined = include all)
+  if (Array.isArray(opts?.retailers)) {
+    if (opts!.retailers.length === 0) {
+      result = result.filter((s) => s.sourceType !== "retailer");
+    } else {
+      const names = new Set(opts!.retailers.map((r) => `retailer:${r}`));
+      result = result.filter((s) => s.sourceType !== "retailer" || names.has(s.name));
     }
   }
 
-  // Wrap manufacturers (empty array = skip, undefined/null = include all)
-  if (!Array.isArray(opts?.manufacturers) || opts!.manufacturers.length > 0) {
-    const mfrs = getManufacturers(opts?.manufacturers ?? undefined);
-    for (const m of mfrs) {
-      result.push(wrapManufacturer(m));
+  // Filter by manufacturers (empty array = skip manufacturers, null/undefined = include all)
+  if (Array.isArray(opts?.manufacturers)) {
+    if (opts!.manufacturers.length === 0) {
+      result = result.filter((s) => s.sourceType !== "manufacturer");
+    } else {
+      const names = new Set(opts!.manufacturers.map((m) => `manufacturer:${m.toLowerCase()}`));
+      result = result.filter((s) => s.sourceType !== "manufacturer" || names.has(s.name));
     }
   }
 
-  // Filter by sourceType if specified
+  // Filter by region
+  if (opts?.regions && opts.regions.length > 0) {
+    const regionSet = new Set(opts.regions);
+    result = result.filter((s) => !s.region || regionSet.has(s.region));
+  }
+
+  // Filter by sourceType
   if (opts?.sourceType) {
-    return result.filter((s) => s.sourceType === opts.sourceType);
+    result = result.filter((s) => s.sourceType === opts.sourceType);
   }
 
   return result;
+}
+
+/** Get all scraper names (including blocked ones) */
+export function getAllScraperNames(): string[] {
+  return ALL_SCRAPERS.map((s) => s.name);
+}
+
+/** Get manufacturer brand names (e.g. ["Burton", "Lib Tech", ...]) */
+export function getManufacturerBrands(): string[] {
+  return ALL_SCRAPERS
+    .filter((s) => s.sourceType === "manufacturer")
+    .map((s) => s.name.replace("manufacturer:", ""));
 }

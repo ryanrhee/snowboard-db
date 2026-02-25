@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     const result = await runSearchPipeline({
       retailers: body.retailers,
       manufacturers: body.manufacturers ?? [],
+      sites: body.sites,
     });
 
     // Query DB for distributions

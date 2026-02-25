@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 import { jonesToTerrain } from "../terrain";
 
@@ -9,18 +10,19 @@ const JONES_BASE = "https://www.jonessnowboards.com";
  * Jones Snowboards scraper.
  * Shopify store — uses /products.json API (same pattern as CAPiTA).
  */
-export const jones: ManufacturerModule = {
-  brand: "Jones",
+export const jones: ScraperModule = {
+  name: "manufacturer:jones",
+  sourceType: "manufacturer",
   baseUrl: JONES_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[jones] Scraping manufacturer specs...");
 
     try {
       const specs = await scrapeShopifyJson();
       if (specs.length > 0) {
         console.log(`[jones] Got ${specs.length} boards from Shopify JSON`);
-        return specs;
+        return adaptManufacturerOutput(specs, "Jones");
       }
     } catch (err) {
       console.warn(

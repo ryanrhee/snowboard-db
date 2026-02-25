@@ -1,5 +1,5 @@
 import { runSearchPipeline } from "../lib/pipeline";
-import { getAllManufacturerBrands } from "../lib/manufacturers/registry";
+import { getManufacturerBrands } from "../lib/scrapers/registry";
 import { closeBrowser } from "../lib/scraping/browser";
 
 async function main() {
@@ -15,7 +15,7 @@ async function main() {
   }
 
   if (brands.length === 0) {
-    console.log(`Scraping all manufacturers: ${getAllManufacturerBrands().join(", ")}`);
+    console.log(`Scraping all manufacturers: ${getManufacturerBrands().join(", ")}`);
   } else {
     console.log(`Scraping manufacturers: ${brands.join(", ")}`);
   }

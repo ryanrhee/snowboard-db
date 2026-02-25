@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
-import { RetailerModule } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { adaptRetailerOutput } from "../scrapers/adapters";
 import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const EVO_BASE_URL = "https://www.evo.com";
@@ -297,12 +298,13 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
   }
 }
 
-export const evo: RetailerModule = {
-  name: "evo",
-  region: Region.US,
+export const evo: ScraperModule = {
+  name: "retailer:evo",
+  sourceType: "retailer",
   baseUrl: EVO_BASE_URL,
+  region: Region.US,
 
-  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+  async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
     const searchUrl = buildSearchUrl();
     console.log(`[evo] Fetching search results from ${searchUrl}`);
 
@@ -323,6 +325,6 @@ export const evo: RetailerModule = {
     }
 
     console.log(`[evo] Successfully scraped ${boards.length} boards`);
-    return boards;
+    return adaptRetailerOutput(boards, "evo");
   },
 };

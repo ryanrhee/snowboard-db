@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { adaptRetailerOutput, adaptManufacturerOutput } from "../lib/scrapers/adapters";
 import { Currency, Region } from "../lib/types";
 import type { RawBoard } from "../lib/types";
-import type { ManufacturerSpec } from "../lib/manufacturers/types";
+import type { ManufacturerSpec } from "../lib/scrapers/adapters";
 
 function makeRawBoard(overrides: Partial<RawBoard> = {}): RawBoard {
   return {

@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 
 const SEASON_BASE = "https://seasoneqpt.com";
@@ -9,18 +10,19 @@ const SEASON_BASE = "https://seasoneqpt.com";
  * Shopify store — uses /collections/snowboards/products.json API
  * plus detail page scraping for flex (from SVG filename).
  */
-export const season: ManufacturerModule = {
-  brand: "Season",
+export const season: ScraperModule = {
+  name: "manufacturer:season",
+  sourceType: "manufacturer",
   baseUrl: SEASON_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[season] Scraping manufacturer specs...");
 
     try {
       const specs = await scrapeShopifyJson();
       if (specs.length > 0) {
         console.log(`[season] Got ${specs.length} boards from Shopify JSON`);
-        return specs;
+        return adaptManufacturerOutput(specs, "Season");
       }
     } catch (err) {
       console.warn(

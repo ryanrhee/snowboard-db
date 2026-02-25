@@ -22,12 +22,14 @@ interface ScrapeScope {
   regions?: Region[] | null;        // US, KR
   retailers?: string[] | null;      // e.g. ["tactics", "evo"]
   manufacturers?: string[] | null;  // e.g. ["burton", "capita"]
+  sites?: string[] | null;          // e.g. ["retailer:tactics", "manufacturer:burton"]
 }
 ```
 
 - `null` / `undefined` = include all of that type
 - Empty array `[]` = skip that type entirely
 - Array with values = include only those scrapers
+- `sites` is the unified filter — matches scraper names directly
 
 ### Board Sources
 
@@ -39,29 +41,33 @@ interface ScrapeScope {
 
 ## Scraper Registry
 
-`src/lib/scrapers/registry.ts` provides a unified `getScrapers()` function that wraps both retailer and manufacturer modules into a common `ScraperModule` interface.
+`src/lib/scrapers/registry.ts` provides a unified `getScrapers()` function. All scrapers (retailers and manufacturers) directly implement the `ScraperModule` interface and are registered in a single flat list.
 
 ```
 getScrapers(opts?)
-  ├── getRetailers(regions, retailers)  →  wrap each as ScraperModule
-  └── getManufacturers(manufacturers)   →  wrap each as ScraperModule
+  → filters ALL_SCRAPERS by: sites, retailers, manufacturers, regions, sourceType
 ```
 
-### Retailers (`src/lib/retailers/registry.ts`)
+### Scrapers
 
-| Retailer     | Region | Fetch Method | Status |
-|-------------|--------|-------------|--------|
-| Tactics      | US     | Plain HTTP   | Active |
-| Evo          | US     | Browser/CDP  | Active |
-| Backcountry  | US     | Browser/CDP  | Active |
-| REI          | US     | Browser/CDP  | Active |
-| BestSnowboard| KR     | Plain HTTP   | Inactive (Cloudflare-blocked) |
+| Scraper Name | Type | Region | Fetch Method | Status |
+|-------------|------|--------|-------------|--------|
+| `retailer:tactics` | retailer | US | Plain HTTP | Active |
+| `retailer:evo` | retailer | US | Browser/CDP | Active |
+| `retailer:backcountry` | retailer | US | Browser/CDP | Active |
+| `retailer:rei` | retailer | US | Browser/CDP | Active |
+| `retailer:bestsnowboard` | retailer | KR | Plain HTTP | Blocked (Cloudflare) |
+| `manufacturer:burton` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:lib tech` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:capita` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:jones` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:gnu` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:yes.` | manufacturer | — | Plain HTTP | Active |
+| `manufacturer:season` | manufacturer | — | Plain HTTP | Active |
 
-`ACTIVE_RETAILERS` controls which are included by default.
+`BLOCKED_SCRAPERS` controls which scrapers are excluded by default.
 
-### Manufacturers (`src/lib/manufacturers/registry.ts`)
-
-Burton, Lib Tech, CAPiTA, Jones, GNU. All use plain HTTP. No active/inactive gating — all are always available.
+See `docs/scrapers.md` for detailed per-scraper documentation.
 
 ### Filtering Examples
 
@@ -70,9 +76,12 @@ Burton, Lib Tech, CAPiTA, Jones, GNU. All use plain HTTP. No active/inactive gat
 ./debug.sh '{"action":"run","retailers":["tactics","evo"]}'
 
 # Only manufacturers
-./debug.sh '{"action":"run-manufacturers","manufacturers":["burton","capita"]}'
+./debug.sh '{"action":"run","retailers":[],"manufacturers":null}'
 
-# Both
+# Unified filter (new)
+./debug.sh '{"action":"run","sites":["retailer:tactics","manufacturer:burton"]}'
+
+# Both (backward compat)
 ./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
 ```
 

@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
-import { RetailerModule } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { adaptRetailerOutput } from "../scrapers/adapters";
 import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
 
 const BC_BASE_URL = "https://www.backcountry.com";
@@ -385,12 +386,13 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
   }
 }
 
-export const backcountry: RetailerModule = {
-  name: "backcountry",
-  region: Region.US,
+export const backcountry: ScraperModule = {
+  name: "retailer:backcountry",
+  sourceType: "retailer",
   baseUrl: BC_BASE_URL,
+  region: Region.US,
 
-  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+  async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
     const searchUrl = buildSearchUrl();
     console.log(`[backcountry] Fetching search results from ${searchUrl}`);
 
@@ -411,6 +413,6 @@ export const backcountry: RetailerModule = {
     }
 
     console.log(`[backcountry] Successfully scraped ${boards.length} boards`);
-    return boards;
+    return adaptRetailerOutput(boards, "backcountry");
   },
 };

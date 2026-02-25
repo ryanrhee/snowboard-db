@@ -1,4 +1,5 @@
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 
 const BURTON_BASE = "https://www.burton.com";
@@ -218,11 +219,12 @@ const EXTRA_ATTRS = [
   "Camber",
 ];
 
-export const burton: ManufacturerModule = {
-  brand: "Burton",
+export const burton: ScraperModule = {
+  name: "manufacturer:burton",
+  sourceType: "manufacturer",
   baseUrl: BURTON_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[burton] Scraping manufacturer specs...");
 
     // Phase 1: Get board list from catalog pages
@@ -321,7 +323,7 @@ export const burton: ManufacturerModule = {
       });
     }
 
-    return specs;
+    return adaptManufacturerOutput(specs, "Burton");
   },
 };
 

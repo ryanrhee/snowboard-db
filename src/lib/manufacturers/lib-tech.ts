@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 
 const LIB_TECH_BASE = "https://www.lib-tech.com";
@@ -10,11 +11,12 @@ const CATALOG_URL = `${LIB_TECH_BASE}/snowboards`;
  * Server-rendered Magento store — plain fetch + cheerio.
  * Profile terms (c2, c2x, c3, btx) are already in our normalization maps.
  */
-export const libTech: ManufacturerModule = {
-  brand: "Lib Tech",
+export const libTech: ScraperModule = {
+  name: "manufacturer:lib tech",
+  sourceType: "manufacturer",
   baseUrl: LIB_TECH_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[lib-tech] Scraping manufacturer specs...");
     const specs: ManufacturerSpec[] = [];
 
@@ -93,7 +95,7 @@ export const libTech: ManufacturerModule = {
     }
 
     console.log(`[lib-tech] Finished scraping ${specs.length} boards`);
-    return specs;
+    return adaptManufacturerOutput(specs, "Lib Tech");
   },
 };
 

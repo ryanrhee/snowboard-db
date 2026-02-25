@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 
 const GNU_BASE = "https://www.gnu.com";
@@ -13,11 +14,12 @@ const CATALOG_URLS = [
  * Server-rendered Magento store (Mervin Mfg — same platform as Lib Tech).
  * Plain fetch + cheerio, no browser needed.
  */
-export const gnu: ManufacturerModule = {
-  brand: "GNU",
+export const gnu: ScraperModule = {
+  name: "manufacturer:gnu",
+  sourceType: "manufacturer",
   baseUrl: GNU_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[gnu] Scraping manufacturer specs...");
     const specs: ManufacturerSpec[] = [];
 
@@ -120,7 +122,7 @@ export const gnu: ManufacturerModule = {
     }
 
     console.log(`[gnu] Finished scraping ${specs.length} boards`);
-    return specs;
+    return adaptManufacturerOutput(specs, "GNU");
   },
 };
 

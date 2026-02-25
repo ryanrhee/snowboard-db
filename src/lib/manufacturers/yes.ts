@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { ManufacturerModule, ManufacturerSpec } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 
 const YES_BASE = "https://www.yessnowboards.com";
@@ -9,18 +10,19 @@ const YES_BASE = "https://www.yessnowboards.com";
  * Shopify store — uses /collections/snowboards/products.json API
  * plus detail page scraping for flex, shape, and profile.
  */
-export const yes: ManufacturerModule = {
-  brand: "Yes.",
+export const yes: ScraperModule = {
+  name: "manufacturer:yes.",
+  sourceType: "manufacturer",
   baseUrl: YES_BASE,
 
-  async scrapeSpecs(): Promise<ManufacturerSpec[]> {
+  async scrape(): Promise<ScrapedBoard[]> {
     console.log("[yes] Scraping manufacturer specs...");
 
     try {
       const specs = await scrapeShopifyJson();
       if (specs.length > 0) {
         console.log(`[yes] Got ${specs.length} boards from Shopify JSON`);
-        return specs;
+        return adaptManufacturerOutput(specs, "Yes.");
       }
     } catch (err) {
       console.warn(

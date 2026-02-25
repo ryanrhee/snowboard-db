@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
-import { RetailerModule } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { adaptRetailerOutput } from "../scrapers/adapters";
 import { fetchPage, parsePrice, normalizeBrand, delay } from "../scraping/utils";
 
 const TACTICS_BASE_URL = "https://www.tactics.com";
@@ -283,12 +284,13 @@ async function fetchBoardDetails(
   }
 }
 
-export const tactics: RetailerModule = {
-  name: "tactics",
-  region: Region.US,
+export const tactics: ScraperModule = {
+  name: "retailer:tactics",
+  sourceType: "retailer",
   baseUrl: TACTICS_BASE_URL,
+  region: Region.US,
 
-  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+  async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
     const searchUrl = buildSearchUrl();
     console.log(`[tactics] Fetching search results from ${searchUrl}`);
 
@@ -305,6 +307,6 @@ export const tactics: RetailerModule = {
     }
 
     console.log(`[tactics] Successfully scraped ${boards.length} boards`);
-    return boards;
+    return adaptRetailerOutput(boards, "tactics");
   },
 };

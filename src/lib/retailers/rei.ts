@@ -1,5 +1,6 @@
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
-import { RetailerModule } from "./types";
+import { ScraperModule, ScrapedBoard } from "../scrapers/types";
+import { adaptRetailerOutput } from "../scrapers/adapters";
 import { fetchPageWithBrowser, normalizeBrand, delay } from "../scraping/utils";
 import { fetchPage } from "../scraping/utils";
 import { config } from "../config";
@@ -162,12 +163,13 @@ async function tryFetchDetailPage(board: RawBoard): Promise<void> {
   }
 }
 
-export const rei: RetailerModule = {
-  name: "rei",
-  region: Region.US,
+export const rei: ScraperModule = {
+  name: "retailer:rei",
+  sourceType: "retailer",
   baseUrl: REI_BASE_URL,
+  region: Region.US,
 
-  async searchBoards(_scope: ScrapeScope): Promise<RawBoard[]> {
+  async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
     const page1Url = buildSearchUrl();
     console.log(`[rei] Fetching page 1 from ${page1Url}`);
 
@@ -280,6 +282,6 @@ export const rei: RetailerModule = {
       console.log(`[rei] Parsed detail specs for ${detailSuccessCount} boards`);
     }
 
-    return boards;
+    return adaptRetailerOutput(boards, "rei");
   },
 };

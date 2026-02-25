@@ -49,6 +49,7 @@ export async function runSearchPipeline(
     regions: mergedScope.regions,
     retailers: mergedScope.retailers,
     manufacturers: mergedScope.manufacturers,
+    sites: mergedScope.sites,
   });
 
   const errors: RetailerError[] = [];
