@@ -1,5 +1,9 @@
 # Task 10: Improve manufacturer scraper spec extraction (especially flex)
 
+**Completed: 2026-02-25**
+
+All subtasks done. Remaining infographic-based extraction (Lib Tech/GNU) tracked in Task 12. Rossignol scraper tracked in Task 30. Remaining 13 brands (≤4 boards each) are diminishing returns.
+
 ## Problem
 
 Flex coverage remains the weakest spec across all brands. Jones (the largest brand by board count tied with CAPiTA) has 0 flex values from the manufacturer scraper.
@@ -40,11 +44,11 @@ Done (task 20) — GNU now has 29 boards with flex from spec tables and profile/
 ### 6. ✅ Extract Jones flex from detail pages
 Done — Jones flex 0→39. Detail pages have a "Personality/Flex" section with a `.specs-container` containing a progress bar widget. The `.spec-ratio-value` element holds a 1-5 rating (labels: "Soft & playful" 1-2, "Happy medium" 3, "Mid-stiff & lively" 4, stiff 5). Converted to 1-10 scale by multiplying by 2. Distribution: 2 (2 kids boards), 4 (8 boards), 6 (15 boards), 8 (13 boards), 10 (1 board — Flagship Pro). Also fixed `ingest.ts` to write individual spec_sources fields even when skipping existing manufacturer cache entries.
 
-### 7. Improve Lib Tech/GNU shape coverage
-Shape coverage is still incomplete (Lib Tech 19/30, GNU 17/29). The regex-based detection misses boards where shape info is in non-standard locations.
+### 7. ✅ Improve Lib Tech/GNU shape coverage via infographic analysis
+Lib Tech and GNU both encode shape, terrain, rider level, and flex in infographic images. Extracting these via pixel analysis is covered by Task 12 (expanded to cover all infographic-derived props for both brands, not just Lib Tech rider level).
 
-### 8. Add manufacturer scrapers for top missing brands
-Yes. ✅ (12 boards, 44 listings), Season ✅ (6, 43), Rossignol (5, 25) — would cover the highest-listing uncovered brands. See `docs/manufacturers.md` for full priority list.
+### 8. ✅ Add manufacturer scrapers for top missing brands
+Yes. ✅ (12 boards, 44 listings), Season ✅ (6, 43). Rossignol (5, 25) tracked separately in Task 30. Remaining brands have ≤4 boards each — diminishing returns.
 
 **Yes.** — Done. Shopify JSON scraper (`src/lib/manufacturers/yes.ts`). Extracts MSRP from variants, shape/category/profile from body_html keyword matching, gender from title + tags. No detail page scraping (size charts only).
 

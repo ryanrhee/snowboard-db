@@ -1,11 +1,10 @@
-# Task 12: Fix Lib Tech ability level extraction via infographic pixel analysis
+# Task 12: Extract Lib Tech and GNU specs from infographic pixel analysis
 
 ## Problem
 
-The Lib Tech manufacturer scraper infers rider ability level from infographic images
-(terrain-riderlevel-flex PNGs/JPGs). The current `inferRiderLevelFromInfographic()`
-function uses a hardcoded slug→level mapping that was built by visual inspection.
-Many of the mappings are wrong.
+Lib Tech and GNU both use infographic images that encode terrain, rider level/ability, and flex as colored gradient bars. The current approach uses a hardcoded slug→level mapping (`inferRiderLevelFromInfographic()`) that is incomplete and often wrong. The gradient fitting infrastructure is already built and working (see below), but only targets rider level for Lib Tech.
+
+This task covers extracting **all three properties** (terrain, rider level, flex) from infographics for **both Lib Tech and GNU**.
 
 ## What we've done
 
@@ -187,10 +186,29 @@ Adjust start/end thresholds based on evo data. The start threshold is the critic
 one — need to determine if boards with start 21-24% are "beginner" or "intermediate"
 according to retailers.
 
-### Step 3: Implement the mapping and replace slug function
+### Step 3: Extract all 3 bar properties, not just rider level
+
+The infographic contains 3 bars: terrain, rider level, and flex. Currently only
+rider level is analyzed. Extend `analyzeInfographic()` to return all 3 bars and
+map each to the corresponding spec field:
+- **Rider level bar** → ability level (beginner/intermediate/advanced range)
+- **Terrain bar** → terrain scores (relates to Task 27 multi-dimensional terrain)
+- **Flex bar** → flex rating (1-10 scale)
+
+### Step 4: Add GNU infographic support
+
+GNU uses the same infographic format as Lib Tech (same parent company, Mervin Mfg).
+Extend the infographic analysis to GNU boards:
+- Verify GNU infographic layout matches Lib Tech (bar positions, color scheme)
+- Update `gnu.ts` scraper to extract infographic URLs and run `analyzeInfographic()`
+- Apply the same threshold mappings
+
+### Step 5: Implement the mapping and replace slug function
 
 - Add `mapRiderLevelToAbility(riderLevel: BarAnalysis)` to `lib-tech-infographic.ts`
+- Add terrain and flex mapping functions
 - Make `parseDetailHtml` in `lib-tech.ts` async
-- Replace `inferRiderLevelFromInfographic(src)` with image fetch + `analyzeInfographic()` + `mapRiderLevelToAbility()`
+- Replace `inferRiderLevelFromInfographic(src)` with image fetch + `analyzeInfographic()` + mapping
 - Remove the hardcoded slug mapping function
+- Apply same changes to `gnu.ts`
 - Update tests and API route
