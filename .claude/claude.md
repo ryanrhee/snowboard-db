@@ -52,21 +52,24 @@ On first run after the split, cache tables are automatically migrated from the m
 
 ## Re-running the Pipeline
 
-See `docs/architecture.md` for the full list of debug actions, including how to run retailers only, manufacturers only, or both, and how to filter to specific brands/retailers. Key gotcha: `metadata-check` skips manufacturers by default (pass `"manufacturers":null` to include them).
+All scraping goes through a single `run` action (the default). Use `sites`, `retailers`, or `manufacturers` to filter.
 
 ### Quick reference
 
 ```bash
-# Retailers only (default)
-./debug.sh '{"action":"metadata-check"}'
+# All scrapers (default)
+./debug.sh '{"action":"run"}'
 
-# Manufacturers only
-./debug.sh '{"action":"scrape-specs"}'
+# Specific scrapers by name
+./debug.sh '{"action":"run","sites":["retailer:tactics","manufacturer:burton"]}'
 
-# Both retailers and manufacturers
-./debug.sh '{"action":"metadata-check","manufacturers":null}'
+# All retailers, no manufacturers
+./debug.sh '{"action":"run","manufacturers":[]}'
 
-# Specific retailer + manufacturer
+# No retailers, all manufacturers
+./debug.sh '{"action":"run","retailers":[]}'
+
+# Specific retailers + specific manufacturers
 ./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
 ```
 
@@ -80,7 +83,7 @@ sqlite3 data/snowboard-finder.db "
   DELETE FROM search_runs;
 "
 
-./debug.sh '{"action":"metadata-check"}'
+./debug.sh '{"action":"run"}'
 ```
 
 ### Extend cache TTL (if entries are >24h old)

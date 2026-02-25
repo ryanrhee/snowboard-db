@@ -5,14 +5,26 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const action = body.action || "run";
 
-  if (action === "metadata-check" || action === "run") {
-    // Re-run search pipeline from cache (retailers only by default)
+  // Primary action: run the scrape pipeline
+  // Default: all scrapers. Filter with sites, retailers, manufacturers.
+  //
+  // Examples:
+  //   {"action":"run"}                                          — all scrapers
+  //   {"action":"run","sites":["retailer:tactics","manufacturer:burton"]}  — specific scrapers
+  //   {"action":"run","retailers":["tactics"]}                  — specific retailers, all manufacturers
+  //   {"action":"run","manufacturers":[]}                       — all retailers, no manufacturers
+  //   {"action":"run","retailers":[],"manufacturers":["burton"]} — no retailers, specific manufacturer
+  //
+  // Legacy aliases: metadata-check, run-full, full-pipeline, scrape-specs, run-manufacturers
+  const RUN_ACTIONS = new Set(["run", "metadata-check", "run-full", "full-pipeline", "scrape-specs", "run-manufacturers"]);
+
+  if (RUN_ACTIONS.has(action)) {
     const { runSearchPipeline } = await import("@/lib/pipeline");
     const db = getDb();
 
     const result = await runSearchPipeline({
       retailers: body.retailers,
-      manufacturers: body.manufacturers ?? [],
+      manufacturers: body.manufacturers,
       sites: body.sites,
     });
 
@@ -39,39 +51,6 @@ export async function POST(request: NextRequest) {
       errors: result.errors,
       conditionDistribution: conditionDist,
       genderDistributionBoards: genderDistBoards,
-    });
-  }
-
-  if (action === "full-pipeline" || action === "run-full") {
-    // Re-run pipeline with all retailers + all manufacturers
-    const { runSearchPipeline } = await import("@/lib/pipeline");
-    const result = await runSearchPipeline();
-    return NextResponse.json({
-      action,
-      runId: result.run.id,
-      totalBoards: result.boards.length,
-      totalListings: result.boards.reduce((s, b) => s + b.listings.length, 0),
-      errors: result.errors,
-      withFlex: result.boards.filter(b => b.flex !== null).length,
-      withProfile: result.boards.filter(b => b.profile !== null).length,
-      withShape: result.boards.filter(b => b.shape !== null).length,
-      withCategory: result.boards.filter(b => b.category !== null).length,
-    });
-  }
-
-  if (action === "scrape-specs" || action === "run-manufacturers") {
-    // Run manufacturer scrapers only (no retailers)
-    const { runSearchPipeline } = await import("@/lib/pipeline");
-    const result = await runSearchPipeline({
-      retailers: [], // no retailers, only manufacturers
-      manufacturers: body.manufacturers,
-    });
-    const db = getDb();
-    const abilityRows = db.prepare("SELECT brand_model, field, value, source FROM spec_sources WHERE field = 'ability level' AND source = 'manufacturer'").all();
-    return NextResponse.json({
-      action,
-      boardCount: result.boards.length,
-      abilityLevelEntries: abilityRows,
     });
   }
 

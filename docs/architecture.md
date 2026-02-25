@@ -108,31 +108,28 @@ Both phases write to the same `http_cache` table, so a page fetched by browser i
 
 All actions are triggered via POST to `/api/debug` (use `./debug.sh` wrapper). Defined in `src/app/api/debug/route.ts`.
 
-### `run` (alias: `metadata-check`)
+### `run`
 
-Re-runs the pipeline with default scope (all active retailers, no manufacturers).
+Runs the scrape pipeline. Default: all scrapers (retailers + manufacturers). Use `sites`, `retailers`, or `manufacturers` to filter.
 
 ```bash
+# All scrapers
 ./debug.sh '{"action":"run"}'
-./debug.sh '{"action":"run","retailers":["tactics"]}'
+
+# Specific scrapers by name
+./debug.sh '{"action":"run","sites":["retailer:tactics","manufacturer:burton"]}'
+
+# All retailers, no manufacturers
+./debug.sh '{"action":"run","manufacturers":[]}'
+
+# No retailers, all manufacturers
+./debug.sh '{"action":"run","retailers":[]}'
+
+# Specific retailers + specific manufacturers
+./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
 ```
 
-### `run-full` (alias: `full-pipeline`)
-
-Runs pipeline with all retailers and all manufacturers (no scope filters).
-
-```bash
-./debug.sh '{"action":"run-full"}'
-```
-
-### `run-manufacturers` (alias: `scrape-specs`)
-
-Runs manufacturer scrapers only. Retailers are excluded (`retailers: []`).
-
-```bash
-./debug.sh '{"action":"run-manufacturers"}'
-./debug.sh '{"action":"run-manufacturers","manufacturers":["burton"]}'
-```
+Legacy aliases (`metadata-check`, `run-full`, `full-pipeline`, `scrape-specs`, `run-manufacturers`) all map to `run`.
 
 ### `slow-scrape`
 
