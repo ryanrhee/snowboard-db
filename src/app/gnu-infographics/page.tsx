@@ -17,9 +17,16 @@ interface GnuInfographicAnalysis {
   flex: BarExtent;
 }
 
+interface BoardLink {
+  label: string;
+  url: string;
+}
+
 interface GnuInfographicEntry {
   boardName: string;
   imgUrl: string;
+  pageUrl: string;
+  links: BoardLink[];
   analysis: GnuInfographicAnalysis | null;
 }
 
@@ -157,8 +164,21 @@ export default function GnuInfographicsPage() {
                     key={entry.imgUrl}
                     className="border-b border-gray-800 hover:bg-gray-800/50 align-top"
                   >
-                    <td className="py-3 pr-4 font-medium">
-                      {entry.boardName}
+                    <td className="py-3 pr-4">
+                      <div className="font-medium">{entry.boardName}</div>
+                      <div className="flex flex-wrap gap-x-2 mt-1">
+                        {entry.links.map((link) => (
+                          <a
+                            key={link.url}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                          >
+                            {link.label}
+                          </a>
+                        ))}
+                      </div>
                     </td>
                     <td className="py-3 pr-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
