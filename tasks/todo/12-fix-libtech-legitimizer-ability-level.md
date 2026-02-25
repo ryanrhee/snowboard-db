@@ -168,7 +168,7 @@ with start ≥ 20% as intermediate, the start threshold may need to be lower
 
 ### Step 1: Validate thresholds against retailer detail page data
 
-**Prerequisite: Task 34** (improve retailer spec extraction) — need ability level data from evo, backcountry, and REI detail pages to establish ground truth for threshold calibration.
+**Prerequisites: Task 16** (scrape all boards, not just sale — need non-discounted boards for representative data), **Task 34** (improve retailer spec extraction — need ability level from detail pages).
 
 Gather ability level specs from retailer detail pages for boards across all clusters. The more retailer data points available, the better the threshold calibration.
 
