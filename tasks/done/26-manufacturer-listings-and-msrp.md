@@ -1,11 +1,6 @@
 # Task 26: Capture manufacturer listings and distinguish MSRP from sale price
 
-## Problem
-
-Manufacturer sites (burton.com, lib-tech.com, capita.com, etc.) sell boards directly and sometimes offer discounts. Currently the manufacturer scrapers extract specs but don't produce listings. Two issues:
-
-1. **Missing listings**: Manufacturer direct-sale listings (price, sizes, availability) are not captured. These are valid retail options for the user.
-2. **MSRP contamination**: If a manufacturer site shows a sale price, that discounted price could be mistakenly recorded as MSRP. MSRP should always reflect the original undiscounted price.
+**Closed: 2026-02-25** — Subsumed by Task 31 (unify manufacturer and retailer scrapers). All requirements from this task are incorporated into Task 31's unified scraper approach: manufacturer listings (point 3), MSRP from non-discounted manufacturer price (point 4), and per-site discount detection patterns (implementation notes).
 
 ## Goal
 
