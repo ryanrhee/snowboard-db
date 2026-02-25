@@ -22,6 +22,7 @@ export interface ScrapedBoard {
   source: string; // "retailer:tactics", "manufacturer:burton"
   brand: string;
   model: string;
+  rawModel?: string;
   year?: number;
   sourceUrl: string;
   region?: Region;

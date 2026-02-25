@@ -33,7 +33,7 @@ export function coalesce(
   // Group by board identity (specKey = "brand|model")
   const boardGroups = new Map<
     string,
-    { scraped: ScrapedBoard[]; brand: string; model: string }
+    { scraped: ScrapedBoard[]; brand: string; model: string; rawModels: string[] }
   >();
 
   for (const sb of allScrapedBoards) {
@@ -46,9 +46,12 @@ export function coalesce(
         scraped: [],
         brand: brand,
         model: normalizeModel(sb.model, brand),
+        rawModels: [],
       });
     }
-    boardGroups.get(key)!.scraped.push(sb);
+    const group = boardGroups.get(key)!;
+    group.scraped.push(sb);
+    if (sb.rawModel) group.rawModels.push(sb.rawModel);
   }
 
   const boards: Board[] = [];
