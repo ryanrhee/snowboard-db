@@ -170,9 +170,11 @@ function parseDetailHtml(
     }
   }
 
-  // Extract profile from contour image alt text
-  // e.g. "Lib Tech Original Banana Snowboard Contour" → "Original Banana"
-  // e.g. "Lib Tech Directional C2X Snowboard Contour" → "Directional C2X"
+  // Extract profile from contour image alt text or src filename.
+  // Lib Tech's contour/profile images encode the profile type in the alt text
+  // (e.g. "Lib Tech Directional C2X Snowboard Contour") or filename (e.g.
+  // "c2x.png"). Regex on these strings is the correct approach — the image
+  // metadata IS the structured data source for profile information.
   if (!profile) {
     const contourImg = $("img[alt*='Contour']").first();
     const contourAlt = contourImg.attr("alt") || "";
@@ -206,7 +208,7 @@ function parseDetailHtml(
   });
 
   // Extract per-size listings from Magento's jsonConfig JS variable
-  const listings = extractMagentoListings(html, url);
+  const listings = extractMagentoListings(html, url, msrp ?? undefined);
 
   return {
     brand: "Lib Tech",
@@ -229,25 +231,35 @@ function parseDetailHtml(
  * Lib Tech uses simple (non-configurable) Magento products with a single price.
  * Size data comes from the spec table rows — each row is a size variant.
  * All sizes share the same price (from JSON-LD or page price).
+ *
+ * @param jsonLdPrice - Price already extracted from JSON-LD in parseDetailHtml,
+ *   passed through to avoid re-parsing the same script tags.
  */
-function extractMagentoListings(html: string, productUrl: string): ScrapedListing[] {
+function extractMagentoListings(html: string, productUrl: string, jsonLdPrice?: number): ScrapedListing[] {
   const listings: ScrapedListing[] = [];
   const $ = cheerio.load(html);
 
-  // Get price from JSON-LD or page price elements
-  let price = 0;
+  // Prefer JSON-LD price already extracted by parseDetailHtml
+  let price = jsonLdPrice ?? 0;
   let oldPrice: number | undefined;
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const data = JSON.parse($(el).text());
-      if (data["@type"] === "Product" && data.offers) {
-        const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
-        if (offer?.price) price = parseFloat(offer.price);
-      }
-    } catch { /* skip */ }
-  });
 
-  // Check for old/special price (sale detection)
+  // If no price from JSON-LD, try extracting here as fallback
+  if (price === 0) {
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const data = JSON.parse($(el).text());
+        if (data["@type"] === "Product" && data.offers) {
+          const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+          if (offer?.price) price = parseFloat(offer.price);
+        }
+      } catch { /* skip */ }
+    });
+  }
+
+  // Check for old/special price via Magento's inline pricing JSON.
+  // These regex patterns match Magento's require.js config object which embeds
+  // pricing as {"oldPrice":{"amount":N},"finalPrice":{"amount":N}}.
+  // There is no structured DOM alternative — the prices live in inline JS.
   const oldPriceMatch = html.match(/"oldPrice"\s*:\s*\{\s*"amount"\s*:\s*([\d.]+)/);
   const finalPriceMatch = html.match(/"finalPrice"\s*:\s*\{\s*"amount"\s*:\s*([\d.]+)/);
   if (finalPriceMatch) {

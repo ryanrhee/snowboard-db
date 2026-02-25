@@ -175,8 +175,9 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
   let shape: string | null = null;
   let category: string | null = null;
 
-  // Flex: extract from bar chart data-total attribute (0-100 → 1-10)
-  // e.g. <div class="bar-chart" data-total="60"> → 6
+  // Flex: extract from bar chart data-total attribute (0-100 → 1-10).
+  // Yes. renders flex as a visual bar chart with a data-total attribute
+  // rather than displaying it as text, so DOM attribute access is used.
   const barChart = $(".bar-chart[data-total]").first();
   const dataTotal = barChart.attr("data-total");
   if (dataTotal) {
@@ -185,7 +186,9 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
       flex = String(Math.round(totalNum / 10));
     }
   }
-  // Fallback: look for text like "6/10" in the bar chart area
+  // Fallback: look for text like "6/10" in the bar chart area.
+  // This regex is intentional — when data-total is missing, the flex
+  // rating may appear as plain text in a "N/10" format.
   if (!flex) {
     const flexText = $(".bar-chart-indice, .bar-chart").text();
     const flexMatch = flexText.match(/(\d+)\s*\/\s*10/);
@@ -194,8 +197,10 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     }
   }
 
-  // Shape: extract from heading in #contentShape
-  // e.g. <h3>Shape: True Twin</h3>
+  // Shape: extract from heading text in #contentShape section.
+  // Yes. uses headings like <h3>Shape: True Twin</h3> — regex on heading
+  // text is the correct approach since the shape name is in prose, not a
+  // data attribute or structured field.
   const shapeSection = $("#contentShape");
   if (shapeSection.length) {
     const shapeText = shapeSection.find("h3, h4, .shape-title").text().trim();

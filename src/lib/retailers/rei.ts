@@ -41,60 +41,32 @@ interface ReiProduct {
 }
 
 function extractProductsFromHtml(html: string): ReiProduct[] {
-  const products: ReiProduct[] = [];
+  // REI embeds all search data in a <script type="application/json" id="initial-props"> tag.
+  // Products live at: root.ProductSearch.products.searchResults.results
+  const $ = cheerio.load(html);
+  const scriptEl = $('script#initial-props[type="application/json"]');
+  if (scriptEl.length === 0) return [];
 
-  // REI embeds product data as inline JS objects in Vue.js templates.
-  // Each product has a "link":"/product/..." field we can use to find them.
-  const linkPattern = /"link":"\/product\/\d+\//g;
-  const matches = [...html.matchAll(linkPattern)];
-
-  for (const match of matches) {
-    const startIdx = match.index!;
-
-    // Walk backwards to find the opening { of this product object
-    let depth = 0;
-    let objStart = startIdx;
-    for (let i = startIdx; i >= Math.max(0, startIdx - 5000); i--) {
-      if (html[i] === "}") depth++;
-      if (html[i] === "{") {
-        depth--;
-        if (depth < 0) {
-          objStart = i;
-          break;
-        }
-      }
-    }
-
-    // Walk forwards to find the closing }
-    depth = 0;
-    let objEnd = startIdx;
-    for (let i = objStart; i < Math.min(html.length, objStart + 10000); i++) {
-      if (html[i] === "{") depth++;
-      if (html[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          objEnd = i + 1;
-          break;
-        }
-      }
-    }
-
-    try {
-      const product = JSON.parse(html.slice(objStart, objEnd)) as ReiProduct;
-      if (product.link && product.displayPrice) {
-        products.push(product);
-      }
-    } catch {
-      // Skip malformed objects
-    }
+  try {
+    const data = JSON.parse(scriptEl.text());
+    const results: ReiProduct[] = data?.ProductSearch?.products?.searchResults?.results ?? [];
+    return results.filter((p) => p.link && p.displayPrice);
+  } catch {
+    return [];
   }
-
-  return products;
 }
 
 function extractTotalPages(html: string): number {
-  const match = html.match(/"totalPages":(\d+)/);
-  return match ? parseInt(match[1]) : 1;
+  const $ = cheerio.load(html);
+  const scriptEl = $('script#initial-props[type="application/json"]');
+  if (scriptEl.length > 0) {
+    try {
+      const data = JSON.parse(scriptEl.text());
+      const totalPages = data?.ProductSearch?.products?.searchResults?.pagination?.totalPages;
+      if (typeof totalPages === "number") return totalPages;
+    } catch { /* fall through */ }
+  }
+  return 1;
 }
 
 let reiDetailBlocked = false;

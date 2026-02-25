@@ -265,28 +265,6 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       } catch { /* skip */ }
     }
 
-    // Parse bullet points from detailsAccordion for spec hints
-    const bulletPoints: string[] = [];
-    $("[data-id='detailsAccordion'] li").each((_, el) => {
-      bulletPoints.push($(el).text().trim());
-    });
-
-    // Extract specs from bullet points using pattern matching
-    for (const bp of bulletPoints) {
-      const lower = bp.toLowerCase();
-      if (!specs["profile"]) {
-        if (lower.includes("camber") && !lower.includes("rocker")) specs["profile"] = "camber";
-        else if (lower.includes("rocker") && lower.includes("camber")) specs["profile"] = lower.includes("camber/rocker") || lower.includes("camber between") ? "hybrid camber" : "hybrid rocker";
-        else if (lower.includes("rocker") && !lower.includes("camber")) specs["profile"] = "rocker";
-        else if (lower.includes("flat") && lower.includes("profile")) specs["profile"] = "flat";
-      }
-      if (!specs["shape"]) {
-        if (lower.includes("directional twin")) specs["shape"] = "directional twin";
-        else if (lower.includes("true twin")) specs["shape"] = "true twin";
-        else if (lower.includes("directional") && lower.includes("shape")) specs["shape"] = "directional";
-      }
-    }
-
     // Fallback: parse specs from HTML elements
     $('[class*="spec"] li, [class*="Spec"] li, [class*="detail"] li').each((_, el) => {
       const text = $(el).text().trim();

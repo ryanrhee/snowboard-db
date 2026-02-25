@@ -166,6 +166,8 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
 
   // Flex: extract from SVG image filename pattern flex-Nof10.svg
   // e.g. <img src="...flex-9of10.svg"> → "9"
+  // Season embeds flex ratings as named SVG files rather than text or data
+  // attributes, so regex on the filename is the correct extraction method.
   $("img[src*='flex-']").each((_, el) => {
     if (flex) return;
     const src = $(el).attr("src") || "";
@@ -175,8 +177,10 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     }
   });
 
-  // Also check for shape/profile/category in structured elements
-  // Look for spec-like sections with labeled values
+  // Shape and profile: extract from image src/alt attributes.
+  // Season uses named image files (shape-*, profile-*, camber-*) to display
+  // these specs visually. The filename/alt text IS the structured data source,
+  // so regex extraction here is intentional — there is no text or JSON alternative.
   $("img[src*='shape-'], img[src*='profile-'], img[src*='camber-']").each((_, el) => {
     const src = $(el).attr("src") || "";
     const alt = ($(el).attr("alt") || "").toLowerCase();
