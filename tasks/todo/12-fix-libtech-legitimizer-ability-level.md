@@ -195,13 +195,22 @@ map each to the corresponding spec field:
 - **Terrain bar** → terrain scores (relates to Task 27 multi-dimensional terrain)
 - **Flex bar** → flex rating (1-10 scale)
 
-### Step 4: Add GNU infographic support
+### Step 4: Add GNU infographic support ✅
 
-GNU uses the same infographic format as Lib Tech (same parent company, Mervin Mfg).
-Extend the infographic analysis to GNU boards:
-- Verify GNU infographic layout matches Lib Tech (bar positions, color scheme)
-- Update `gnu.ts` scraper to extract infographic URLs and run `analyzeInfographic()`
-- Apply the same threshold mappings
+GNU uses a different infographic format from Lib Tech — lens/almond-shaped gradient
+shapes positioned above black scale borders, rather than gray-to-color gradient bars.
+
+**Done (2026-02-25):**
+- Created `src/lib/manufacturers/gnu-infographic.ts` with border-detection algorithm:
+  - Finds horizontal scale borders (rows where >90% of pixels are black)
+  - Clusters borders with proportional gap threshold (10% of image height)
+  - Searches upward from each border's top edge to find the gradient shape
+  - Measures left/right extent of colored pixels with density filtering (>15% of scale width)
+  - Returns `startPct`/`endPct` for each of 3 bars (terrain, rider level, flex)
+- Created audit page (`/gnu-infographics`) and API route (`/api/gnu-infographics`)
+- Handles both 1x (~1000px) and 2x (~2370px) resolution images
+- Tested on all 20 GNU boards — all return plausible, differentiated values
+- Key validation: Money terrain 5-71% (expected ~0-75%), Antigravity terrain 22-88% (expected ~17-91%)
 
 ### Step 5: Implement the mapping and replace slug function
 

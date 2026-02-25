@@ -1,0 +1,94 @@
+import { NextResponse } from "next/server";
+import { getCacheDb } from "@/lib/db";
+import * as cheerio from "cheerio";
+import { inferRiderLevelFromInfographic } from "@/lib/manufacturers/gnu";
+import {
+  analyzeGnuInfographic,
+  GnuInfographicAnalysis,
+} from "@/lib/manufacturers/gnu-infographic";
+
+interface GnuInfographicEntry {
+  boardName: string;
+  imgUrl: string;
+  abilityLevel: string | null;
+  analysis: GnuInfographicAnalysis | null;
+}
+
+export async function GET() {
+  try {
+    const db = getCacheDb();
+    const rows = db
+      .prepare(
+        "SELECT url, body FROM http_cache WHERE url LIKE '%gnu.com/%' AND url NOT LIKE '%/snowboards/mens%' AND url NOT LIKE '%/snowboards/womens%'"
+      )
+      .all() as { url: string; body: string }[];
+
+    const entries: GnuInfographicEntry[] = [];
+
+    for (const row of rows) {
+      const $ = cheerio.load(row.body);
+      const title = $("h1").first().text().trim();
+
+      $("img").each((_, el) => {
+        const src = $(el).attr("src") || "";
+        const lower = src.toLowerCase();
+        if (lower.includes("-scales") || lower.includes("-sliders")) {
+          const fullUrl = src.startsWith("http")
+            ? src
+            : `https://www.gnu.com${src}`;
+          entries.push({
+            boardName: title,
+            imgUrl: fullUrl,
+            abilityLevel: inferRiderLevelFromInfographic(src),
+            analysis: null,
+          });
+        }
+      });
+    }
+
+    // Deduplicate by imgUrl
+    const seen = new Set<string>();
+    const unique = entries.filter((r) => {
+      if (seen.has(r.imgUrl)) return false;
+      seen.add(r.imgUrl);
+      return true;
+    });
+
+    // Fetch and analyze each infographic image (3 concurrent)
+    const CONCURRENCY = 3;
+    for (let i = 0; i < unique.length; i += CONCURRENCY) {
+      const batch = unique.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        batch.map(async (entry) => {
+          try {
+            const resp = await fetch(entry.imgUrl);
+            if (!resp.ok) return;
+            const buf = Buffer.from(await resp.arrayBuffer());
+            entry.analysis = await analyzeGnuInfographic(buf);
+          } catch (err) {
+            console.warn(
+              `[gnu-infographics] Failed to analyze ${entry.boardName}:`,
+              err instanceof Error ? err.message : err
+            );
+          }
+        })
+      );
+    }
+
+    // Sort by board name
+    unique.sort((a, b) => a.boardName.localeCompare(b.boardName));
+
+    return NextResponse.json({ count: unique.length, results: unique });
+  } catch (error) {
+    console.error("[api/gnu-infographics] Error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load infographic data",
+      },
+      { status: 500 }
+    );
+  }
+}
