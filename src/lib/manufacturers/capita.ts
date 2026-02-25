@@ -115,32 +115,33 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       ? parseFloat(product.variants[0].price)
       : null;
 
-    // Parse specs from body HTML
-    const bodySpecs = parseBodyHtml(product.body_html);
     const tags = product.tags?.map((t) => t.toLowerCase()) || [];
 
-    // Fall back to tags for profile/shape if body parsing didn't find them
-    const profileFromTags = bodySpecs.profile || parseProfileFromTags(tags);
-    const shapeFromTags = bodySpecs.shape || parseShapeFromTags(tags);
-
-    // Merge detail page hexagon data
+    // Merge detail page data
     const detail = detailData.get(product.handle);
-    const extras = { ...bodySpecs.extras };
+    const extras: Record<string, string> = {};
     if (tags.length > 0) {
       extras["tags"] = product.tags.join(", ");
     }
 
+    // Use detail page structured data as primary source, tags as fallback
+    let profile: string | null = null;
+    let shape: string | null = null;
+    let category: string | null = null;
+    let flex: string | null = null;
+
     if (detail) {
+      profile = detail.profile;
+      shape = detail.shape;
+      category = detail.category;
+      flex = detail.flex;
+
       // Store all hexagon values as extras
       for (const [key, value] of Object.entries(detail.hexagonScores)) {
         extras[key] = String(value);
       }
-      // Store all spec bar values
-      for (const [key, value] of Object.entries(detail.specBars)) {
-        if (!extras[key]) extras[key] = String(value);
-      }
-      // Use skill level from hexagon if we don't have ability level from body text
-      if (!bodySpecs.abilityLevel && detail.skillLevel !== null) {
+      // Use skill level for ability level
+      if (detail.skillLevel !== null) {
         extras["ability level"] = skillLevelToAbility(detail.skillLevel);
       }
       // Convert hexagon scores to terrain scores
@@ -152,6 +153,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       if (terrain.freestyle !== null) extras["terrain_freestyle"] = String(terrain.freestyle);
     }
 
+    // Fall back to tags if detail page didn't provide profile/shape
+    if (!profile) profile = parseProfileFromTags(tags);
+    if (!shape) shape = parseShapeFromTags(tags);
+
     // Determine gender from tags or title
     const gender = deriveGender(product.title, tags);
 
@@ -159,10 +164,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       brand: "CAPiTA",
       model: cleanModelName(product.title),
       year: null,
-      flex: bodySpecs.flex,
-      profile: profileFromTags,
-      shape: shapeFromTags,
-      category: bodySpecs.category,
+      flex,
+      profile,
+      shape,
+      category,
       gender: gender ?? undefined,
       msrpUsd: price && !isNaN(price) ? price : null,
       sourceUrl: `${CAPITA_BASE}/products/${product.handle}`,
@@ -175,8 +180,12 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
 
 interface DetailPageData {
   hexagonScores: Record<string, number>;  // e.g. { jibbing: 3, "skill level": 4, ... }
-  specBars: Record<string, number>;        // from --dot-position CSS vars
   skillLevel: number | null;               // 1-5 scale
+  // Structured specs from DOM elements
+  profile: string | null;
+  shape: string | null;
+  category: string | null;
+  flex: string | null;
 }
 
 const HEXAGON_LABELS = ["jibbing", "skill level", "powder", "groomers", "versatility", "jumps"];
@@ -204,23 +213,67 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     }
   }
 
-  // Also extract from individual c-spec elements with --dot-position
-  const specBars: Record<string, number> = {};
+  // Extract flex and other text values from c-spec elements
+  let flexFromSpec: string | null = null;
+
   $(".c-spec, .js-c-spec-line").each((_, el) => {
     const label = $(el).find(".c-spec__type").text().trim().toLowerCase();
-    const levelDiv = $(el).find("[style*='--dot-position']");
-    const style = levelDiv.attr("style") || "";
-    const posMatch = style.match(/--dot-position:\s*(\d+)/);
-    if (label && posMatch) {
-      const value = parseInt(posMatch[1]);
-      specBars[label] = value;
-      if ((label === "skill level" || label.includes("skill")) && skillLevel === null) {
-        skillLevel = value;
-      }
+    const value = $(el).find(".c-spec__value").text().trim();
+
+    // Extract flex numeric value from e.g. "TWIN 5.5" or "DIRECTIONAL 7"
+    if (label === "flex" && value) {
+      const numMatch = value.match(/(\d+(?:\.\d+)?)/);
+      if (numMatch) flexFromSpec = numMatch[1];
     }
   });
 
-  return { hexagonScores, specBars, skillLevel };
+  // Extract profile, shape, category from .c-product-info__categories span
+  // Format: "Resort / True Twin / Hybrid Camber" or "Women's / Resort / True Twin / Hybrid Camber"
+  let profile: string | null = null;
+  let shape: string | null = null;
+  let category: string | null = null;
+
+  const categoriesText = $(".c-product-info__categories").text().trim();
+  if (categoriesText) {
+    const parts = categoriesText.split(/\s*\/\s*/);
+    for (const part of parts) {
+      const lower = part.toLowerCase();
+      // Skip gender/product-type labels
+      if (lower === "women's" || lower === "youth" || lower === "split board" || lower === "snowboard") continue;
+
+      // Profile detection
+      if (lower.includes("hybrid camber") || lower === "hybrid") {
+        profile = part;
+      } else if (lower.includes("traditional camber")) {
+        profile = part;
+      } else if (lower.includes("reverse camber")) {
+        profile = part;
+      } else if (lower.includes("camber")) {
+        profile = part;
+      }
+      // Shape detection
+      else if (lower.includes("true twin") || lower === "twin") {
+        shape = part;
+      } else if (lower.includes("directional twin")) {
+        shape = part;
+      } else if (lower === "directional") {
+        shape = part;
+      }
+      // Category detection (what's left: Resort, All-Mtn, Park, Freestyle, Powder, etc.)
+      else if (!category) {
+        category = part;
+      }
+    }
+  }
+
+  return {
+    hexagonScores,
+    skillLevel,
+    profile,
+    shape,
+    category,
+    flex: flexFromSpec,
+  };
 }
 
 /**
@@ -235,71 +288,6 @@ function skillLevelToAbility(level: number): string {
     case 5: return "advanced-expert";
     default: return "intermediate";
   }
-}
-
-function parseBodyHtml(bodyHtml: string): {
-  flex: string | null;
-  profile: string | null;
-  shape: string | null;
-  category: string | null;
-  abilityLevel: string | null;
-  extras: Record<string, string>;
-} {
-  if (!bodyHtml) return { flex: null, profile: null, shape: null, category: null, abilityLevel: null, extras: {} };
-
-  const $ = cheerio.load(bodyHtml);
-  const text = $.text().toLowerCase();
-  const extras: Record<string, string> = {};
-
-  let flex: string | null = null;
-  let profile: string | null = null;
-  let shape: string | null = null;
-  let category: string | null = null;
-  let abilityLevel: string | null = null;
-
-  // Look for spec patterns in body text
-  const flexMatch = text.match(/flex[:\s]+(\d+(?:\.\d+)?(?:\s*(?:\/|out of)\s*10)?)/i) ||
-    text.match(/flex[:\s]+(soft|medium|stiff|very\s+(?:soft|stiff))/i);
-  if (flexMatch) flex = flexMatch[1].trim();
-
-  const profileMatch = text.match(
-    /(?:profile|camber)[:\s]+([\w\s-]+?)(?:\.|,|\n|<)/i
-  );
-  if (profileMatch) profile = profileMatch[1].trim();
-
-  const shapeMatch = text.match(
-    /shape[:\s]+([\w\s-]+?)(?:\.|,|\n|<)/i
-  );
-  if (shapeMatch) shape = shapeMatch[1].trim();
-
-  // Category from tags/keywords
-  if (text.includes("all-mountain") || text.includes("all mountain")) category = "all-mountain";
-  else if (text.includes("freestyle")) category = "freestyle";
-  else if (text.includes("freeride")) category = "freeride";
-  else if (text.includes("park")) category = "park";
-  else if (text.includes("powder")) category = "powder";
-
-  // Ability level
-  if (text.includes("beginner") && text.includes("intermediate")) abilityLevel = "beginner-intermediate";
-  else if (text.includes("intermediate") && text.includes("advanced")) abilityLevel = "intermediate-advanced";
-  else if (text.includes("beginner") || text.includes("entry level")) abilityLevel = "beginner";
-  else if (text.includes("intermediate")) abilityLevel = "intermediate";
-  else if (text.includes("expert") || text.includes("pro level")) abilityLevel = "expert";
-  else if (text.includes("advanced")) abilityLevel = "advanced";
-
-  if (abilityLevel) extras["ability level"] = abilityLevel;
-
-  // Capture any "key: value" patterns from the body
-  const kvMatches = $.text().matchAll(/([A-Za-z][A-Za-z\s]+?)\s*[:]\s*([^\n<]+)/g);
-  for (const m of kvMatches) {
-    const key = m[1].trim().toLowerCase();
-    const val = m[2].trim();
-    if (key && val && key.length < 30 && val.length < 100) {
-      if (!extras[key]) extras[key] = val;
-    }
-  }
-
-  return { flex, profile, shape, category, abilityLevel, extras };
 }
 
 async function scrapeHtmlCatalog(): Promise<ManufacturerSpec[]> {
@@ -391,4 +379,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { skillLevelToAbility, parseBodyHtml, cleanModelName };
+export { skillLevelToAbility, cleanModelName };

@@ -110,11 +110,20 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       ? parseFloat(product.variants[0].price)
       : null;
 
-    const bodySpecs = parseBodyHtml(product.body_html);
     const detail = detailData.get(product.handle);
-    const extras: Record<string, string> = { ...bodySpecs.extras };
+    const extras: Record<string, string> = {};
+
+    let flex: string | null = null;
+    let profile: string | null = null;
+    let shape: string | null = null;
+    let category: string | null = null;
 
     if (detail) {
+      flex = detail.flex;
+      profile = detail.profile;
+      shape = detail.shape;
+      category = detail.derivedCategory;
+
       // Terrain ratings as extras
       for (const [key, value] of Object.entries(detail.terrainRatings)) {
         extras[key] = value;
@@ -126,28 +135,11 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       if (terrain.park !== null) extras["terrain_park"] = String(terrain.park);
       if (terrain.freeride !== null) extras["terrain_freeride"] = String(terrain.freeride);
       if (terrain.freestyle !== null) extras["terrain_freestyle"] = String(terrain.freestyle);
-      // Category from terrain ratings (preferred over body keyword matching)
-      if (detail.derivedCategory) {
-        bodySpecs.category = detail.derivedCategory;
-      }
-      // Flex from detail page progress bar (preferred over body keyword matching)
-      if (detail.flex) {
-        bodySpecs.flex = detail.flex;
-      }
       if (detail.flexLabel) {
         extras["flex description"] = detail.flexLabel;
       }
-      // Ability level from detail page riding level section
-      if (!extras["ability level"] && detail.abilityLevel) {
+      if (detail.abilityLevel) {
         extras["ability level"] = detail.abilityLevel;
-      }
-      // Profile from detail page shape section (preferred over body keyword matching)
-      if (detail.profile) {
-        bodySpecs.profile = detail.profile;
-      }
-      // Shape from detail page shape section (preferred over body keyword matching)
-      if (detail.shape) {
-        bodySpecs.shape = detail.shape;
       }
       // Additional shape extras (taper, 3D contour, etc.)
       for (const [key, value] of Object.entries(detail.shapeExtras)) {
@@ -168,10 +160,10 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       brand: "Jones",
       model: cleanModelName(product.title),
       year: null,
-      flex: bodySpecs.flex,
-      profile: bodySpecs.profile,
-      shape: bodySpecs.shape,
-      category: bodySpecs.category,
+      flex,
+      profile,
+      shape,
+      category,
       gender: gender ?? undefined,
       msrpUsd: price && !isNaN(price) ? price : null,
       sourceUrl: `${JONES_BASE}/products/${product.handle}`,
@@ -316,49 +308,6 @@ function deriveCategoryFromRatings(
   return bestCategory;
 }
 
-function parseBodyHtml(bodyHtml: string): {
-  flex: string | null;
-  profile: string | null;
-  shape: string | null;
-  category: string | null;
-  extras: Record<string, string>;
-} {
-  if (!bodyHtml)
-    return { flex: null, profile: null, shape: null, category: null, extras: {} };
-
-  const $ = cheerio.load(bodyHtml);
-  const text = $.text().toLowerCase();
-  const extras: Record<string, string> = {};
-
-  // Ability level from description (fallback if detail page widget absent)
-  if (text.includes("beginner") && text.includes("intermediate"))
-    extras["ability level"] = "beginner-intermediate";
-  else if (text.includes("intermediate") && text.includes("advanced"))
-    extras["ability level"] = "intermediate-advanced";
-  else if (text.includes("beginner") || text.includes("entry level"))
-    extras["ability level"] = "beginner";
-  else if (text.includes("intermediate"))
-    extras["ability level"] = "intermediate";
-  else if (text.includes("expert") || text.includes("pro level"))
-    extras["ability level"] = "expert";
-  else if (text.includes("advanced"))
-    extras["ability level"] = "advanced";
-
-  // Capture key: value patterns from body
-  const kvMatches = $.text().matchAll(
-    /([A-Za-z][A-Za-z\s]+?)\s*[:]\s*([^\n<]+)/g
-  );
-  for (const m of kvMatches) {
-    const key = m[1].trim().toLowerCase();
-    const val = m[2].trim();
-    if (key && val && key.length < 30 && val.length < 100) {
-      if (!extras[key]) extras[key] = val;
-    }
-  }
-
-  return { flex: null, profile: null, shape: null, category: null, extras };
-}
-
 function deriveGender(
   title: string,
   tags: string[]
@@ -386,4 +335,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { parseBodyHtml, cleanModelName, deriveCategoryFromRatings };
+export { cleanModelName, deriveCategoryFromRatings };

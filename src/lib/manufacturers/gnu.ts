@@ -174,82 +174,61 @@ function parseDetailHtml(
     }
   });
 
-  // Extract profile and shape from description text
-  const description = $(
-    ".product.attribute.description .value, .product-description"
-  ).text();
-  const descLower = description?.toLowerCase() || "";
-  const fullText = $.text().toLowerCase();
-  const searchText = descLower || fullText;
+  // Extract category and shape from [itemprop="description"] first line
+  // GNU format: "FREESTYLE / PARK / TWIN SHAPE" or "ALL MOUNTAIN / DIRECTIONAL SHAPE"
+  // or "FREESTYLE / ALL MOUNTAIN / ASYM TWIN SHAPE" or "FREESTYLE / ALL MOUNTAIN - TWIN"
+  const descriptionDiv = $('[itemprop="description"]').first();
+  const descText = descriptionDiv.text().trim();
+  const firstLine = descText.split("\n")[0].trim();
 
+  if (firstLine && /^[A-Z\s\/\-!]+$/.test(firstLine) && !firstLine.includes("SPECIAL RELEASE")) {
+    // First try dash-separated format (same as Lib Tech)
+    const dashParts = firstLine.split(/\s+-\s+/);
+    if (dashParts.length >= 2) {
+      category = mapGnuCategory(dashParts[0].trim());
+      shape = mapGnuShape(dashParts.slice(1).join(" - ").trim());
+    } else {
+      // GNU slash-separated format: shape term is last, categories before it
+      const slashParts = firstLine.split(/\s*\/\s*/);
+      if (slashParts.length >= 2) {
+        const lastPart = slashParts[slashParts.length - 1].trim();
+        if (isGnuShapeTerm(lastPart)) {
+          shape = mapGnuShape(lastPart);
+          category = mapGnuCategory(slashParts.slice(0, -1).join(" / "));
+        } else {
+          category = mapGnuCategory(firstLine);
+        }
+      } else {
+        category = mapGnuCategory(firstLine);
+      }
+    }
+  }
+
+  // Extract profile from contour image alt text
+  // e.g. "GNU C2e Snowboard Technology" → "C2e"
+  // e.g. "GNU C3 Camber Snowboard Technology" → "C3 Camber"
+  // e.g. "GNU Original Banana Technology" → "Original Banana"
   if (!profile) {
-    const profileText = descLower || fullText;
-    // GNU profile terms (same Mervin tech as Lib Tech)
-    if (profileText.includes("c2x")) profile = "C2x";
-    else if (profileText.includes("c2e")) profile = "C2e";
-    else if (/\bc2\b/.test(profileText)) profile = "C2";
-    else if (/\bc3\b/.test(profileText)) profile = "C3";
-    else if (
-      profileText.includes("banana tech") ||
-      /\bbtx\b/.test(profileText)
-    )
-      profile = "BTX";
-    else if (profileText.includes("b.c.")) profile = "B.C.";
+    const contourImg = $("img[alt*='Technology'], img[alt*='Contour']").first();
+    const contourAlt = contourImg.attr("alt") || "";
+    const techMatch = contourAlt.match(/GNU (.+?) (?:Snowboard |SNowboard )?(?:Technology|Contour)/i);
+    if (techMatch) {
+      profile = techMatch[1].trim();
+    } else {
+      // Fallback to src-based detection
+      const contourSrc = (contourImg.attr("src") || "").toLowerCase();
+      if (contourSrc) {
+        if (contourSrc.includes("c2x")) profile = "C2x";
+        else if (contourSrc.includes("c2e")) profile = "C2e";
+        else if (contourSrc.includes("c2")) profile = "C2";
+        else if (contourSrc.includes("c3")) profile = "C3";
+        else if (contourSrc.includes("btx") || contourSrc.includes("banana")) profile = "BTX";
+      }
+    }
   }
 
-  // Check contour image filenames
-  if (!profile) {
-    const contourImg = $("img[src*='Contour'], img[alt*='Contour']").first();
-    const contourSrc = (
-      contourImg.attr("src") ||
-      contourImg.attr("alt") ||
-      ""
-    ).toLowerCase();
-    if (contourSrc.includes("c2x")) profile = "C2x";
-    else if (contourSrc.includes("c2e")) profile = "C2e";
-    else if (contourSrc.includes("c2")) profile = "C2";
-    else if (contourSrc.includes("c3")) profile = "C3";
-    else if (contourSrc.includes("btx") || contourSrc.includes("banana"))
-      profile = "BTX";
-  }
-
-  if (!shape) {
-    if (
-      searchText.includes("true twin") ||
-      searchText.includes("perfectly twin")
-    )
-      shape = "true twin";
-    else if (searchText.includes("directional twin"))
-      shape = "directional twin";
-    else if (searchText.includes("directional")) shape = "directional";
-  }
-
-  if (!category) {
-    if (
-      searchText.includes("all-mountain") ||
-      searchText.includes("all mountain")
-    )
-      category = "all-mountain";
-    else if (
-      searchText.includes("freestyle") ||
-      searchText.includes("jib")
-    )
-      category = "freestyle";
-    else if (
-      searchText.includes("freeride") ||
-      searchText.includes("backcountry")
-    )
-      category = "freeride";
-    else if (
-      searchText.includes("powder") ||
-      searchText.includes("float")
-    )
-      category = "powder";
-    else if (searchText.includes("park") || searchText.includes("pipe"))
-      category = "park";
-  }
-
-  // Ability level from description
+  // Ability level from description text
+  const descLower = descText?.toLowerCase() || "";
   if (descLower && !descLower.includes("all ability level")) {
     if (descLower.includes("beginner") && descLower.includes("intermediate")) {
       extras["ability level"] = "beginner-intermediate";
@@ -301,6 +280,36 @@ function parseDetailHtml(
     sourceUrl: url,
     extras,
   };
+}
+
+function isGnuShapeTerm(s: string): boolean {
+  const lower = s.toLowerCase().replace(/\s*shape$/, "");
+  return lower.includes("twin") || lower.includes("directional") ||
+    lower === "tapered" || lower.includes("asymmetric") || lower.includes("splitboard");
+}
+
+function mapGnuCategory(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("all mountain") && lower.includes("freestyle")) return "freestyle/all-mountain";
+  if (lower.includes("all mountain") && lower.includes("freeride")) return "all-mountain/freeride";
+  if (lower.includes("all mountain")) return "all-mountain";
+  if (lower.includes("freestyle") && lower.includes("park")) return "park";
+  if (lower.includes("freestyle")) return "freestyle";
+  if (lower.includes("freeride")) return "freeride";
+  if (lower.includes("park")) return "park";
+  if (lower.includes("powder")) return "powder";
+  return raw;
+}
+
+function mapGnuShape(raw: string): string {
+  const lower = raw.toLowerCase().replace(/\s*shape$/, "");
+  if (lower === "twin" || lower.includes("true twin")) return "true twin";
+  if (lower.includes("asym twin") || lower.includes("asymmetric twin")) return "asymmetric twin";
+  if (lower.includes("directional twin")) return "directional twin";
+  if (lower.includes("directional splitboard")) return "directional";
+  if (lower.includes("directional")) return "directional";
+  if (lower.includes("tapered")) return "tapered";
+  return raw.toLowerCase().replace(/\s*shape$/, "");
 }
 
 async function scrapeDetailPage(
@@ -365,4 +374,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml };
+export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml, mapGnuCategory, mapGnuShape };

@@ -304,13 +304,6 @@ export const burton: ManufacturerModule = {
             }
           }
         }
-      } else {
-        // Fallback: text-based extraction from catalog description
-        const textSpecs = extractSpecsFromText(board.name + " " + board.description);
-        profile = textSpecs.profile;
-        shape = textSpecs.shape;
-        category = textSpecs.category;
-        if (textSpecs.abilityLevel) extras["ability level"] = textSpecs.abilityLevel;
       }
 
       specs.push({
@@ -332,51 +325,5 @@ export const burton: ManufacturerModule = {
   },
 };
 
-/** Fallback text-based extraction for when detail page fetch fails */
-function extractSpecsFromText(text: string): {
-  profile: string | null;
-  shape: string | null;
-  category: string | null;
-  abilityLevel: string | null;
-} {
-  const lower = text.toLowerCase();
-
-  let profile: string | null = null;
-  if (lower.includes("purepop camber") || lower.includes("pure pop camber")) profile = "hybrid_rocker";
-  else if (lower.includes("flying v")) profile = "flying v";
-  else if (lower.includes("directional flat top")) profile = "directional flat top";
-  else if (lower.includes("flat top")) profile = "flat top";
-  else if (lower.includes("camber")) profile = "camber";
-  else if (lower.includes("bend")) profile = "bend";
-
-  let shape: string | null = null;
-  if (lower.includes("true twin") || lower.includes("twin flex")) shape = "true twin";
-  else if (lower.includes("directional twin")) shape = "directional twin";
-  else if (lower.includes("directional shape") || lower.includes("directional board")) shape = "directional";
-  else if (lower.includes("tapered")) shape = "tapered";
-  else if (lower.includes("twin") && lower.includes("freestyle")) shape = "true twin";
-  else if (lower.includes("directional")) shape = "directional";
-
-  let category: string | null = null;
-  if (lower.includes("all-mountain") || lower.includes("all mountain") || lower.includes("quiver-of-one") || lower.includes("quiver of one")) category = "all-mountain";
-  else if (lower.includes("park") && lower.includes("pipe")) category = "park";
-  else if (lower.includes("freestyle") || lower.includes("playful")) category = "freestyle";
-  else if (lower.includes("freeride") || lower.includes("backcountry") || lower.includes("big mountain")) category = "freeride";
-  else if (lower.includes("powder") || lower.includes("deep snow") || lower.includes("float")) category = "powder";
-  else if (lower.includes("park")) category = "park";
-  else if (lower.includes("beginner") || lower.includes("learning curve")) category = "all-mountain";
-
-  let abilityLevel: string | null = null;
-  if (lower.includes("beginner") && lower.includes("intermediate")) abilityLevel = "beginner-intermediate";
-  else if (lower.includes("intermediate") && lower.includes("advanced")) abilityLevel = "intermediate-advanced";
-  else if (lower.includes("advanced") && lower.includes("expert")) abilityLevel = "advanced-expert";
-  else if (lower.includes("beginner") || lower.includes("first board") || lower.includes("learning")) abilityLevel = "beginner";
-  else if (lower.includes("intermediate")) abilityLevel = "intermediate";
-  else if (lower.includes("expert") || lower.includes("pro level")) abilityLevel = "expert";
-  else if (lower.includes("advanced")) abilityLevel = "advanced";
-
-  return { profile, shape, category, abilityLevel };
-}
-
 // Test exports
-export { extractDetailAttrs, extractPersonalityFlex, mapSkillLevel, mapBend, mapTerrain, mapShape, cleanModelName, extractSpecsFromText, parseCatalogHtml };
+export { extractDetailAttrs, extractPersonalityFlex, mapSkillLevel, mapBend, mapTerrain, mapShape, cleanModelName, parseCatalogHtml };

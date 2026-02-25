@@ -141,55 +141,62 @@ function parseDetailHtml(
     }
   });
 
-  // Extract profile and shape from description text.
-  // Lib Tech uses terms like "Banana Tech", "C2", "C2x", "BTX", "C3".
-  const description = $(".product.attribute.description .value, .product-description").text();
-  const descLower = description?.toLowerCase() || "";
+  // Extract category and shape from [itemprop="description"] first line
+  // Format: "ALL MOUNTAIN - DIRECTIONAL" or "FREESTYLE / ALL MOUNTAIN - TWIN"
+  const descriptionDiv = $('[itemprop="description"]').first();
+  const descText = descriptionDiv.text().trim();
+  const firstLine = descText.split("\n")[0].trim();
 
-  // Also search the full page text for profile/shape terms as a fallback.
-  // Lib Tech often puts profile info in pagebuilder elements and contour images
-  // outside the description div.
-  const fullText = $.text().toLowerCase();
-  const searchText = descLower || fullText;
+  if (firstLine && /^[A-Z\s\/\-]+$/.test(firstLine)) {
+    // Split on " - " to get category (left) and shape (right)
+    const dashParts = firstLine.split(/\s+-\s+/);
+    if (dashParts.length >= 2) {
+      const categoryPart = dashParts[0].trim();
+      const shapePart = dashParts.slice(1).join(" - ").trim();
+      category = mapLibTechCategory(categoryPart);
+      shape = mapLibTechShape(shapePart);
+    } else {
+      // No dash separator — try splitting on last "/" for shape
+      // e.g. "ALL MOUNTAIN / DIRECTIONAL" (mayhem-libzilla format)
+      const slashParts = firstLine.split(/\s*\/\s*/);
+      if (slashParts.length >= 2) {
+        const lastPart = slashParts[slashParts.length - 1].trim();
+        if (isShapeTerm(lastPart)) {
+          shape = mapLibTechShape(lastPart);
+          category = mapLibTechCategory(slashParts.slice(0, -1).join(" / "));
+        } else {
+          category = mapLibTechCategory(firstLine);
+        }
+      } else {
+        category = mapLibTechCategory(firstLine);
+      }
+    }
+  }
 
+  // Extract profile from contour image alt text
+  // e.g. "Lib Tech Original Banana Snowboard Contour" → "Original Banana"
+  // e.g. "Lib Tech Directional C2X Snowboard Contour" → "Directional C2X"
   if (!profile) {
-    // Profile detection — search description first, then full page
-    const profileText = descLower || fullText;
-    if (profileText.includes("c2x")) profile = "C2x";
-    else if (profileText.includes("c2e")) profile = "C2e";
-    else if (/\bc2\b/.test(profileText)) profile = "C2";
-    else if (/\bc3\b/.test(profileText)) profile = "C3";
-    else if (profileText.includes("banana tech") || /\bbtx\b/.test(profileText)) profile = "BTX";
-    else if (profileText.includes("b.c.")) profile = "B.C.";
+    const contourImg = $("img[alt*='Contour']").first();
+    const contourAlt = contourImg.attr("alt") || "";
+    const contourMatch = contourAlt.match(/Lib Tech (.+?) Snowboard Contour/i);
+    if (contourMatch) {
+      profile = contourMatch[1].trim();
+    } else {
+      // Try src-based fallback
+      const contourSrc = (contourImg.attr("src") || "").toLowerCase();
+      if (contourSrc) {
+        if (contourSrc.includes("c2x")) profile = "C2x";
+        else if (contourSrc.includes("c2e")) profile = "C2e";
+        else if (contourSrc.includes("c2")) profile = "C2";
+        else if (contourSrc.includes("c3")) profile = "C3";
+        else if (contourSrc.includes("btx") || contourSrc.includes("banana")) profile = "BTX";
+      }
+    }
   }
 
-  // Also check contour image filenames (e.g. Hybrid-C2-Contour.jpg)
-  if (!profile) {
-    const contourImg = $("img[src*='Contour'], img[alt*='Contour']").first();
-    const contourSrc = (contourImg.attr("src") || contourImg.attr("alt") || "").toLowerCase();
-    if (contourSrc.includes("c2x")) profile = "C2x";
-    else if (contourSrc.includes("c2e")) profile = "C2e";
-    else if (contourSrc.includes("c2")) profile = "C2";
-    else if (contourSrc.includes("c3")) profile = "C3";
-    else if (contourSrc.includes("btx") || contourSrc.includes("banana")) profile = "BTX";
-  }
-
-  if (!shape) {
-    if (searchText.includes("true twin") || searchText.includes("perfectly twin")) shape = "true twin";
-    else if (searchText.includes("directional twin")) shape = "directional twin";
-    else if (searchText.includes("directional")) shape = "directional";
-  }
-
-  // Category from description keywords
-  if (!category) {
-    if (searchText.includes("all-mountain") || searchText.includes("all mountain")) category = "all-mountain";
-    else if (searchText.includes("freestyle") || searchText.includes("jib")) category = "freestyle";
-    else if (searchText.includes("freeride") || searchText.includes("backcountry")) category = "freeride";
-    else if (searchText.includes("powder") || searchText.includes("float")) category = "powder";
-    else if (searchText.includes("park") || searchText.includes("pipe")) category = "park";
-  }
-
-  // Ability level from description (conservative — only clear ability phrases)
+  // Ability level from description text (conservative)
+  const descLower = descText?.toLowerCase() || "";
   if (descLower && !descLower.includes("all ability level")) {
     if (descLower.includes("beginner") && descLower.includes("intermediate")) {
       extras["ability level"] = "beginner-intermediate";
@@ -200,14 +207,9 @@ function parseDetailHtml(
     } else if (descLower.includes("advanced")) {
       extras["ability level"] = "advanced";
     }
-    // Note: "pro" and "expert" are NOT matched here because Lib Tech uses
-    // "pro" in model names and tech descriptions (ProTech, Pro Model, etc.)
   }
 
   // Infer rider level from the infographic image
-  // Lib Tech encodes rider level visually in per-product PNG infographics;
-  // no structured data exists. We extract the image URL and use a mapping
-  // derived from visual analysis of the gradient ranges.
   const infographicImg = $("img[src*='terrain'][src*='riderlevel']").first();
   const infographicSrc = (infographicImg.attr("src") || "").toLowerCase();
   if (infographicSrc && !extras["ability level"]) {
@@ -241,6 +243,36 @@ function parseDetailHtml(
     sourceUrl: url,
     extras,
   };
+}
+
+function isShapeTerm(s: string): boolean {
+  const lower = s.toLowerCase();
+  return lower.includes("twin") || lower.includes("directional") ||
+    lower === "tapered" || lower === "asymmetric";
+}
+
+function mapLibTechCategory(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("all mountain") && lower.includes("freestyle")) return "freestyle/all-mountain";
+  if (lower.includes("all mountain") && lower.includes("freeride")) return "all-mountain/freeride";
+  if (lower.includes("all mountain") && lower.includes("split")) return "all-mountain";
+  if (lower.includes("all mountain")) return "all-mountain";
+  if (lower.includes("freestyle") && lower.includes("park")) return "park";
+  if (lower.includes("freestyle")) return "freestyle";
+  if (lower.includes("freeride")) return "freeride";
+  if (lower.includes("park")) return "park";
+  if (lower.includes("powder")) return "powder";
+  return raw;
+}
+
+function mapLibTechShape(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower === "twin" || lower.includes("true twin")) return "true twin";
+  if (lower.includes("directional twin")) return "directional twin";
+  if (lower.includes("freestyle twin")) return "true twin";
+  if (lower.includes("directional")) return "directional";
+  if (lower.includes("tapered")) return "tapered";
+  return raw.toLowerCase();
 }
 
 async function scrapeDetailPage(
@@ -327,4 +359,4 @@ function cleanModelName(raw: string): string {
 }
 
 // Test exports
-export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml };
+export { inferRiderLevelFromInfographic, cleanModelName, parseDetailHtml, mapLibTechCategory, mapLibTechShape };

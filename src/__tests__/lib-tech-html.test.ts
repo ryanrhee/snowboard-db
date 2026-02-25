@@ -25,8 +25,6 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
   });
 
   it("extracts model from the h1.page-title element", () => {
-    // The h1 in the fixture has "Skate Banana" — cleanModelName leaves it as-is
-    // because there's no "Lib Tech" prefix or "Snowboard" suffix in the h1 text.
     expect(result.model).not.toBe("Lib Tech Skate Banana");
     expect(result.model).toBe("Skate Banana");
   });
@@ -35,22 +33,16 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
     expect(result.flex).toBe("5");
   });
 
-  it("profile is BTX (Banana Tech detected in description)", () => {
-    expect(result.profile).toBe("BTX");
+  it("profile is Original Banana (from contour image alt text)", () => {
+    expect(result.profile).toBe("Original Banana");
   });
 
-  it("shape is null (description does not contain true twin / directional)", () => {
-    // The Skate Banana is marketed as a twin, but the product description
-    // text in the fixture does not contain "true twin", "perfectly twin",
-    // "directional twin", or "directional", so shape remains null.
-    expect(result.shape).toBeNull();
+  it("shape is true twin (from description first line TWIN)", () => {
+    expect(result.shape).toBe("true twin");
   });
 
-  it("category is freestyle (description contains jib / freestyle keywords)", () => {
-    // The description mentions "jibs" and "FREESTYLE PLAYGROUND".
-    // The code checks all-mountain first, but neither "all-mountain" nor
-    // "all mountain" appear in the description, so freestyle matches.
-    expect(result.category).toBe("freestyle");
+  it("category is freestyle/all-mountain (from description first line)", () => {
+    expect(result.category).toBe("freestyle/all-mountain");
   });
 
   it("sourceUrl is the URL passed in", () => {
@@ -65,13 +57,10 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
   });
 
   it("extras contains waist width from the spec table", () => {
-    // <th>Waist<br/>Width (cm)</th> parses as "waistwidth (cm)" because
-    // cheerio .text() does not insert spaces for <br/> elements.
     expect(result.extras["waistwidth (cm)"]).toBe("25");
   });
 
   it("extras contains contact length from the spec table", () => {
-    // <th>Contact<br/>Length (cm)</th> parses as "contactlength (cm)"
     expect(result.extras["contactlength (cm)"]).toBe("112");
   });
 
@@ -80,7 +69,6 @@ describe("parseDetailHtml — Skate Banana fixture", () => {
   });
 
   it("extras contains flex column keyed by its full header text", () => {
-    // <th>Flex<br/><span>10 = Firm</span></th> parses as "flex10 = firm"
     expect(result.extras["flex10 = firm"]).toBe("5");
   });
 
