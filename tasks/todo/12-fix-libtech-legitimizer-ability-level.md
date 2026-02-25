@@ -166,16 +166,13 @@ with start ≥ 20% as intermediate, the start threshold may need to be lower
 
 ## What to do next
 
-### Step 1: Validate thresholds against evo detail pages
+### Step 1: Validate thresholds against retailer detail page data
 
-Fetch evo.com detail pages for boards across all clusters and extract their
-"Ability Level" spec. evo pages have structured ability level data in
-`li.spec-ability-level`. The current scraper does NOT fetch evo detail pages
-(listing-only), so this requires either:
-- Adding a debug action that uses `fetchPageWithBrowser` on evo detail URLs
-- Manual checking of evo pages
+**Prerequisite: Task 34** (improve retailer spec extraction) — need ability level data from evo, backcountry, and REI detail pages to establish ground truth for threshold calibration.
 
-Key boards to check on evo:
+Gather ability level specs from retailer detail pages for boards across all clusters. The more retailer data points available, the better the threshold calibration.
+
+Key boards to check:
 - Cluster 2: Golden Orca, Apex Orca, Skunk Ape (start 21-24%)
 - Cluster 4: Legitimizer, Jamie Lynn, Dynamo (start 32-33%)
 - Cluster 5: T.Rice Pro, T.Rice Orca (start 36-39%)
