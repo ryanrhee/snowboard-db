@@ -212,12 +212,20 @@ shapes positioned above black scale borders, rather than gray-to-color gradient 
 - Tested on all 20 GNU boards — all return plausible, differentiated values
 - Key validation: Money terrain 5-71% (expected ~0-75%), Antigravity terrain 22-88% (expected ~17-91%)
 
-### Step 5: Implement the mapping and replace slug function
+### Step 5: Implement the mapping and replace slug function (partially done)
 
+**Done (2026-02-25):**
+- Removed `inferRiderLevelFromInfographic()` from both `lib-tech.ts` and `gnu.ts`
+- Removed slug-based ability level inference, description-text ability level extraction,
+  and flex extraction from spec tables in both scrapers (flex/terrain/ability are now
+  infographic-only properties)
+- Removed all `inferRiderLevelFromInfographic` tests
+- Updated infographic audit pages to drop the slug-mapped level column
+- Added manufacturer + retailer links under board names on both audit pages
+
+**Remaining:**
 - Add `mapRiderLevelToAbility(riderLevel: BarAnalysis)` to `lib-tech-infographic.ts`
 - Add terrain and flex mapping functions
-- Make `parseDetailHtml` in `lib-tech.ts` async
-- Replace `inferRiderLevelFromInfographic(src)` with image fetch + `analyzeInfographic()` + mapping
-- Remove the hardcoded slug mapping function
-- Apply same changes to `gnu.ts`
-- Update tests and API route
+- Wire infographic analysis into the scraper pipeline so boards get
+  terrain/ability/flex from pixel analysis during `scrapeSpecs()`
+- Validate thresholds (Steps 1–2) before finalizing the mapping
