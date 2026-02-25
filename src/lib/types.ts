@@ -83,6 +83,16 @@ export interface RawBoard {
   stockCount?: number;
 }
 
+// ===== Terrain Scores =====
+
+export interface TerrainScores {
+  piste: number | null;
+  powder: number | null;
+  park: number | null;
+  freeride: number | null;
+  freestyle: number | null;
+}
+
 // ===== Board-centric types (new data model) =====
 
 export interface Board {
@@ -94,6 +104,7 @@ export interface Board {
   profile: string | null;
   shape: string | null;
   category: string | null;
+  terrainScores: TerrainScores;
   abilityLevelMin: string | null;
   abilityLevelMax: string | null;
   msrpUsd: number | null;

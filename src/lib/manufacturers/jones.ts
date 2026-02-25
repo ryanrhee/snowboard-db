@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { ManufacturerModule, ManufacturerSpec } from "./types";
 import { fetchPage } from "../scraping/utils";
+import { jonesToTerrain } from "../terrain";
 
 const JONES_BASE = "https://www.jonessnowboards.com";
 
@@ -118,6 +119,13 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       for (const [key, value] of Object.entries(detail.terrainRatings)) {
         extras[key] = value;
       }
+      // Convert terrain ratings to terrain scores
+      const terrain = jonesToTerrain(detail.terrainRatings);
+      if (terrain.piste !== null) extras["terrain_piste"] = String(terrain.piste);
+      if (terrain.powder !== null) extras["terrain_powder"] = String(terrain.powder);
+      if (terrain.park !== null) extras["terrain_park"] = String(terrain.park);
+      if (terrain.freeride !== null) extras["terrain_freeride"] = String(terrain.freeride);
+      if (terrain.freestyle !== null) extras["terrain_freestyle"] = String(terrain.freestyle);
       // Category from terrain ratings (preferred over body keyword matching)
       if (detail.derivedCategory) {
         bodySpecs.category = detail.derivedCategory;

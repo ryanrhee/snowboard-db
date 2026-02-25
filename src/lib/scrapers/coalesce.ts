@@ -20,6 +20,7 @@ import {
 } from "../normalization";
 import { canonicalizeBrand } from "../scraping/utils";
 import { calcBeginnerScoreForBoard } from "../scoring";
+import { categoryToTerrain } from "../terrain";
 
 /**
  * Coalesce all ScrapedBoard[] (from retailers + manufacturers) into
@@ -105,6 +106,20 @@ export function coalesce(
           if (normalizedAbility !== null) {
             setSpecSource(key, "abilityLevel", source, normalizedAbility, sb.sourceUrl);
           }
+        }
+      }
+
+      // Derive terrain scores from category when source doesn't provide terrain_* fields
+      const hasTerrainExtras = Object.keys(sb.extras).some(k => k.startsWith("terrain_"));
+      if (!hasTerrainExtras) {
+        const normalizedCat = normalizeCategory(sb.category ?? undefined, sb.description);
+        if (normalizedCat) {
+          const terrain = categoryToTerrain(normalizedCat);
+          if (terrain.piste !== null) setSpecSource(key, "terrain_piste", source, String(terrain.piste), sb.sourceUrl);
+          if (terrain.powder !== null) setSpecSource(key, "terrain_powder", source, String(terrain.powder), sb.sourceUrl);
+          if (terrain.park !== null) setSpecSource(key, "terrain_park", source, String(terrain.park), sb.sourceUrl);
+          if (terrain.freeride !== null) setSpecSource(key, "terrain_freeride", source, String(terrain.freeride), sb.sourceUrl);
+          if (terrain.freestyle !== null) setSpecSource(key, "terrain_freestyle", source, String(terrain.freestyle), sb.sourceUrl);
         }
       }
 
@@ -212,6 +227,7 @@ export function coalesce(
       profile: null,
       shape: null,
       category: null,
+      terrainScores: { piste: null, powder: null, park: null, freeride: null, freestyle: null },
       abilityLevelMin: null,
       abilityLevelMax: null,
       msrpUsd,

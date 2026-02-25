@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { ManufacturerModule, ManufacturerSpec } from "./types";
 import { fetchPage } from "../scraping/utils";
+import { capitaToTerrain } from "../terrain";
 
 const CAPITA_BASE = "https://www.capitasnowboarding.com";
 
@@ -142,6 +143,13 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
       if (!bodySpecs.abilityLevel && detail.skillLevel !== null) {
         extras["ability level"] = skillLevelToAbility(detail.skillLevel);
       }
+      // Convert hexagon scores to terrain scores
+      const terrain = capitaToTerrain(detail.hexagonScores);
+      if (terrain.piste !== null) extras["terrain_piste"] = String(terrain.piste);
+      if (terrain.powder !== null) extras["terrain_powder"] = String(terrain.powder);
+      if (terrain.park !== null) extras["terrain_park"] = String(terrain.park);
+      if (terrain.freeride !== null) extras["terrain_freeride"] = String(terrain.freeride);
+      if (terrain.freestyle !== null) extras["terrain_freestyle"] = String(terrain.freestyle);
     }
 
     // Determine gender from tags or title

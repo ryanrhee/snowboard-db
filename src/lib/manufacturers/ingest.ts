@@ -4,6 +4,7 @@ import { normalizeFlex, normalizeProfile, normalizeShape, normalizeCategory, nor
 import { canonicalizeBrand } from "../scraping/utils";
 import { Board } from "../types";
 import { calcBeginnerScoreForBoard } from "../scoring";
+import { TERRAIN_KEYS } from "../terrain";
 
 export interface IngestStats {
   inserted: number;
@@ -68,6 +69,14 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
 
     // Also upsert into boards table
     const now = new Date().toISOString();
+    // Extract terrain scores from extras
+    const terrainScores = {
+      piste: spec.extras["terrain_piste"] ? Number(spec.extras["terrain_piste"]) : null,
+      powder: spec.extras["terrain_powder"] ? Number(spec.extras["terrain_powder"]) : null,
+      park: spec.extras["terrain_park"] ? Number(spec.extras["terrain_park"]) : null,
+      freeride: spec.extras["terrain_freeride"] ? Number(spec.extras["terrain_freeride"]) : null,
+      freestyle: spec.extras["terrain_freestyle"] ? Number(spec.extras["terrain_freestyle"]) : null,
+    };
     const board: Board = {
       boardKey: key,
       brand,
@@ -77,6 +86,7 @@ export function ingestManufacturerSpecs(specs: ManufacturerSpec[]): IngestStats 
       profile: cached.profile,
       shape: cached.shape,
       category: cached.category,
+      terrainScores,
       abilityLevelMin: null,
       abilityLevelMax: null,
       msrpUsd: spec.msrpUsd,

@@ -3,6 +3,7 @@ import {
   BoardProfile,
   BoardShape,
   BoardCategory,
+  TerrainScores,
 } from "./types";
 
 export interface ScoreFactor {
@@ -28,6 +29,7 @@ interface BoardSpecs {
   profile: BoardProfile | string | null;
   shape: BoardShape | string | null;
   category: BoardCategory | string | null;
+  terrainScores?: TerrainScores;
 }
 
 export function calcBeginnerScore(board: BoardSpecs): ScoreResult {
@@ -96,8 +98,27 @@ export function calcBeginnerScore(board: BoardSpecs): ScoreResult {
     factors.push({ name: "Shape", value: board.shape.replace(/_/g, " "), score: shapeScore, reason });
   }
 
-  // Category: all-mountain best for beginners (weight: 0.25)
-  if (board.category) {
+  // Terrain scores: park + piste friendly → beginner-friendly; freeride + powder → less (weight: 0.25)
+  const ts = board.terrainScores;
+  if (ts && (ts.piste !== null || ts.park !== null || ts.freestyle !== null || ts.freeride !== null || ts.powder !== null)) {
+    const p = ts.park ?? 2;
+    const f = ts.freestyle ?? 2;
+    const pi = ts.piste ?? 2;
+    const fr = ts.freeride ?? 2;
+    const pw = ts.powder ?? 2;
+    // Weighted: park*0.3 + piste*0.3 + freestyle*0.2 + freeride*0.1 + powder*0.1, normalized to 0-1
+    const raw = (p * 0.3 + pi * 0.3 + f * 0.2 + fr * 0.1 + pw * 0.1) / 3;
+    const terrainScore = Math.round(raw * 100) / 100;
+    const labels = [`piste:${pi}`, `park:${p}`, `freestyle:${f}`, `freeride:${fr}`, `powder:${pw}`];
+    let reason: string;
+    if (terrainScore >= 0.8) reason = "High park/piste terrain — great for beginners";
+    else if (terrainScore >= 0.6) reason = "Balanced terrain — decent for beginners";
+    else reason = "Freeride/powder focused — less beginner-friendly";
+    total += terrainScore * 0.25;
+    weights += 0.25;
+    factors.push({ name: "Terrain", value: labels.join(" "), score: terrainScore, reason });
+  } else if (board.category) {
+    // Fallback: category-based scoring if no terrain scores available
     let catScore: number;
     let reason: string;
     switch (board.category) {

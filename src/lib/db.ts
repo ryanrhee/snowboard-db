@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
-import { SearchRun, Board, Listing, BoardWithListings } from "./types";
+import { SearchRun, Board, Listing, BoardWithListings, TerrainScores } from "./types";
 import { normalizeModel } from "./normalization";
 import { canonicalizeBrand } from "./scraping/utils";
 
@@ -250,6 +250,11 @@ function createListingsTable(db: Database.Database): void {
   const boardColNames2 = new Set(boardCols2.map((c) => c.name));
   if (!boardColNames2.has("gender"))
     db.exec("ALTER TABLE boards ADD COLUMN gender TEXT NOT NULL DEFAULT 'unisex'");
+  // Terrain score columns
+  for (const col of ["terrain_piste", "terrain_powder", "terrain_park", "terrain_freeride", "terrain_freestyle"]) {
+    if (!boardColNames2.has(col))
+      db.exec(`ALTER TABLE boards ADD COLUMN ${col} INTEGER`);
+  }
 }
 
 // ===== Board ID Generation =====
@@ -350,8 +355,9 @@ export function upsertBoard(board: Board): void {
     INSERT INTO boards (
       board_key, brand, model, year, flex, profile, shape, category,
       ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
-      description, beginner_score, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      description, beginner_score, created_at, updated_at,
+      terrain_piste, terrain_powder, terrain_park, terrain_freeride, terrain_freestyle
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(board_key) DO UPDATE SET
       year = COALESCE(excluded.year, boards.year),
       flex = COALESCE(excluded.flex, boards.flex),
@@ -364,14 +370,22 @@ export function upsertBoard(board: Board): void {
       manufacturer_url = COALESCE(excluded.manufacturer_url, boards.manufacturer_url),
       description = COALESCE(excluded.description, boards.description),
       beginner_score = excluded.beginner_score,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      terrain_piste = COALESCE(excluded.terrain_piste, boards.terrain_piste),
+      terrain_powder = COALESCE(excluded.terrain_powder, boards.terrain_powder),
+      terrain_park = COALESCE(excluded.terrain_park, boards.terrain_park),
+      terrain_freeride = COALESCE(excluded.terrain_freeride, boards.terrain_freeride),
+      terrain_freestyle = COALESCE(excluded.terrain_freestyle, boards.terrain_freestyle)
   `).run(
     board.boardKey, board.brand, board.model, board.year,
     board.flex, board.profile, board.shape, board.category,
     board.abilityLevelMin, board.abilityLevelMax,
     board.msrpUsd, board.manufacturerUrl,
     board.description, board.beginnerScore,
-    board.createdAt, board.updatedAt
+    board.createdAt, board.updatedAt,
+    board.terrainScores.piste, board.terrainScores.powder,
+    board.terrainScores.park, board.terrainScores.freeride,
+    board.terrainScores.freestyle
   );
 }
 
@@ -457,7 +471,8 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.created_at, b.updated_at,
+             b.terrain_piste, b.terrain_powder, b.terrain_park, b.terrain_freeride, b.terrain_freestyle
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -470,7 +485,8 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at
+             b.description, b.beginner_score, b.created_at, b.updated_at,
+             b.terrain_piste, b.terrain_powder, b.terrain_park, b.terrain_freeride, b.terrain_freestyle
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
       WHERE l.run_id = ?
@@ -494,6 +510,13 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
           profile: (row.profile as string) || null,
           shape: (row.shape as string) || null,
           category: (row.category as string) || null,
+          terrainScores: {
+            piste: (row.terrain_piste as number) ?? null,
+            powder: (row.terrain_powder as number) ?? null,
+            park: (row.terrain_park as number) ?? null,
+            freeride: (row.terrain_freeride as number) ?? null,
+            freestyle: (row.terrain_freestyle as number) ?? null,
+          },
           abilityLevelMin: (row.ability_level_min as string) || null,
           abilityLevelMax: (row.ability_level_max as string) || null,
           msrpUsd: (row.msrp_usd as number) || null,
@@ -646,6 +669,13 @@ function mapRowToNewBoard(row: Record<string, unknown>): Board {
     profile: (row.profile as string) || null,
     shape: (row.shape as string) || null,
     category: (row.category as string) || null,
+    terrainScores: {
+      piste: (row.terrain_piste as number) ?? null,
+      powder: (row.terrain_powder as number) ?? null,
+      park: (row.terrain_park as number) ?? null,
+      freeride: (row.terrain_freeride as number) ?? null,
+      freestyle: (row.terrain_freestyle as number) ?? null,
+    },
     abilityLevelMin: (row.ability_level_min as string) || null,
     abilityLevelMax: (row.ability_level_max as string) || null,
     msrpUsd: (row.msrp_usd as number) || null,

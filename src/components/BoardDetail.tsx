@@ -34,6 +34,13 @@ export interface BoardData {
   profile: string | null;
   shape: string | null;
   category: string | null;
+  terrainScores?: {
+    piste: number | null;
+    powder: number | null;
+    park: number | null;
+    freeride: number | null;
+    freestyle: number | null;
+  };
   abilityLevelMin: string | null;
   abilityLevelMax: string | null;
   msrpUsd: number | null;
@@ -234,6 +241,47 @@ const CONDITION_BADGE: Record<string, string> = {
   used: "bg-red-900/50 text-red-300",
 };
 
+const TERRAIN_LABELS: Record<string, string> = {
+  piste: "Piste",
+  powder: "Powder",
+  park: "Park",
+  freeride: "Freeride",
+  freestyle: "Freestyle",
+};
+
+function TerrainDisplay({ scores }: { scores?: BoardData["terrainScores"] }) {
+  if (!scores) return null;
+  const entries = Object.entries(TERRAIN_LABELS)
+    .map(([key, label]) => ({ key, label, value: scores[key as keyof typeof scores] }))
+    .filter(e => e.value !== null);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-2">
+      <span className="text-gray-400 text-sm">Terrain:</span>
+      <div className="flex gap-3 mt-1">
+        {entries.map(({ key, label, value }) => (
+          <div key={key} className="flex items-center gap-1 text-xs">
+            <span className="text-gray-400">{label}</span>
+            <div className="flex gap-px">
+              {[1, 2, 3].map(n => (
+                <div
+                  key={n}
+                  className={`w-2 h-2 rounded-sm ${
+                    n <= (value ?? 0)
+                      ? "bg-emerald-400"
+                      : "bg-gray-700"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function BoardDetail({ board, onClose }: BoardDetailProps) {
   const specSources = board.specSources;
 
@@ -355,6 +403,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
                 </>
               )}
             </div>
+            <TerrainDisplay scores={board.terrainScores} />
           </div>
 
           {/* Price summary */}

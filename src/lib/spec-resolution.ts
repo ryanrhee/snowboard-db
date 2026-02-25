@@ -1,6 +1,7 @@
-import { BoardProfile, BoardShape, BoardCategory } from "./types";
+import { BoardProfile, BoardShape, BoardCategory, TerrainScores } from "./types";
 import { specKey, getSpecSources, SpecSourceEntry } from "./db";
 import { normalizeAbilityRange } from "./normalization";
+import { terrainToCategory, TERRAIN_KEYS } from "./terrain";
 
 // Priority: manufacturer > review-site > retailer
 const SOURCE_PRIORITY: Record<string, number> = {
@@ -73,6 +74,7 @@ interface Resolvable {
   profile: BoardProfile | string | null;
   shape: BoardShape | string | null;
   category: BoardCategory | string | null;
+  terrainScores: TerrainScores;
   abilityLevelMin: string | null;
   abilityLevelMax: string | null;
   gender?: string | null;
@@ -96,7 +98,10 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
     }
   }
 
-  const SPEC_FIELDS = ["flex", "profile", "shape", "category", "abilityLevel"] as const;
+  const SPEC_FIELDS = [
+    "flex", "profile", "shape", "category", "abilityLevel",
+    "terrain_piste", "terrain_powder", "terrain_park", "terrain_freeride", "terrain_freestyle",
+  ] as const;
 
   // Resolve by priority
   const resolvedMap = new Map<string, Record<string, SpecFieldInfo>>();
@@ -178,6 +183,25 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
       const range = normalizeAbilityRange(abilityLevelInfo.resolved as string);
       updated.abilityLevelMin = range.min;
       updated.abilityLevelMax = range.max;
+    }
+
+    // Apply resolved terrain scores
+    const terrainScores: TerrainScores = { ...updated.terrainScores };
+    for (const tKey of TERRAIN_KEYS) {
+      const fieldName = `terrain_${tKey}` as typeof SPEC_FIELDS[number];
+      const info = fieldInfoMap[fieldName];
+      if (info && info.resolved !== null) {
+        terrainScores[tKey] = Number(info.resolved);
+      }
+    }
+    updated.terrainScores = terrainScores;
+
+    // Derive category from terrain scores if category wasn't resolved directly
+    if (!updated.category) {
+      const derived = terrainToCategory(updated.terrainScores);
+      if (derived) {
+        updated.category = derived;
+      }
     }
 
     if ("specSources" in updated) {
