@@ -1,7 +1,5 @@
 # Task 26: Capture manufacturer listings and distinguish MSRP from sale price
 
-**Closed: 2026-02-25** — Subsumed by Task 31 (unify manufacturer and retailer scrapers). All requirements from this task are incorporated into Task 31's unified scraper approach: manufacturer listings (point 3), MSRP from non-discounted manufacturer price (point 4), and per-site discount detection patterns (implementation notes).
-
 ## Goal
 
 1. Manufacturer scrapers should produce `listings` (price, sizes, availability, URL) just like retailer scrapers do, with source attribution (e.g. `retailer: "burton.com"`).
