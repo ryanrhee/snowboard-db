@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getCacheDb, getDb } from "@/lib/db";
 import * as cheerio from "cheerio";
 import {
   analyzeGnuInfographic,
+  generateDebugOverlay,
   GnuInfographicAnalysis,
 } from "@/lib/manufacturers/gnu-infographic";
 
@@ -19,8 +20,14 @@ interface GnuInfographicEntry {
   analysis: GnuInfographicAnalysis | null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Check if this is a debug overlay request
+    const debugUrl = request.nextUrl.searchParams.get("debug");
+    if (debugUrl) {
+      return handleDebugOverlay(debugUrl);
+    }
+
     const cacheDb = getCacheDb();
     const mainDb = getDb();
     const rows = cacheDb
@@ -109,6 +116,26 @@ export async function GET() {
             ? error.message
             : "Failed to load infographic data",
       },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleDebugOverlay(imgUrl: string): Promise<NextResponse> {
+  try {
+    const resp = await fetch(imgUrl);
+    if (!resp.ok) {
+      return NextResponse.json({ error: `Failed to fetch image: ${resp.status}` }, { status: 502 });
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const analysis = await analyzeGnuInfographic(buf);
+    const overlayBuf = await generateDebugOverlay(buf, analysis);
+    return new NextResponse(new Uint8Array(overlayBuf), {
+      headers: { "Content-Type": "image/png" },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to generate overlay" },
       { status: 500 }
     );
   }

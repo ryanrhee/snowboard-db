@@ -9,12 +9,16 @@ interface BarExtent {
   scaleRight: number;
   gradientLeft: number;
   gradientRight: number;
+  gradientTop: number;
+  gradientBottom: number;
 }
 
 interface GnuInfographicAnalysis {
   terrain: BarExtent;
   riderLevel: BarExtent;
   flex: BarExtent;
+  width: number;
+  height: number;
 }
 
 interface BoardLink {
@@ -77,6 +81,7 @@ export default function GnuInfographicsPage() {
   const [sortBy, setSortBy] = useState<"name" | "riderStart" | "riderEnd">(
     "riderStart"
   );
+  const [showOverlay, setShowOverlay] = useState(false);
 
   useEffect(() => {
     fetch("/api/gnu-infographics")
@@ -126,7 +131,7 @@ export default function GnuInfographicsPage() {
 
       {!loading && !error && (
         <>
-          <div className="flex gap-3 mb-4 text-sm">
+          <div className="flex gap-3 mb-4 text-sm items-center">
             <span className="text-gray-400">Sort by:</span>
             {(
               [
@@ -143,18 +148,37 @@ export default function GnuInfographicsPage() {
                 {label}
               </button>
             ))}
+            <span className="text-gray-600 mx-1">|</span>
+            <label className="flex items-center gap-1.5 text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showOverlay}
+                onChange={(e) => setShowOverlay(e.target.checked)}
+                className="accent-red-500"
+              />
+              Debug overlay
+            </label>
           </div>
 
-          <p className="text-gray-400 text-sm mb-4">
-            {entries.length} boards
-          </p>
+          <div className="text-[10px] text-gray-500 mb-3 flex gap-4">
+            <span className="text-gray-400">{entries.length} boards</span>
+            {showOverlay && (
+              <span>
+                <span className="text-red-400">Red</span> = scale 0%/100% &nbsp;
+                <span className="text-green-400">Green</span> = gradient edges &nbsp;
+                <span className="text-cyan-400">Cyan</span> = gradient top/bottom
+              </span>
+            )}
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-gray-700 text-left text-gray-400">
                   <th className="py-2 pr-4 w-44">Board</th>
-                  <th className="py-2 pr-4 w-48">Original</th>
+                  <th className="py-2 pr-4 w-48">
+                    {showOverlay ? "Debug overlay" : "Original"}
+                  </th>
                   <th className="py-2 pr-4 w-64">Reconstructed</th>
                 </tr>
               </thead>
@@ -183,7 +207,11 @@ export default function GnuInfographicsPage() {
                     <td className="py-3 pr-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={entry.imgUrl}
+                        src={
+                          showOverlay
+                            ? `/api/gnu-infographics?debug=${encodeURIComponent(entry.imgUrl)}`
+                            : entry.imgUrl
+                        }
                         alt={`${entry.boardName} infographic`}
                         className="h-28 w-auto"
                         loading="lazy"

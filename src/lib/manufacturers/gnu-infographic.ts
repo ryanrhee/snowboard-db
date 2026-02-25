@@ -5,20 +5,26 @@ export interface BarExtent {
   startPct: number;
   /** End of gradient shape as percentage of scale width (0–100) */
   endPct: number;
-  /** Left edge of the scale border in pixels */
+  /** Left edge of the scale (inner edge of left tick mark) in pixels */
   scaleLeft: number;
-  /** Right edge of the scale border in pixels */
+  /** Right edge of the scale (inner edge of right tick mark) in pixels */
   scaleRight: number;
   /** Left edge of the gradient shape in pixels */
   gradientLeft: number;
   /** Right edge of the gradient shape in pixels */
   gradientRight: number;
+  /** Top edge of the gradient shape in pixels */
+  gradientTop: number;
+  /** Bottom edge of the gradient shape in pixels */
+  gradientBottom: number;
 }
 
 export interface GnuInfographicAnalysis {
   terrain: BarExtent;
   riderLevel: BarExtent;
   flex: BarExtent;
+  width: number;
+  height: number;
 }
 
 /**
@@ -105,6 +111,69 @@ function clusterBorders(
 }
 
 /**
+ * Find the vertical tick marks at the ends of a scale bar.
+ * The scale looks like |________| — vertical tick marks connected by a horizontal line.
+ * Returns the inner edges of the tick marks as the true 0% and 100% positions.
+ */
+function findTickMarks(
+  data: Buffer,
+  width: number,
+  channels: number,
+  border: { y: number; left: number; right: number }
+): { scaleLeft: number; scaleRight: number } {
+  const { y: borderY, left: borderLeft, right: borderRight } = border;
+
+  // Look for vertical black segments extending above and below the border line
+  // at the left and right extremes. Tick marks are short vertical lines.
+  // Search a few pixels above and below the border Y for vertical black runs.
+  const searchUp = 8;
+  const searchDown = 8;
+  const searchInward = Math.round((borderRight - borderLeft) * 0.1);
+
+  // Find left tick mark: scan from borderLeft rightward looking for a column
+  // with vertical black continuity (the tick mark). The inner edge is where
+  // the tick ends and the horizontal line continues alone.
+  let leftTickInner = borderLeft;
+  for (let x = borderLeft; x < borderLeft + searchInward; x++) {
+    let verticalBlackCount = 0;
+    for (let dy = -searchUp; dy <= searchDown; dy++) {
+      const y = borderY + dy;
+      if (y < 0 || y >= width) continue; // safety
+      const idx = (y * width + x) * channels;
+      const avg = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (avg < 30) verticalBlackCount++;
+    }
+    // A tick mark column has black pixels extending above/below the border line
+    // (at least 3 pixels above or below beyond just the border line itself)
+    if (verticalBlackCount >= searchUp + searchDown - 2) {
+      leftTickInner = x + 1; // inner edge is one pixel to the right
+    } else if (leftTickInner > borderLeft) {
+      break; // found the end of the tick mark
+    }
+  }
+
+  // Find right tick mark: scan from borderRight leftward
+  let rightTickInner = borderRight;
+  for (let x = borderRight; x > borderRight - searchInward; x--) {
+    let verticalBlackCount = 0;
+    for (let dy = -searchUp; dy <= searchDown; dy++) {
+      const y = borderY + dy;
+      if (y < 0 || y >= width) continue;
+      const idx = (y * width + x) * channels;
+      const avg = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (avg < 30) verticalBlackCount++;
+    }
+    if (verticalBlackCount >= searchUp + searchDown - 2) {
+      rightTickInner = x - 1; // inner edge is one pixel to the left
+    } else if (rightTickInner < borderRight) {
+      break;
+    }
+  }
+
+  return { scaleLeft: leftTickInner, scaleRight: rightTickInner };
+}
+
+/**
  * Check if a pixel is "colored" — not black, not white, not near-gray.
  * Returns true if the pixel has some saturation and isn't too dark or too light.
  */
@@ -113,14 +182,13 @@ function isColoredPixel(r: number, g: number, b: number): boolean {
   if (avg < 30 || avg > 240) return false;
   const mx = Math.max(r, g, b);
   const mn = Math.min(r, g, b);
-  // Need some color difference (saturation) or be in a mid-range gray that's part of the shape
   // GNU gradient shapes are colored, not gray — require minimum saturation
   return (mx - mn) > 15;
 }
 
 /**
  * For a given scale border, search upward to find the gradient shape region
- * and measure its horizontal extent.
+ * and measure its horizontal extent by tracing edges across all rows.
  */
 function measureGradientShape(
   data: Buffer,
@@ -129,12 +197,13 @@ function measureGradientShape(
   channels: number,
   border: { y: number; left: number; right: number }
 ): BarExtent {
-  const { y: borderY, left: scaleLeft, right: scaleRight } = border;
+  // Find tick marks for precise scale bounds
+  const { scaleLeft, scaleRight } = findTickMarks(data, width, channels, border);
   const scaleWidth = scaleRight - scaleLeft;
+  const { y: borderY } = border;
 
   // Search upward from the border top edge. Scale the search window
   // proportionally to image height (handles both 1x and 2x images).
-  // Standard images (~468px) → ~70px window; 2x images (~1084px) → ~162px.
   const searchWindow = Math.round(height * 0.15);
   const searchStart = Math.max(0, borderY - searchWindow);
   const searchEnd = borderY;
@@ -162,7 +231,6 @@ function measureGradientShape(
       if (gradientBottom === -1) gradientBottom = y;
       gradientTop = y;
     } else if (gradientBottom !== -1) {
-      // Found a gap — stop searching
       break;
     }
   }
@@ -175,26 +243,36 @@ function measureGradientShape(
       scaleRight,
       gradientLeft: scaleLeft,
       gradientRight: scaleRight,
+      gradientTop: borderY - 10,
+      gradientBottom: borderY - 1,
     };
   }
 
-  // Sample at the vertical middle of the gradient region to find left/right extent
-  const midY = Math.round((gradientTop + gradientBottom) / 2);
-
-  // Also sample a few rows around midY for robustness
-  const sampleRows = [midY - 2, midY - 1, midY, midY + 1, midY + 2].filter(
-    (y) => y >= gradientTop && y <= gradientBottom
-  );
-
+  // Trace left and right edges across ALL rows between gradientTop and gradientBottom
+  // to find the true tips of the almond/lens shape. The shape has a black outline
+  // forming a hexagon — we need to include those dark border pixels, not just the
+  // colored interior. Within the gradient's Y range, scan from each side inward:
+  // the first non-white pixel is the shape edge (outline or fill).
   let gradientLeft = scaleRight;
   let gradientRight = scaleLeft;
 
-  for (const y of sampleRows) {
+  for (let y = gradientTop; y <= gradientBottom; y++) {
+    // Scan from left to find first non-white pixel
     for (let x = scaleLeft; x <= scaleRight; x++) {
       const idx = (y * width + x) * channels;
-      if (isColoredPixel(data[idx], data[idx + 1], data[idx + 2])) {
+      const avg = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (avg < 240) {
         if (x < gradientLeft) gradientLeft = x;
+        break;
+      }
+    }
+    // Scan from right to find first non-white pixel
+    for (let x = scaleRight; x >= scaleLeft; x--) {
+      const idx = (y * width + x) * channels;
+      const avg = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (avg < 240) {
         if (x > gradientRight) gradientRight = x;
+        break;
       }
     }
   }
@@ -215,6 +293,8 @@ function measureGradientShape(
     scaleRight,
     gradientLeft,
     gradientRight,
+    gradientTop,
+    gradientBottom,
   };
 }
 
@@ -240,7 +320,6 @@ export async function analyzeGnuInfographic(
   );
   const borders = clusterBorders(allBorders, info.height);
 
-  // We expect exactly 3 scale borders (terrain, rider level, flex)
   if (borders.length < 3) {
     console.warn(
       `[gnu-infographic] Expected 3 scale borders, found ${borders.length}`
@@ -254,6 +333,8 @@ export async function analyzeGnuInfographic(
     scaleRight: info.width,
     gradientLeft: 0,
     gradientRight: info.width,
+    gradientTop: 0,
+    gradientBottom: 0,
   };
 
   return {
@@ -266,5 +347,50 @@ export async function analyzeGnuInfographic(
     flex: borders[2]
       ? measureGradientShape(data, info.width, info.height, info.channels, borders[2])
       : emptyBar,
+    width: info.width,
+    height: info.height,
   };
+}
+
+/**
+ * Generate an annotated version of the infographic with debug overlay lines.
+ * Red vertical lines = scale bounds (0% and 100% tick mark positions)
+ * Green vertical lines = gradient start/end
+ * Blue horizontal lines = gradient top/bottom edges
+ */
+export async function generateDebugOverlay(
+  imageBuffer: Buffer,
+  analysis: GnuInfographicAnalysis
+): Promise<Buffer> {
+  const { info } = await sharp(imageBuffer)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width: w, height: h } = info;
+  const lineWidth = Math.max(1, Math.round(w / 200));
+
+  // Build SVG overlay with debug lines
+  const bars = [analysis.terrain, analysis.riderLevel, analysis.flex];
+  let svgLines = "";
+
+  for (const bar of bars) {
+    // Red lines at scale bounds (0% and 100%)
+    svgLines += `<line x1="${bar.scaleLeft}" y1="${bar.gradientTop - 5}" x2="${bar.scaleLeft}" y2="${bar.gradientBottom + 5}" stroke="red" stroke-width="${lineWidth}" opacity="0.9"/>`;
+    svgLines += `<line x1="${bar.scaleRight}" y1="${bar.gradientTop - 5}" x2="${bar.scaleRight}" y2="${bar.gradientBottom + 5}" stroke="red" stroke-width="${lineWidth}" opacity="0.9"/>`;
+
+    // Green lines at gradient start/end
+    svgLines += `<line x1="${bar.gradientLeft}" y1="${bar.gradientTop - 5}" x2="${bar.gradientLeft}" y2="${bar.gradientBottom + 5}" stroke="lime" stroke-width="${lineWidth}" opacity="0.9"/>`;
+    svgLines += `<line x1="${bar.gradientRight}" y1="${bar.gradientTop - 5}" x2="${bar.gradientRight}" y2="${bar.gradientBottom + 5}" stroke="lime" stroke-width="${lineWidth}" opacity="0.9"/>`;
+
+    // Blue horizontal lines at gradient top/bottom
+    svgLines += `<line x1="${bar.scaleLeft - 5}" y1="${bar.gradientTop}" x2="${bar.scaleRight + 5}" y2="${bar.gradientTop}" stroke="cyan" stroke-width="${lineWidth}" opacity="0.7"/>`;
+    svgLines += `<line x1="${bar.scaleLeft - 5}" y1="${bar.gradientBottom}" x2="${bar.scaleRight + 5}" y2="${bar.gradientBottom}" stroke="cyan" stroke-width="${lineWidth}" opacity="0.7"/>`;
+  }
+
+  const svg = `<svg width="${w}" height="${h}">${svgLines}</svg>`;
+
+  return sharp(imageBuffer)
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .png()
+    .toBuffer();
 }

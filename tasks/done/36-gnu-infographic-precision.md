@@ -45,8 +45,20 @@ Add a toggle/checkbox to the audit page that renders the infographic with overla
 - Horizontal lines at the top and bottom edges of the gradient shape
 - Could use a canvas overlay on top of the image, or generate an annotated image server-side via sharp
 
+## Completed: 2026-02-26
+
+### What was done
+
+1. **Tick mark detection** (`findTickMarks`): New function scans columns at the left/right extremes of the horizontal border line, looking for vertical black continuity above and below the border. The inner edge of each tick mark defines the true 0% and 100% positions.
+
+2. **Full-row gradient tracing**: Replaced the midpoint ± 2 row sampling with a scan across ALL rows between `gradientTop` and `gradientBottom`. Scans inward from each side looking for the first non-white pixel (avg < 240), which catches the black outline border of the hexagonal shape — the original `isColoredPixel` check excluded black pixels and missed the true tips.
+
+3. **Debug overlay**: Added `generateDebugOverlay()` which composites an SVG overlay onto the original image via sharp. Red lines = scale bounds, green lines = gradient edges, cyan lines = gradient top/bottom. The `/gnu-infographics` audit page has a "Debug overlay" checkbox that swaps original images for annotated versions served from `/api/gnu-infographics?debug=<imgUrl>`.
+
+4. **Extended interfaces**: `BarExtent` now includes `gradientTop`/`gradientBottom`; `GnuInfographicAnalysis` includes `width`/`height`.
+
 ## Files
 
 - `src/lib/manufacturers/gnu-infographic.ts` — core analysis logic
 - `src/app/gnu-infographics/page.tsx` — audit/debug UI
-- `src/app/api/gnu-infographics/route.ts` — API route (may need to return additional data or annotated image)
+- `src/app/api/gnu-infographics/route.ts` — API route (added debug overlay endpoint)
