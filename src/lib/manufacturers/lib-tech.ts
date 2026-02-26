@@ -3,6 +3,12 @@ import { ScraperModule, ScrapedBoard, ScrapedListing } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 import { Currency } from "../types";
+import {
+  analyzeInfographic,
+  mapBarToAbilityLevel,
+  mapBarToTerrainScores,
+  mapBarToFlex,
+} from "./lib-tech-infographic";
 
 const LIB_TECH_BASE = "https://www.lib-tech.com";
 const CATALOG_URL = `${LIB_TECH_BASE}/snowboards`;
@@ -100,12 +106,12 @@ export const libTech: ScraperModule = {
   },
 };
 
-function parseDetailHtml(
+async function parseDetailHtml(
   html: string,
   url: string,
   fallbackName: string,
   fallbackPrice: number | null
-): ManufacturerSpec {
+): Promise<ManufacturerSpec> {
   const $ = cheerio.load(html);
 
   const name =
@@ -210,11 +216,60 @@ function parseDetailHtml(
   // Extract per-size listings from Magento's jsonConfig JS variable
   const listings = extractMagentoListings(html, url, msrp ?? undefined);
 
+  // Extract flex, ability level, and terrain from infographic image
+  let flex: string | null = null;
+  const infographicImg = $("img").filter((_, el) => {
+    const src = ($(el).attr("src") || "").toLowerCase();
+    return src.includes("terrain") && src.includes("riderlevel");
+  }).first();
+  const infographicSrc = infographicImg.attr("src");
+
+  if (infographicSrc) {
+    try {
+      const imgUrl = infographicSrc.startsWith("http")
+        ? infographicSrc
+        : `${LIB_TECH_BASE}${infographicSrc}`;
+      const resp = await fetch(imgUrl);
+      if (resp.ok) {
+        const buf = Buffer.from(await resp.arrayBuffer());
+        const analysis = await analyzeInfographic(buf);
+
+        // Ability level from rider level bar
+        extras["ability level"] = mapBarToAbilityLevel(
+          analysis.riderLevel.colorStartPct,
+          analysis.riderLevel.colorEndPct
+        );
+
+        // Terrain scores from terrain bar
+        const terrain = mapBarToTerrainScores(
+          analysis.terrain.colorStartPct,
+          analysis.terrain.colorEndPct
+        );
+        extras["terrain_piste"] = String(terrain.piste);
+        extras["terrain_powder"] = String(terrain.powder);
+        extras["terrain_park"] = String(terrain.park);
+        extras["terrain_freeride"] = String(terrain.freeride);
+        extras["terrain_freestyle"] = String(terrain.freestyle);
+
+        // Flex from flex bar
+        flex = String(mapBarToFlex(
+          analysis.flex.colorStartPct,
+          analysis.flex.colorEndPct
+        ));
+      }
+    } catch (err) {
+      console.warn(
+        `[lib-tech] Failed to analyze infographic for ${fallbackName}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   return {
     brand: "Lib Tech",
     model: cleanModelName(name),
     year: null,
-    flex: null,
+    flex,
     profile,
     shape,
     category,

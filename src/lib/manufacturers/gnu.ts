@@ -3,6 +3,12 @@ import { ScraperModule, ScrapedBoard, ScrapedListing } from "../scrapers/types";
 import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters";
 import { fetchPage } from "../scraping/utils";
 import { Currency } from "../types";
+import { analyzeGnuInfographic } from "./gnu-infographic";
+import {
+  mapBarToAbilityLevel,
+  mapBarToTerrainScores,
+  mapBarToFlex,
+} from "./lib-tech-infographic";
 
 const GNU_BASE = "https://www.gnu.com";
 const CATALOG_URLS = [
@@ -127,12 +133,12 @@ export const gnu: ScraperModule = {
   },
 };
 
-function parseDetailHtml(
+async function parseDetailHtml(
   html: string,
   url: string,
   fallbackName: string,
   fallbackPrice: number | null
-): ManufacturerSpec {
+): Promise<ManufacturerSpec> {
   const $ = cheerio.load(html);
 
   const name =
@@ -242,11 +248,60 @@ function parseDetailHtml(
   // Extract per-size listings from Magento's jsonConfig JS variable
   const listings = extractMagentoListings(html, url, msrp ?? undefined);
 
+  // Extract flex, ability level, and terrain from infographic image
+  let flex: string | null = null;
+  const infographicImg = $("img").filter((_, el) => {
+    const src = ($(el).attr("src") || "").toLowerCase();
+    return src.includes("-scales") || src.includes("-sliders");
+  }).first();
+  const infographicSrc = infographicImg.attr("src");
+
+  if (infographicSrc) {
+    try {
+      const imgUrl = infographicSrc.startsWith("http")
+        ? infographicSrc
+        : `${GNU_BASE}${infographicSrc}`;
+      const resp = await fetch(imgUrl);
+      if (resp.ok) {
+        const buf = Buffer.from(await resp.arrayBuffer());
+        const analysis = await analyzeGnuInfographic(buf);
+
+        // Ability level from rider level bar
+        extras["ability level"] = mapBarToAbilityLevel(
+          analysis.riderLevel.startPct,
+          analysis.riderLevel.endPct
+        );
+
+        // Terrain scores from terrain bar
+        const terrain = mapBarToTerrainScores(
+          analysis.terrain.startPct,
+          analysis.terrain.endPct
+        );
+        extras["terrain_piste"] = String(terrain.piste);
+        extras["terrain_powder"] = String(terrain.powder);
+        extras["terrain_park"] = String(terrain.park);
+        extras["terrain_freeride"] = String(terrain.freeride);
+        extras["terrain_freestyle"] = String(terrain.freestyle);
+
+        // Flex from flex bar
+        flex = String(mapBarToFlex(
+          analysis.flex.startPct,
+          analysis.flex.endPct
+        ));
+      }
+    } catch (err) {
+      console.warn(
+        `[gnu] Failed to analyze infographic for ${fallbackName}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   return {
     brand: "GNU",
     model: cleanModelName(name),
     year: null,
-    flex: null,
+    flex,
     profile,
     shape,
     category,

@@ -262,9 +262,12 @@ shapes positioned above black scale borders, rather than gray-to-color gradient 
 - Updated infographic audit pages to drop the slug-mapped level column
 - Added manufacturer + retailer links under board names on both audit pages
 
-**Remaining:**
-- Add ability level mapping function using T1=10%, T2=85% thresholds
-- Add terrain mapping function (3-zone → TerrainScores)
-- Add flex mapping function: `Math.round(((startPct + endPct) / 2) / 10)` → 1-10
-- Wire infographic analysis into the scraper pipeline so boards get
-  terrain/ability/flex from pixel analysis during `scrapeSpecs()`
+**Done (2026-02-26):**
+- Added `mapBarToAbilityLevel()`, `mapBarToTerrainScores()`, `mapBarToFlex()` to `lib-tech-infographic.ts`
+- Wired infographic analysis into `lib-tech.ts` `parseDetailHtml()` (made async, fetches infographic image, populates extras and flex)
+- Wired infographic analysis into `gnu.ts` `parseDetailHtml()` (same pattern, uses GNU-specific image URL patterns)
+- Both scrapers now produce `ability level`, `terrain_*`, and `flex` in spec_sources
+- Verified pipeline run: all LT and GNU boards produce correct infographic-derived specs
+- Spot-checked: Skate Banana flex=4/abilityLevel=beginner-intermediate, T.Rice Orca terrain_powder=3/terrain_freeride=3
+
+## Completed: 2026-02-26

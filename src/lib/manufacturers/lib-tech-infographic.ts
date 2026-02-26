@@ -281,6 +281,52 @@ function fitBar(
  * For each bar (Terrain, Rider Level, Flex), fits a gradient model and returns
  * the theme color, the flat-color region boundaries, and the reconstruction error.
  */
+/**
+ * Map a bar's start/end percentages to an ability level string.
+ * Thresholds: ≤10% = beginner, <85% = intermediate, ≥85% = advanced.
+ */
+export function mapBarToAbilityLevel(startPct: number, endPct: number): string {
+  const levels: string[] = [];
+  const mapPct = (pct: number) =>
+    pct <= 10 ? "beginner" : pct < 85 ? "intermediate" : "advanced";
+  const start = mapPct(startPct);
+  const end = mapPct(endPct);
+  levels.push(start);
+  if (end !== start) levels.push(end);
+  return levels.join("-");
+}
+
+/**
+ * Map a bar's start/end percentages to terrain scores (1–3 scale).
+ * Zone A (0–10): park/freestyle territory
+ * Zone B (10–85): all-mountain/piste territory
+ * Zone C (85–100): backcountry/powder/freeride territory
+ */
+export function mapBarToTerrainScores(
+  startPct: number,
+  endPct: number
+): { park: number; freestyle: number; piste: number; powder: number; freeride: number } {
+  const entersA = startPct <= 10;
+  const entersB = startPct < 85 && endPct > 10;
+  const entersC = endPct >= 85;
+
+  return {
+    park: entersA ? 3 : entersB ? 2 : 1,
+    freestyle: entersA ? 3 : entersB ? 2 : 1,
+    piste: entersB ? 3 : (entersA || entersC) ? 2 : 1,
+    powder: entersC ? 3 : entersB ? 2 : 1,
+    freeride: entersC ? 3 : entersB ? 2 : 1,
+  };
+}
+
+/**
+ * Map a bar's start/end percentages to a flex rating (1–10).
+ * Uses bar midpoint / 10, clamped to 1–10.
+ */
+export function mapBarToFlex(startPct: number, endPct: number): number {
+  return Math.max(1, Math.min(10, Math.round((startPct + endPct) / 2 / 10)));
+}
+
 export async function analyzeInfographic(
   imageBuffer: Buffer
 ): Promise<InfographicAnalysis> {
