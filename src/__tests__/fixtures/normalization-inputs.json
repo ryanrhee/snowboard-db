@@ -1,0 +1,717 @@
+[
+  {
+    "raw": "",
+    "brand": null,
+    "expected": ""
+  },
+  {
+    "raw": "Algorhythm Snowboard - 2026 - Men's",
+    "brand": null,
+    "expected": "Algorhythm"
+  },
+  {
+    "raw": "ATV Pro Snowboard 2025",
+    "brand": null,
+    "expected": "ATV Pro"
+  },
+  {
+    "raw": "B.O.D.",
+    "brand": null,
+    "expected": "BOD"
+  },
+  {
+    "raw": "Custom",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "Custom​",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "Cus‌tom",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "﻿Custom",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "Custom­",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "Custom Snowboard - 2026",
+    "brand": null,
+    "expected": "Custom"
+  },
+  {
+    "raw": "D.O.A.",
+    "brand": null,
+    "expected": "DOA"
+  },
+  {
+    "raw": "D.O.A. 2.0",
+    "brand": null,
+    "expected": "DOA 2.0"
+  },
+  {
+    "raw": "Draft Snowboard - 2026 - Men's",
+    "brand": null,
+    "expected": "Draft"
+  },
+  {
+    "raw": "Dynamiss Snowboard - 2026 - Women's",
+    "brand": null,
+    "expected": "Dynamiss"
+  },
+  {
+    "raw": "Element/",
+    "brand": null,
+    "expected": "Element"
+  },
+  {
+    "raw": "Element///",
+    "brand": null,
+    "expected": "Element"
+  },
+  {
+    "raw": "Feelgood Snowboard - 2026 - Women's",
+    "brand": null,
+    "expected": "Feelgood"
+  },
+  {
+    "raw": "Flagship Pro",
+    "brand": null,
+    "expected": "Flagship Pro"
+  },
+  {
+    "raw": "Flagship Snowboard",
+    "brand": null,
+    "expected": "Flagship"
+  },
+  {
+    "raw": "Forest Bailey Head Space C3 Snowboard (Closeout) 2025",
+    "brand": null,
+    "expected": "Forest Bailey Head Space"
+  },
+  {
+    "raw": "Gloss-C",
+    "brand": null,
+    "expected": "Gloss C"
+  },
+  {
+    "raw": "Halldor",
+    "brand": null,
+    "expected": "Halldor"
+  },
+  {
+    "raw": "HPS - Goop",
+    "brand": null,
+    "expected": "HPS Goop"
+  },
+  {
+    "raw": "Lectra Cam-Out Snowboard - 2026 - Women's",
+    "brand": null,
+    "expected": "Lectra Cam Out"
+  },
+  {
+    "raw": "Lotus Snowboard - 2025 - Women's",
+    "brand": null,
+    "expected": "Lotus"
+  },
+  {
+    "raw": "Medium Snowboard 2024",
+    "brand": null,
+    "expected": "Medium"
+  },
+  {
+    "raw": "Mind Expander Twin Snowboard",
+    "brand": null,
+    "expected": "Mind Expander Twin"
+  },
+  {
+    "raw": "Pick Your Line Snowboard 2026",
+    "brand": null,
+    "expected": "Pick Your Line"
+  },
+  {
+    "raw": "Primer Snowboard 2026",
+    "brand": null,
+    "expected": "Primer"
+  },
+  {
+    "raw": "Process Flying V",
+    "brand": null,
+    "expected": "Process"
+  },
+  {
+    "raw": "Psychocandy Snowboard (Closeout) 2025",
+    "brand": null,
+    "expected": "Psychocandy"
+  },
+  {
+    "raw": "Sight X Snowboard 2026",
+    "brand": null,
+    "expected": "Sight X"
+  },
+  {
+    "raw": "Standard Snowboard 2026",
+    "brand": null,
+    "expected": "Standard"
+  },
+  {
+    "raw": "Super D.O.A.",
+    "brand": null,
+    "expected": "Super DOA"
+  },
+  {
+    "raw": "The Black Of Death Snowboard 2026",
+    "brand": null,
+    "expected": "Black Of Death"
+  },
+  {
+    "raw": "The Throwback Snowboard 2026",
+    "brand": null,
+    "expected": "Throwback"
+  },
+  {
+    "raw": "Turbo Snowboard 2025",
+    "brand": null,
+    "expected": "Turbo"
+  },
+  {
+    "raw": "Ultra Prodigy Snowboard - Kids'",
+    "brand": null,
+    "expected": "Ultra Prodigy"
+  },
+  {
+    "raw": "Unknown",
+    "brand": null,
+    "expected": "Unknown"
+  },
+  {
+    "raw": "Women's Basic Snowboard 2026",
+    "brand": null,
+    "expected": "Basic"
+  },
+  {
+    "raw": "Women's Darrah Snowboard 2025",
+    "brand": null,
+    "expected": "Darrah"
+  },
+  {
+    "raw": "Women's Frosting C2 Snowboard 2025",
+    "brand": null,
+    "expected": "Frosting"
+  },
+  {
+    "raw": "Women's No Drama Snowboard (Closeout) 2024",
+    "brand": null,
+    "expected": "No Drama"
+  },
+  {
+    "raw": "Women's Saturday Snowboard 2025",
+    "brand": null,
+    "expected": "Saturday"
+  },
+  {
+    "raw": "Women's Talent Scout Snowboard 2025",
+    "brand": null,
+    "expected": "Talent Scout"
+  },
+  {
+    "raw": "Bryan Iguchi Pro",
+    "brand": "Arbor",
+    "expected": "Pro"
+  },
+  {
+    "raw": "Danny Kass Park Pro",
+    "brand": "Arbor",
+    "expected": "Park Pro"
+  },
+  {
+    "raw": "DK Park Pro",
+    "brand": "Arbor",
+    "expected": "Park Pro"
+  },
+  {
+    "raw": "Metal Machine",
+    "brand": "Arbor",
+    "expected": "Metal Machine"
+  },
+  {
+    "raw": "Mike Liddle Metal Machine",
+    "brand": "Arbor",
+    "expected": "Metal Machine"
+  },
+  {
+    "raw": "Custom Camber",
+    "brand": "Burton",
+    "expected": "Custom"
+  },
+  {
+    "raw": "Custom Flying V",
+    "brand": "Burton",
+    "expected": "Custom"
+  },
+  {
+    "raw": "Custom Snowboard 2026",
+    "brand": "Burton",
+    "expected": "Custom"
+  },
+  {
+    "raw": "Feelgood Camber",
+    "brand": "Burton",
+    "expected": "Feelgood"
+  },
+  {
+    "raw": "Feelgood Snowboard + Step On Package - Women's",
+    "brand": "Burton",
+    "expected": "Feelgood"
+  },
+  {
+    "raw": "Hideaway Flat Top",
+    "brand": "Burton",
+    "expected": "Hideaway"
+  },
+  {
+    "raw": "Instigator Camber Snowboard + Malavita Re:Flex Binding",
+    "brand": "Burton",
+    "expected": "Instigator"
+  },
+  {
+    "raw": "Instigator PurePop Camber",
+    "brand": "Burton",
+    "expected": "Instigator"
+  },
+  {
+    "raw": "Process Camber Snowboard - 2025/2026",
+    "brand": "Burton",
+    "expected": "Process"
+  },
+  {
+    "raw": "Tech Something Snowboard 2026",
+    "brand": "Burton",
+    "expected": "Tech Something"
+  },
+  {
+    "raw": "Will Die Snowboard 2025",
+    "brand": "Burton",
+    "expected": "Will Die"
+  },
+  {
+    "raw": "Aeronaut",
+    "brand": "CAPiTA",
+    "expected": "Aeronaut"
+  },
+  {
+    "raw": "Arthur Longo Aeronaut",
+    "brand": "CAPiTA",
+    "expected": "Aeronaut"
+  },
+  {
+    "raw": "Birds Of A Feather Snowboard + Union Ultra Binding - 2026",
+    "brand": "CAPiTA",
+    "expected": "Birds Of A Feather"
+  },
+  {
+    "raw": "Equalizer",
+    "brand": "CAPiTA",
+    "expected": "Equalizer"
+  },
+  {
+    "raw": "Equalizer By Jess Kimura",
+    "brand": "CAPiTA",
+    "expected": "Equalizer"
+  },
+  {
+    "raw": "Jess Kimura Equalizer",
+    "brand": "CAPiTA",
+    "expected": "Equalizer"
+  },
+  {
+    "raw": "Kazu Kokubo Pro Snowboard + Union Atlas Pro Binding - 2026",
+    "brand": "CAPiTA",
+    "expected": "Kazu Kokubo Pro"
+  },
+  {
+    "raw": "Mega Merc",
+    "brand": "CAPiTA",
+    "expected": "mega mercury"
+  },
+  {
+    "raw": "SB Slush Slashers",
+    "brand": "CAPiTA",
+    "expected": "spring break Slush Slashers"
+  },
+  {
+    "raw": "Slush Slashers 2.0",
+    "brand": "CAPiTA",
+    "expected": "Slush Slashers 2.0"
+  },
+  {
+    "raw": "Spring Break Slush Slashers 2.0 Snowboard - 2026",
+    "brand": "CAPiTA",
+    "expected": "Spring Break Slush Slashers 2.0"
+  },
+  {
+    "raw": "Will Die Wizard Stick Snowboard 2025",
+    "brand": "Dinosaurs Will Die",
+    "expected": "Wizard Stick"
+  },
+  {
+    "raw": "Alex Yoder XY",
+    "brand": "Gentemstick",
+    "expected": "XY"
+  },
+  {
+    "raw": "XY",
+    "brand": "Gentemstick",
+    "expected": "XY"
+  },
+  {
+    "raw": "4x4",
+    "brand": "GNU",
+    "expected": "4x4"
+  },
+  {
+    "raw": "Banked Country",
+    "brand": "GNU",
+    "expected": "Banked Country"
+  },
+  {
+    "raw": "C Money",
+    "brand": "GNU",
+    "expected": "Money"
+  },
+  {
+    "raw": "C Money C3",
+    "brand": "GNU",
+    "expected": "Money"
+  },
+  {
+    "raw": "Cummins' Banked Country",
+    "brand": "GNU",
+    "expected": "Banked Country"
+  },
+  {
+    "raw": "Finest",
+    "brand": "GNU",
+    "expected": "Finest"
+  },
+  {
+    "raw": "Forest Bailey 4x4",
+    "brand": "GNU",
+    "expected": "4x4"
+  },
+  {
+    "raw": "Forest Bailey Head Space",
+    "brand": "GNU",
+    "expected": "Head Space"
+  },
+  {
+    "raw": "Frosting C2",
+    "brand": "GNU",
+    "expected": "Frosting"
+  },
+  {
+    "raw": "Gloss",
+    "brand": "GNU",
+    "expected": "Gloss"
+  },
+  {
+    "raw": "Gloss C",
+    "brand": "GNU",
+    "expected": "Gloss"
+  },
+  {
+    "raw": "Gloss-C C3",
+    "brand": "GNU",
+    "expected": "Gloss"
+  },
+  {
+    "raw": "GNU Asym Ladies Choice C2X Snowboard - Women's 2025",
+    "brand": "GNU",
+    "expected": "Ladies Choice"
+  },
+  {
+    "raw": "Head Space",
+    "brand": "GNU",
+    "expected": "Head Space"
+  },
+  {
+    "raw": "Max Warbington Finest Asym",
+    "brand": "GNU",
+    "expected": "Finest"
+  },
+  {
+    "raw": "Money",
+    "brand": "GNU",
+    "expected": "Money"
+  },
+  {
+    "raw": "Dream Weaver 2.0",
+    "brand": "Jones",
+    "expected": "Dream Weaver 2.0"
+  },
+  {
+    "raw": "Dream Weaver 2.0 Snowboard - 2026 - Women's",
+    "brand": "Jones",
+    "expected": "Dream Weaver 2.0"
+  },
+  {
+    "raw": "Flagship Snowboard - 2025/2026",
+    "brand": "Jones",
+    "expected": "Flagship"
+  },
+  {
+    "raw": "Frontier 2.0",
+    "brand": "Jones",
+    "expected": "Frontier 2.0"
+  },
+  {
+    "raw": "Frontier 2.0 Snowboard - 2025/2026",
+    "brand": "Jones",
+    "expected": "Frontier 2.0"
+  },
+  {
+    "raw": "Jones Dream Weaver 2.0 Snowboard - Women's 2026",
+    "brand": "Jones",
+    "expected": "Dream Weaver 2.0"
+  },
+  {
+    "raw": "Mind Expander Snowboard - 2025/2026",
+    "brand": "Jones",
+    "expected": "Mind Expander"
+  },
+  {
+    "raw": "Mountain Twin Snowboard - 2025/2026",
+    "brand": "Jones",
+    "expected": "Mountain Twin"
+  },
+  {
+    "raw": "Mountain Twin Snowboard 2026",
+    "brand": "Jones",
+    "expected": "Mountain Twin"
+  },
+  {
+    "raw": "Stratos Snowboard - 2025/2026",
+    "brand": "Jones",
+    "expected": "Stratos"
+  },
+  {
+    "raw": "Cold Brew C2 LTD",
+    "brand": "Lib Tech",
+    "expected": "Cold Brew C2 LTD"
+  },
+  {
+    "raw": "Doughboy 185",
+    "brand": "Lib Tech",
+    "expected": "Doughboy"
+  },
+  {
+    "raw": "Doughboy 185 - 2627 EARLY RELEASE",
+    "brand": "Lib Tech",
+    "expected": "Doughboy"
+  },
+  {
+    "raw": "Doughboy 185 2627 EARLY RELEASE",
+    "brand": "Lib Tech",
+    "expected": "Doughboy"
+  },
+  {
+    "raw": "Doughboy 195",
+    "brand": "Lib Tech",
+    "expected": "Doughboy"
+  },
+  {
+    "raw": "Golden Orca",
+    "brand": "Lib Tech",
+    "expected": "Golden Orca"
+  },
+  {
+    "raw": "Golden Orca 2627 EARLY RELEASE",
+    "brand": "Lib Tech",
+    "expected": "Golden Orca"
+  },
+  {
+    "raw": "Legitimizer C3",
+    "brand": "Lib Tech",
+    "expected": "Legitimizer"
+  },
+  {
+    "raw": "Lib Tech Dynamiss C3 Snowboard - Women's 2025",
+    "brand": "Lib Tech",
+    "expected": "Dynamiss"
+  },
+  {
+    "raw": "Mini Ramp C3 Snowboard - Boys' 2025",
+    "brand": "Lib Tech",
+    "expected": "Mini Ramp"
+  },
+  {
+    "raw": "Orca II 2627 Early Release",
+    "brand": "Lib Tech",
+    "expected": "Orca II"
+  },
+  {
+    "raw": "Rasman C2X",
+    "brand": "Lib Tech",
+    "expected": "Rasman"
+  },
+  {
+    "raw": "Son Of A Birdman",
+    "brand": "Lib Tech",
+    "expected": "son of birdman"
+  },
+  {
+    "raw": "T. Rice Apex Orca Snowboard - Blem 2026",
+    "brand": "Lib Tech",
+    "expected": "Apex Orca"
+  },
+  {
+    "raw": "T. Rice Golden Orca",
+    "brand": "Lib Tech",
+    "expected": "Golden Orca"
+  },
+  {
+    "raw": "T. Rice Orca",
+    "brand": "Lib Tech",
+    "expected": "Orca"
+  },
+  {
+    "raw": "T. Rice Pro",
+    "brand": "Lib Tech",
+    "expected": "Pro"
+  },
+  {
+    "raw": "T. Rice Pro C2",
+    "brand": "Lib Tech",
+    "expected": "Pro"
+  },
+  {
+    "raw": "T.Rice Orca",
+    "brand": "Lib Tech",
+    "expected": "Orca"
+  },
+  {
+    "raw": "T.Rice Pro",
+    "brand": "Lib Tech",
+    "expected": "Pro"
+  },
+  {
+    "raw": "Tech Cold Brew C2 LTD Snowboard 2026",
+    "brand": "Lib Tech",
+    "expected": "Cold Brew C2 LTD"
+  },
+  {
+    "raw": "Tech Dynamiss C3 Snowboard - Women's 2025",
+    "brand": "Lib Tech",
+    "expected": "Dynamiss"
+  },
+  {
+    "raw": "Tech Legitimizer C3 Snowboard 2025",
+    "brand": "Lib Tech",
+    "expected": "Legitimizer"
+  },
+  {
+    "raw": "Tech Mini Ramp C3 Snowboard - Boys' 2025",
+    "brand": "Lib Tech",
+    "expected": "Mini Ramp"
+  },
+  {
+    "raw": "Tech Rasman C2X Snowboard 2025",
+    "brand": "Lib Tech",
+    "expected": "Rasman"
+  },
+  {
+    "raw": "Tech T. Rice Apex Orca Snowboard - Blem 2026",
+    "brand": "Lib Tech",
+    "expected": "Apex Orca"
+  },
+  {
+    "raw": "Travis Rice Orca",
+    "brand": "Lib Tech",
+    "expected": "Orca"
+  },
+  {
+    "raw": "Never Summer Proto Ultra Snowboard 2026",
+    "brand": "Never Summer",
+    "expected": "Proto Ultra"
+  },
+  {
+    "raw": "Alternator",
+    "brand": "Nitro",
+    "expected": "Alternator"
+  },
+  {
+    "raw": "Hailey Langland Alternator",
+    "brand": "Nitro",
+    "expected": "Alternator"
+  },
+  {
+    "raw": "Team Pro",
+    "brand": "Nitro",
+    "expected": "Team Pro"
+  },
+  {
+    "raw": "Team Pro Marcus Kleveland",
+    "brand": "Nitro",
+    "expected": "Team Pro"
+  },
+  {
+    "raw": "Snowboards Display",
+    "brand": "Public",
+    "expected": "Display"
+  },
+  {
+    "raw": "Chrome Rome Snowboard 2025",
+    "brand": "Rome",
+    "expected": "Chrome Rome"
+  },
+  {
+    "raw": "Rome Heist Snowboard - Women's 2024",
+    "brand": "Rome",
+    "expected": "Heist"
+  },
+  {
+    "raw": "Rossignol Juggernaut Snowboard 2025",
+    "brand": "Rossignol",
+    "expected": "Juggernaut"
+  },
+  {
+    "raw": "Salomon Sight X Snowboard 2026",
+    "brand": "Salomon",
+    "expected": "Sight X"
+  },
+  {
+    "raw": "Season Kin Snowboard 2026",
+    "brand": "Season",
+    "expected": "Kin"
+  },
+  {
+    "raw": "Sims Bowl Squad Snowboard 2026",
+    "brand": "Sims",
+    "expected": "Bowl Squad"
+  },
+  {
+    "raw": "Airmaster 3D",
+    "brand": "Yes.",
+    "expected": "Airmaster 3D"
+  },
+  {
+    "raw": "Airmaster 3D Snowboard 2026",
+    "brand": "Yes.",
+    "expected": "Airmaster 3D"
+  },
+  {
+    "raw": "Yes. Airmaster 3D Snowboard 2026",
+    "brand": "Yes.",
+    "expected": "Airmaster 3D"
+  }
+]

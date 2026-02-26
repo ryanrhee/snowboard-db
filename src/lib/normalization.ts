@@ -170,166 +170,279 @@ export function extractComboContents(raw: string): string | null {
 export const PROFILE_SUFFIX_RE =
   /\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i;
 
+// ---------------------------------------------------------------------------
+// Normalization pipeline — structured, composable, testable
+// ---------------------------------------------------------------------------
+
+export interface NormalizationStep {
+  /** Short identifier for this step (used in debug traces) */
+  name: string;
+  /** Which brands this step applies to (undefined = all brands) */
+  brands?: string[];
+  /** Transform the model string. Receives current model + brand context. */
+  transform(model: string, brand: string | undefined): string;
+}
+
+const MODEL_ALIASES: Record<string, string> = {
+  "mega merc": "mega mercury",
+  "son of a birdman": "son of birdman",
+};
+
+const MODEL_PREFIX_ALIASES: [string, string][] = [
+  ["sb ", "spring break "],
+  ["snowboards ", ""],
+];
+
+const RIDER_NAMES: Record<string, string[]> = {
+  "GNU": ["Forest Bailey", "Max Warbington", "Cummins'"],
+  "CAPiTA": ["Arthur Longo", "Jess Kimura"],
+  "Nitro": ["Hailey Langland", "Marcus Kleveland"],
+  "Jones": ["Harry Kearney", "Ruiki Masuda"],
+  "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore", "Mike Liddle", "Danny Kass", "DK"],
+  "Lib Tech": ["T. Rice", "Travis Rice"],
+  "Gentemstick": ["Alex Yoder"],
+};
+
+/**
+ * The ordered pipeline of normalization steps.
+ * Each step is named and independently testable.
+ * Steps with a `brands` array only apply to those brands.
+ *
+ * ORDER MATTERS — steps are applied sequentially and some depend on
+ * earlier steps having already run (documented in step names/comments).
+ */
+export const NORMALIZATION_PIPELINE: NormalizationStep[] = [
+  {
+    name: "strip-unicode",
+    transform: (m) => m.replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, ""),
+  },
+  {
+    name: "strip-combo",
+    transform: (m) => {
+      m = m.replace(/\s*\+\s.*$/, "");
+      m = m.replace(/\s+w\/\s.*$/i, "");
+      return m;
+    },
+  },
+  {
+    name: "strip-retail-tags",
+    transform: (m) => {
+      m = m.replace(/\s*\((?:Closeout|Blem|Sale)\)/gi, "");
+      m = m.replace(/\s*-\s*(?:Closeout|Blem|Sale)\b/gi, "");
+      return m;
+    },
+  },
+  {
+    name: "strip-snowboard",
+    transform: (m) => m.replace(/\s+Snowboard\b/gi, ""),
+  },
+  {
+    name: "strip-year",
+    transform: (m) => {
+      m = m.replace(/\s*-?\s*\b20[1-2]\d\s*\/\s*20[1-2]\d\b/g, "");
+      m = m.replace(/\s*-?\s*\b20[1-2]\d\b/g, "");
+      return m;
+    },
+  },
+  {
+    name: "strip-season-suffix",
+    transform: (m) => m.replace(/\s*-?\s*\d{4}\s+early\s+release\b/gi, ""),
+  },
+  {
+    name: "strip-trailing-size",
+    transform: (m) => m.replace(/\s+\b(1[4-9]\d|2[0-2]\d)\b$/g, ""),
+  },
+  {
+    name: "strip-gender-suffix",
+    transform: (m) => m.replace(/\s*-\s*(?:Men's|Women's|Kids'|Boys'|Girls')$/i, ""),
+  },
+  {
+    name: "strip-gender-prefix",
+    transform: (m) => m.replace(/^(?:Women's|Men's|Kids'|Boys'|Girls')\s+/i, ""),
+  },
+  {
+    name: "strip-brand-prefix",
+    transform: (m, brand) => {
+      if (!brand) return m;
+      const brandLower = brand.toLowerCase();
+      const modelLower = m.toLowerCase();
+      if (modelLower.startsWith(brandLower + " ")) {
+        return m.slice(brand.length).trimStart();
+      }
+      return m;
+    },
+  },
+  {
+    name: "fix-libtech-brand-leak",
+    brands: ["Lib Tech"],
+    transform: (m) => m.replace(/^Tech\s+/i, ""),
+  },
+  {
+    name: "fix-dwd-brand-leak",
+    brands: ["Dinosaurs Will Die"],
+    transform: (m) => m.replace(/^(?:Will Die|Dinosaurs)\s+/i, ""),
+  },
+  {
+    name: "normalize-trice",
+    transform: (m) => m.replace(/T\.Rice/g, "T. Rice"),
+  },
+  // "strip-profile" is handled specially via opts.keepProfile — see normalizeModel()
+  {
+    name: "strip-leading-the",
+    transform: (m) => m.replace(/^the\s+/i, ""),
+  },
+  {
+    name: "replace-space-dash-space",
+    transform: (m) => m.replace(/\s+-\s+/g, " "),
+  },
+  {
+    name: "strip-acronym-periods",
+    transform: (m) => {
+      m = m.replace(/\.(?=[a-zA-Z])/g, "");
+      m = m.replace(/(?<=[a-zA-Z]{2})\.(?=\s|$)/g, "");
+      return m;
+    },
+  },
+  {
+    name: "replace-hyphens",
+    transform: (m) => m.replace(/-/g, " "),
+  },
+  {
+    name: "apply-model-aliases",
+    transform: (m) => {
+      const lower = m.toLowerCase();
+      if (MODEL_ALIASES[lower]) return MODEL_ALIASES[lower];
+      for (const [prefix, replacement] of MODEL_PREFIX_ALIASES) {
+        if (lower.startsWith(prefix)) {
+          return replacement + m.slice(prefix.length);
+        }
+      }
+      return m;
+    },
+  },
+  {
+    name: "strip-rider-names",
+    transform: (m, brand) => {
+      if (!brand) return m;
+      const riders = RIDER_NAMES[brand];
+      if (!riders) return m;
+      const mLower = m.toLowerCase();
+      for (const rider of riders) {
+        const rLower = rider.toLowerCase();
+        const byIdx = mLower.indexOf(" by " + rLower);
+        if (byIdx >= 0) {
+          return (m.slice(0, byIdx) + m.slice(byIdx + 4 + rider.length)).trim();
+        }
+        if (mLower.startsWith(rLower + " ")) {
+          return m.slice(rider.length).trimStart();
+        }
+        if (mLower.endsWith(" " + rLower)) {
+          return m.slice(0, m.length - rider.length - 1);
+        }
+      }
+      return m;
+    },
+  },
+  {
+    name: "strip-signature-series",
+    transform: (m, brand) => {
+      if (!brand) return m;
+      return m.replace(/^(?:Signature Series|Ltd)\s+/i, "");
+    },
+  },
+  {
+    name: "strip-gnu-profile-letter",
+    brands: ["GNU"],
+    transform: (m) => {
+      m = m.replace(/^C\s+/i, "");
+      m = m.replace(/\s+C$/i, "");
+      return m;
+    },
+  },
+  {
+    name: "strip-gnu-asym",
+    brands: ["GNU"],
+    transform: (m) => {
+      m = m.replace(/^Asym\s+/i, "");
+      m = m.replace(/\s+Asym\b/i, "");
+      return m;
+    },
+  },
+  {
+    name: "clean-whitespace",
+    transform: (m) => {
+      m = m.replace(/\/+$/, "");
+      m = m.replace(/^\s*[-/]\s*/, "").replace(/\s*[-/]\s*$/, "");
+      m = m.replace(/\s{2,}/g, " ").trim();
+      return m;
+    },
+  },
+];
+
+/**
+ * Check if a step applies to the given brand.
+ */
+function stepApplies(step: NormalizationStep, brand: string | undefined): boolean {
+  if (!step.brands) return true;
+  if (!brand) return false;
+  return step.brands.includes(brand);
+}
+
+/**
+ * Run the full normalization pipeline on a raw model string.
+ */
 export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile?: boolean }): string {
   if (!raw || raw === "Unknown") return raw;
 
   let model = raw;
 
-  // Strip zero-width Unicode characters
-  model = model.replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, "");
-
-  // Strip binding/package info: everything after " + " or " w/ "
-  model = model.replace(/\s*\+\s.*$/, "");
-  model = model.replace(/\s+w\/\s.*$/i, "");
-
-  // Strip retail tags: (Closeout), (Blem), (Sale) or "- Blem", "- Closeout"
-  model = model.replace(/\s*\((?:Closeout|Blem|Sale)\)/gi, "");
-  model = model.replace(/\s*-\s*(?:Closeout|Blem|Sale)\b/gi, "");
-
-  // Strip "Snowboard" (but not from model names like "Snowboard Addiction")
-  model = model.replace(/\s+Snowboard\b/gi, "");
-
-  // Strip year: "2025/2026", " - 2026", " 2025", leading "2025 "
-  model = model.replace(/\s*-?\s*\b20[1-2]\d\s*\/\s*20[1-2]\d\b/g, "");
-  model = model.replace(/\s*-?\s*\b20[1-2]\d\b/g, "");
-
-  // Strip season shorthand + "early release" (e.g. "- 2627 EARLY RELEASE", "2627 EARLY RELEASE")
-  // Lib Tech uses "2627" for the 26/27 season designation, often with " - " prefix
-  model = model.replace(/\s*-?\s*\d{4}\s+early\s+release\b/gi, "");
-
-  // Strip trailing size numbers (3-digit cm lengths 140-220, e.g. "Doughboy 185")
-  // Only strip when it looks like a board length, not a model identifier
-  model = model.replace(/\s+\b(1[4-9]\d|2[0-2]\d)\b$/g, "");
-
-  // Strip gendered suffixes: " - Men's", " - Women's", " - Kids'", " - Boys'", " - Girls'"
-  model = model.replace(/\s*-\s*(?:Men's|Women's|Kids'|Boys'|Girls')$/i, "");
-
-  // Strip leading "Women's ", "Men's " prefix
-  model = model.replace(/^(?:Women's|Men's|Kids'|Boys'|Girls')\s+/i, "");
-
-  // Generic brand-prefix stripping: if model starts with the brand name, remove it
-  if (brand) {
-    const brandLower = brand.toLowerCase();
-    const modelLower = model.toLowerCase();
-    if (modelLower.startsWith(brandLower + " ")) {
-      model = model.slice(brand.length).trimStart();
+  for (const step of NORMALIZATION_PIPELINE) {
+    if (!stepApplies(step, brand)) continue;
+    // "strip-profile" is injected between normalize-trice and strip-leading-the
+    if (step.name === "strip-leading-the" && !opts?.keepProfile) {
+      model = model.replace(PROFILE_SUFFIX_RE, "");
     }
+    model = step.transform(model, brand);
   }
-
-  // Fix brand leak: Lib Tech → evo lists as "Lib Tech" brand + "Tech Cold Brew..." model
-  if (brand === "Lib Tech" && /^Tech\s/i.test(model)) {
-    model = model.replace(/^Tech\s+/i, "");
-  }
-
-  // Fix brand leak: Dinosaurs Will Die → evo lists "Will Die Wizard Stick..."
-  if (brand === "Dinosaurs Will Die" && /^(?:Will Die|Dinosaurs)\s/i.test(model)) {
-    model = model.replace(/^(?:Will Die|Dinosaurs)\s+/i, "");
-  }
-
-  // Normalize "T.Rice" → "T. Rice" (Lib Tech website vs retailer naming)
-  model = model.replace(/T\.Rice/g, "T. Rice");
-
-  // Strip trailing profile designators (profile is stored as a separate field)
-  if (!opts?.keepProfile) {
-    model = model.replace(PROFILE_SUFFIX_RE, "");
-  }
-
-  // Strip leading "the " (e.g. "the throwback" → "throwback")
-  model = model.replace(/^the\s+/i, "");
-
-  // Replace " - " (space-dash-space) with single space (e.g. "hps - goop" → "hps goop")
-  model = model.replace(/\s+-\s+/g, " ");
-
-  // Strip acronym-style periods (period between letters, e.g. "D.O.A." → "DOA")
-  // Preserves version numbers ("2.0") and name initials ("T. Rice" — single letter + period + space)
-  model = model.replace(/\.(?=[a-zA-Z])/g, "");
-  // Strip trailing acronym period (letter.space or letter.end) but not single-letter initials
-  model = model.replace(/(?<=[a-zA-Z]{2})\.(?=\s|$)/g, "");
-
-  // Replace hyphens with spaces (e.g. "gloss-c" → "gloss c")
-  model = model.replace(/-/g, " ");
-
-  // Apply model aliases
-  const modelLowerForAlias = model.toLowerCase();
-  const MODEL_ALIASES: Record<string, string> = {
-    "mega merc": "mega mercury",
-    "son of a birdman": "son of birdman",
-  };
-  // Prefix-based aliases
-  const MODEL_PREFIX_ALIASES: [string, string][] = [
-    ["sb ", "spring break "],
-    ["snowboards ", ""],
-  ];
-  if (MODEL_ALIASES[modelLowerForAlias]) {
-    // Preserve original casing style by using the alias directly
-    model = MODEL_ALIASES[modelLowerForAlias];
-  } else {
-    for (const [prefix, replacement] of MODEL_PREFIX_ALIASES) {
-      if (modelLowerForAlias.startsWith(prefix)) {
-        model = replacement + model.slice(prefix.length);
-        break;
-      }
-    }
-  }
-
-  // Strip rider name prefixes (brand-scoped)
-  // Some retailers include the pro rider's name, others don't
-  if (brand) {
-    const RIDER_NAMES: Record<string, string[]> = {
-      "GNU": ["Forest Bailey", "Max Warbington", "Cummins'"],
-      "CAPiTA": ["Arthur Longo", "Jess Kimura"],
-      "Nitro": ["Hailey Langland", "Marcus Kleveland"],
-      "Jones": ["Harry Kearney", "Ruiki Masuda"],
-      "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore", "Mike Liddle", "Danny Kass", "DK"],
-      "Lib Tech": ["T. Rice", "Travis Rice"],
-      "Gentemstick": ["Alex Yoder"],
-    };
-    const riders = RIDER_NAMES[brand];
-    if (riders) {
-      const mLower = model.toLowerCase();
-      for (const rider of riders) {
-        const rLower = rider.toLowerCase();
-        // Strip "by <rider>" infix (e.g. "Equalizer By Jess Kimura" → "Equalizer")
-        const byIdx = mLower.indexOf(" by " + rLower);
-        if (byIdx >= 0) {
-          model = (model.slice(0, byIdx) + model.slice(byIdx + 4 + rider.length)).trim();
-          break;
-        }
-        // Strip "<rider> " prefix (e.g. "Forest Bailey Head Space" → "Head Space")
-        if (mLower.startsWith(rLower + " ")) {
-          model = model.slice(rider.length).trimStart();
-          break;
-        }
-        // Strip " <rider>" suffix (e.g. "Team Pro Marcus Kleveland" → "Team Pro")
-        if (mLower.endsWith(" " + rLower)) {
-          model = model.slice(0, model.length - rider.length - 1);
-          break;
-        }
-      }
-    }
-
-    // Also handle "Signature Series" / "Ltd" infixes after rider name stripping
-    // e.g. "Harry Kearney Signature Series Stratos" → "Stratos" (rider stripped above)
-    // Remaining: "Signature Series Stratos" → "Stratos"
-    model = model.replace(/^(?:Signature Series|Ltd)\s+/i, "");
-  }
-
-  // GNU-specific: strip profile letter prefix "C " and suffix " C"
-  // GNU uses "C" to denote C3 camber line (e.g. "C Money" = "Money" with C3 profile)
-  // Also strip "Asym" (asymmetric sidecut — shape attribute, not model differentiator)
-  if (brand === "GNU") {
-    model = model.replace(/^C\s+/i, "");
-    model = model.replace(/\s+C$/i, "");
-    model = model.replace(/^Asym\s+/i, "");
-    model = model.replace(/\s+Asym\b/i, "");
-  }
-
-  // Clean up leftover dashes, slashes, and whitespace
-  model = model.replace(/\/+$/, "");
-  model = model.replace(/^\s*[-/]\s*/, "").replace(/\s*[-/]\s*$/, "");
-  model = model.replace(/\s{2,}/g, " ").trim();
 
   return model || raw;
+}
+
+/**
+ * Run the normalization pipeline and return the intermediate result after each step.
+ * Useful for debugging which step(s) caused unexpected normalization.
+ */
+export function normalizeModelDebug(
+  raw: string,
+  brand?: string,
+  opts?: { keepProfile?: boolean }
+): { step: string; result: string }[] {
+  const trace: { step: string; result: string }[] = [];
+
+  if (!raw || raw === "Unknown") {
+    trace.push({ step: "early-return", result: raw });
+    return trace;
+  }
+
+  let model = raw;
+  trace.push({ step: "input", result: model });
+
+  for (const step of NORMALIZATION_PIPELINE) {
+    if (!stepApplies(step, brand)) continue;
+    if (step.name === "strip-leading-the" && !opts?.keepProfile) {
+      model = model.replace(PROFILE_SUFFIX_RE, "");
+      trace.push({ step: "strip-profile", result: model });
+    }
+    model = step.transform(model, brand);
+    trace.push({ step: step.name, result: model });
+  }
+
+  const final = model || raw;
+  if (final !== model) {
+    trace.push({ step: "fallback-to-raw", result: final });
+  }
+
+  return trace;
 }
 
 /**
