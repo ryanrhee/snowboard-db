@@ -482,4 +482,125 @@ describe("coalesce", () => {
       expect(boards[0].boardKey).toBe("burton|ripcord|unisex");
     });
   });
+
+  describe("CAPiTA gender flow through coalesce", () => {
+    it("manufacturer womens board gets womens board_key and gender", () => {
+      const scraped: ScrapedBoard[] = [
+        makeScrapedBoard({
+          source: "manufacturer:capita",
+          brand: "CAPiTA",
+          model: "Paradise",
+          gender: "womens",
+          sourceUrl: "https://capitasnowboarding.com/products/paradise",
+          msrpUsd: 399,
+        }),
+      ];
+
+      const { boards } = coalesce(scraped, "run-1");
+
+      expect(boards).toHaveLength(1);
+      expect(boards[0].boardKey).toBe("capita|paradise|womens");
+      expect(boards[0].gender).toBe("womens");
+    });
+
+    it("manufacturer unisex board gets unisex board_key and gender", () => {
+      const scraped: ScrapedBoard[] = [
+        makeScrapedBoard({
+          source: "manufacturer:capita",
+          brand: "CAPiTA",
+          model: "DOA",
+          sourceUrl: "https://capitasnowboarding.com/products/doa",
+          msrpUsd: 499,
+        }),
+      ];
+
+      const { boards } = coalesce(scraped, "run-1");
+
+      expect(boards).toHaveLength(1);
+      expect(boards[0].boardKey).toBe("capita|doa|unisex");
+      expect(boards[0].gender).toBe("unisex");
+    });
+
+    it("manufacturer kids board gets kids board_key and gender", () => {
+      const scraped: ScrapedBoard[] = [
+        makeScrapedBoard({
+          source: "manufacturer:capita",
+          brand: "CAPiTA",
+          model: "Children Of The Gnar",
+          gender: "kids",
+          sourceUrl: "https://capitasnowboarding.com/products/children-of-the-gnar",
+        }),
+      ];
+
+      const { boards } = coalesce(scraped, "run-1");
+
+      expect(boards).toHaveLength(1);
+      expect(boards[0].boardKey).toBe("capita|children of the gnar|kids");
+      expect(boards[0].gender).toBe("kids");
+    });
+
+    it("womens manufacturer board merges with womens retailer listing", () => {
+      const scraped: ScrapedBoard[] = [
+        makeScrapedBoard({
+          source: "manufacturer:capita",
+          brand: "CAPiTA",
+          model: "Paradise",
+          gender: "womens",
+          sourceUrl: "https://capitasnowboarding.com/products/paradise",
+          msrpUsd: 399,
+        }),
+        makeScrapedBoard({
+          source: "retailer:tactics",
+          brand: "CAPiTA",
+          model: "Paradise",
+          gender: "womens",
+          sourceUrl: "https://tactics.com/capita-paradise",
+          listings: [
+            {
+              url: "https://tactics.com/capita-paradise/141",
+              lengthCm: 141,
+              salePrice: 399,
+              currency: Currency.USD,
+              scrapedAt: "2025-01-01T00:00:00Z",
+            },
+          ],
+        }),
+      ];
+
+      const { boards, listings } = coalesce(scraped, "run-1");
+
+      expect(boards).toHaveLength(1);
+      expect(boards[0].boardKey).toBe("capita|paradise|womens");
+      expect(boards[0].gender).toBe("womens");
+      expect(listings).toHaveLength(1);
+      expect(listings[0].boardKey).toBe("capita|paradise|womens");
+    });
+
+    it("same model with different genders creates separate boards", () => {
+      const scraped: ScrapedBoard[] = [
+        makeScrapedBoard({
+          source: "manufacturer:capita",
+          brand: "CAPiTA",
+          model: "Paradise",
+          gender: "womens",
+          sourceUrl: "https://capitasnowboarding.com/products/paradise",
+        }),
+        makeScrapedBoard({
+          source: "retailer:evo",
+          brand: "CAPiTA",
+          model: "Paradise",
+          sourceUrl: "https://evo.com/capita-paradise",
+        }),
+      ];
+
+      const { boards } = coalesce(scraped, "run-1");
+
+      expect(boards).toHaveLength(2);
+      const keys = boards.map((b) => b.boardKey).sort();
+      expect(keys).toEqual([
+        "capita|paradise|unisex",
+        "capita|paradise|womens",
+      ]);
+    });
+  });
 });

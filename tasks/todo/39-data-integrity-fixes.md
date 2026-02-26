@@ -1,6 +1,6 @@
 # Task 39: Fix board data integrity issues
 
-**Status:** In progress — Round 4 fixes applied and verified with pipeline re-run
+**Status:** In progress — Round 5 fixes applied and verified with pipeline re-run
 
 ## Progress
 
@@ -42,18 +42,26 @@
 - [x] **Aesmo rider name:** Added "Fernando Elvira" to RIDER_NAMES
 - [x] **Gender column fix:** `upsertBoard()` now writes gender derived from `genderFromKey(boardKey)`. Previously the `gender` column on the `boards` table always defaulted to 'unisex' because it was never set. Added `gender` field to `Board` interface and all 3 Board construction sites (coalesce, mapRowToNewBoard, getBoardsWithListings)
 
+### Round 5: CAPiTA smart apostrophe gender fix, coalesce gender tests (verified)
+
+- [x] **Root cause: Unicode smart apostrophe (U+2019)** — CAPiTA detail pages use RIGHT SINGLE QUOTATION MARK (`'`) in "Women's", not ASCII apostrophe (`'`). `parseCategoriesText` and `deriveGender` both failed to match, so all CAPiTA women's boards from the manufacturer scraper got `gender: null` → unisex.
+- [x] **`parseCategoriesText` fix:** Normalize `\u2018`/`\u2019` (smart quotes) to ASCII `'` before parsing category labels
+- [x] **`deriveGender` fix:** Normalize smart apostrophes when checking Shopify tags for `"women's"`
+- [x] **Unit tests:** Smart apostrophe variant of `parseCategoriesText` gender detection; end-to-end board_key tests with smart apostrophe in categories text and tags
+- [x] **Coalesce integration tests:** 5 new tests in `coalesce.test.ts` verifying CAPiTA gender flows through `coalesce()` — womens/unisex/kids board_key and gender field, womens manufacturer+retailer merge, same model with different genders creates separate boards
+
 ### Pipeline results
 
-| Metric | Before | After Round 1 | After Round 2 | After Round 3 | After Round 4 |
-|--------|--------|---------------|---------------|---------------|---------------|
-| Total boards | 544 | 513 | 500 | 490 | 483 |
-| Total listings | — | 3272 | 3272 | 3272 | 3272 |
-| Duplicate keys | ~30 | 0 | 0 | 0 | 0 |
-| Orphan boards | 3 | 0 | 0 | 0 | 0 |
-| Mis-split brands | 6 | 0 | 0 | 0 | 0 |
-| Zero-width dupes | 3 | 0 | 0 | 0 | 0 |
-| Near-dupe pairs | ~130 | 123 | 107 | 101 | 102 |
-| Gender column accuracy | — | — | — | 0% (all unisex) | 100% (359u/98w/26k) |
+| Metric | Before | After Round 1 | After Round 2 | After Round 3 | After Round 4 | After Round 5 |
+|--------|--------|---------------|---------------|---------------|---------------|---------------|
+| Total boards | 544 | 513 | 500 | 490 | 483 | 482 |
+| Total listings | — | 3272 | 3272 | 3272 | 3272 | 3272 |
+| Duplicate keys | ~30 | 0 | 0 | 0 | 0 | 0 |
+| Orphan boards | 3 | 0 | 0 | 0 | 0 | 0 |
+| Mis-split brands | 6 | 0 | 0 | 0 | 0 | 0 |
+| Zero-width dupes | 3 | 0 | 0 | 0 | 0 | 0 |
+| Near-dupe pairs | ~130 | 123 | 107 | 101 | 102 | — |
+| Gender column accuracy | — | — | — | 0% (all unisex) | 100% (359u/98w/26k) | 100% (357u/99w/26k) |
 
 ### Files modified
 
@@ -66,21 +74,24 @@
 | `src/lib/scraping/utils.ts` | Zero-width strip in `normalizeBrand`, brand aliases |
 | `src/lib/retailers/evo.ts` | Multi-word brand parsing, prefer JSON-LD brand |
 | `src/lib/pipeline.ts` | Orphan cleanup at end of run |
-| `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender` |
+| `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender`; extracted `parseCategoriesText` as testable function; smart apostrophe normalization in both `parseCategoriesText` and `deriveGender` |
 | `src/__tests__/normalization-pipeline.test.ts` | 228 tests (snapshot + step-level + debug) |
 | `src/__tests__/fixtures/normalization-inputs.json` | 156 snapshot entries |
-| `src/__tests__/coalesce.test.ts` | Added `genderFromKey` to db mock |
+| `src/__tests__/coalesce.test.ts` | Added `genderFromKey` to db mock; 5 CAPiTA gender flow integration tests |
+| `src/__tests__/capita.test.ts` | 30 tests: `skillLevelToAbility`, `cleanModelName`, `parseCategoriesText` (incl. smart apostrophe), `deriveGender`, end-to-end board_key gender flow |
 | `src/__tests__/canonicalization.test.ts` | 403 tests (all normalization rules) |
 | `src/__tests__/orphan-boards.test.ts` | 3 tests for orphan board cleanup |
 | `src/__tests__/evo-brand-parsing.test.ts` | 9 tests for multi-word brand parsing |
 
 ### Test results
 
-All 869 tests pass across 17 test files (641 original + 202 from task 40 + 26 new in round 4).
+All 891 tests pass across 17 test files (641 original + 202 from task 40 + 26 from round 4 + 22 from round 5).
 
-### Remaining near-dupes (101 pairs) — all legitimate
+### Remaining near-dupes — all legitimate
 
 Most are expected variants: Pro/non-Pro editions, Split/non-Split, version 2.0 vs original, signature rider editions (Benny Milam Ltd, Miles Fallon Ltd), Junior/Youth variants, profile splits from `identifyBoards()` (e.g. Money C2 vs Money C3).
+
+3 remaining unisex CAPiTA boards that are actually women's boards (`capita|paradise|unisex`, `capita|birds of a feather|unisex`, `capita|equalizer|unisex`) — all from backcountry combo packages that omit gender from URL/title. Fixing these would require combo package gender inference from the board component.
 
 ### Verification queries
 

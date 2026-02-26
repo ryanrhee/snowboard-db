@@ -165,8 +165,8 @@ async function scrapeShopifyJson(): Promise<ManufacturerSpec[]> {
     if (!profile) profile = parseProfileFromTags(tags);
     if (!shape) shape = parseShapeFromTags(tags);
 
-    // Determine gender from tags or title
-    const gender = deriveGender(product.title, tags);
+    // Determine gender: detail page categories > title/tags
+    const gender = detail?.gender ?? deriveGender(product.title, tags);
 
     specs.push({
       brand: "CAPiTA",
@@ -195,6 +195,7 @@ interface DetailPageData {
   shape: string | null;
   category: string | null;
   flex: string | null;
+  gender: string | null;
 }
 
 const HEXAGON_LABELS = ["jibbing", "skill level", "powder", "groomers", "versatility", "jumps"];
@@ -236,52 +237,19 @@ async function scrapeDetailPage(handle: string): Promise<DetailPageData> {
     }
   });
 
-  // Extract profile, shape, category from .c-product-info__categories span
+  // Extract profile, shape, category, gender from .c-product-info__categories span
   // Format: "Resort / True Twin / Hybrid Camber" or "Women's / Resort / True Twin / Hybrid Camber"
-  let profile: string | null = null;
-  let shape: string | null = null;
-  let category: string | null = null;
-
   const categoriesText = $(".c-product-info__categories").text().trim();
-  if (categoriesText) {
-    const parts = categoriesText.split(/\s*\/\s*/);
-    for (const part of parts) {
-      const lower = part.toLowerCase();
-      // Skip gender/product-type labels
-      if (lower === "women's" || lower === "youth" || lower === "split board" || lower === "snowboard") continue;
-
-      // Profile detection
-      if (lower.includes("hybrid camber") || lower === "hybrid") {
-        profile = part;
-      } else if (lower.includes("traditional camber")) {
-        profile = part;
-      } else if (lower.includes("reverse camber")) {
-        profile = part;
-      } else if (lower.includes("camber")) {
-        profile = part;
-      }
-      // Shape detection
-      else if (lower.includes("true twin") || lower === "twin") {
-        shape = part;
-      } else if (lower.includes("directional twin")) {
-        shape = part;
-      } else if (lower === "directional") {
-        shape = part;
-      }
-      // Category detection (what's left: Resort, All-Mtn, Park, Freestyle, Powder, etc.)
-      else if (!category) {
-        category = part;
-      }
-    }
-  }
+  const parsed = parseCategoriesText(categoriesText);
 
   return {
     hexagonScores,
     skillLevel,
-    profile,
-    shape,
-    category,
+    profile: parsed.profile,
+    shape: parsed.shape,
+    category: parsed.category,
     flex: flexFromSpec,
+    gender: parsed.gender,
   };
 }
 
@@ -372,7 +340,7 @@ function parseShapeFromTags(tags: string[]): string | null {
 
 function deriveGender(title: string, tags: string[]): string | null {
   const lower = title.toLowerCase();
-  if (lower.includes("women") || lower.includes("wmns") || lower.includes("wmn") || tags.includes("women") || tags.includes("womens"))
+  if (lower.includes("women") || lower.includes("wmns") || lower.includes("wmn") || tags.some(t => t.replace(/[\u2018\u2019]/g, "'") === "women's") || tags.includes("women") || tags.includes("womens"))
     return "womens";
   if (lower.includes("youth") || lower.includes("kid") || tags.includes("youth") || tags.includes("kids"))
     return "kids";
@@ -387,5 +355,56 @@ function cleanModelName(raw: string): string {
     .trim();
 }
 
+function parseCategoriesText(text: string): {
+  profile: string | null;
+  shape: string | null;
+  category: string | null;
+  gender: string | null;
+} {
+  let profile: string | null = null;
+  let shape: string | null = null;
+  let category: string | null = null;
+  let gender: string | null = null;
+
+  if (!text) return { profile, shape, category, gender };
+
+  // Normalize curly/smart apostrophes (U+2018, U+2019) to ASCII
+  const normalized = text.replace(/[\u2018\u2019]/g, "'");
+  const parts = normalized.split(/\s*\/\s*/);
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    // Capture gender from category labels
+    if (lower === "women's") { gender = "womens"; continue; }
+    if (lower === "youth") { gender = "kids"; continue; }
+    // Skip product-type labels
+    if (lower === "split board" || lower === "snowboard") continue;
+
+    // Profile detection
+    if (lower.includes("hybrid camber") || lower === "hybrid") {
+      profile = part;
+    } else if (lower.includes("traditional camber")) {
+      profile = part;
+    } else if (lower.includes("reverse camber")) {
+      profile = part;
+    } else if (lower.includes("camber")) {
+      profile = part;
+    }
+    // Shape detection
+    else if (lower.includes("true twin") || lower === "twin") {
+      shape = part;
+    } else if (lower.includes("directional twin")) {
+      shape = part;
+    } else if (lower === "directional") {
+      shape = part;
+    }
+    // Category detection (what's left: Resort, All-Mtn, Park, Freestyle, Powder, etc.)
+    else if (!category) {
+      category = part;
+    }
+  }
+
+  return { profile, shape, category, gender };
+}
+
 // Test exports
-export { skillLevelToAbility, cleanModelName };
+export { skillLevelToAbility, cleanModelName, parseCategoriesText, deriveGender };
