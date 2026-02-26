@@ -147,50 +147,92 @@ The `spec_sources` entries with `source = 'manufacturer'` for Lib Tech ability l
 are the **output** of the `inferRiderLevelFromInfographic()` slug mapping — the very
 function this task is replacing. Using these as ground truth is circular reasoning.
 
-#### Proposed thresholds (draft, needs evo validation)
+#### Finalized thresholds (validated 2026-02-26)
 
-Using natural midpoints between spectrum anchors (0%=Day 1, 50%=Intermediate,
-100%=Advanced):
+**T1 = 10%, T2 = 85%** — unified for both ability level and terrain bars.
 
-- `colorStartPct ≤ 25%` → min = beginner
-- `25% < colorStartPct ≤ 75%` → min = intermediate
-- `colorStartPct > 75%` → min = advanced
-- `colorEndPct ≥ 75%` → max = advanced
-- `25% ≤ colorEndPct < 75%` → max = intermediate
-- `colorEndPct < 25%` → max = beginner
+Cross-referenced infographic bar positions against evo, backcountry, and TGR
+ability level ratings for all Lib Tech and GNU boards. Key findings:
 
-**These thresholds need validation against evo.com detail page ability levels.**
-evo's Skate Banana page shows "Beginner-Intermediate" — if evo rates everything
-with start ≥ 20% as intermediate, the start threshold may need to be lower
-(e.g., 15-20% instead of 25%).
+- **Ability level:** Natural data gap at 1-16% (only 0% is beginner, next is 17%).
+  evo/backcountry consistently rate boards with start ≥ 17% as intermediate+.
+  T1=10% cleanly separates. For end, boards at ≤84% don't reach the Advanced
+  label per manufacturer intent; T2=85% matches where retailers start saying
+  "advanced" or "expert."
+
+- **Terrain:** Boards with terrain start 0-9% are freestyle/park-leaning per evo.
+  Boards at 14%+ are All-Mountain. T1=10% captures this. For end, boards at
+  ≤84% are "All-Mountain" per evo; 85%+ triggers Freeride/Powder labels.
+
+##### Ability level mapping (range)
+
+- `startPct ≤ 10%` → min = beginner
+- `10% < startPct < 85%` → min = intermediate
+- `startPct ≥ 85%` → min = advanced
+- `endPct ≤ 10%` → max = beginner
+- `10% < endPct < 85%` → max = intermediate
+- `endPct ≥ 85%` → max = advanced
+
+##### Terrain mapping (3-point scores via 3-zone model)
+
+Three zones: A (0–10% = Park), B (10–85% = All Mtn), C (85–100% = Backcountry).
+A bar spanning startPct→endPct scores each terrain dimension based on which
+zones it enters:
+
+- park/freestyle: **3** if bar enters Zone A, **2** if only B, **1** if only C
+- piste: **3** if bar enters Zone B, **2** if adjacent, **1** if bar is narrow and far
+- powder/freeride: **3** if bar enters Zone C, **2** if only B, **1** if only A
+
+##### Flex mapping (validated 2026-02-26)
+
+Flex is a point value, not a range. The infographic flex bar spans startPct→endPct
+on a Soft (0%) → Medium (50%) → Stiff (100%) scale.
+
+**Use bar midpoint → 1-10 scale:** `flexRating = Math.round(midpoint / 10)` where
+`midpoint = (startPct + endPct) / 2`.
+
+Cross-referenced midpoints against TGR, evo, backcountry, and tactics flex ratings
+for all 46 Lib Tech and GNU boards with infographic data:
+
+| Midpoint range | Retailer consensus | Example boards |
+|----------------|-------------------|----------------|
+| < 50 | Medium Soft / Medium | Fiction (39), Skate Banana (44), Facts (44) |
+| 50–62 | Medium | Cold Brew (58), T.Rice Pro (58), Money (51) |
+| 63–68 | Medium Stiff / Stiff | LibZilla (63), Jamie Lynn (64), Sweetfish (66) |
+| 73+ | Firm / Stiff | 4x4 (73), Banked Country (73), Wagyu (75) |
+
+**Bar width is not useful.** Width varies from 8 (LibZilla) to 69 (C Money,
+Antigravity) but does not correlate with any external flex metric. Hypotheses
+tested and rejected: flex-across-sizes (widths would be uniform), nose-to-tail
+variation (no correlation with board type), versatility (weak at best).
+
+**Note:** The mid=57-60 cluster contains 15+ Lib Tech boards that retailers rate
+anywhere from "Medium/Soft" (Legitimizer) to "Medium Stiff" (Skunk Ape Camber).
+The infographic lacks resolution to differentiate within this range. Spec
+resolution with retailer/review data handles the disambiguation.
+
+**Note:** backcountry.com says "Medium, Stiff" for nearly every Lib Tech board
+regardless of actual flex. Treat as template noise during spec resolution.
 
 ## What to do next
 
-### Step 1: Validate thresholds against retailer detail page data
+### Step 1: Validate thresholds against retailer detail page data ✅
 
-**Prerequisites: Task 16** (scrape all boards, not just sale — need non-discounted boards for representative data), **Task 34** (improve retailer spec extraction — need ability level from detail pages).
+Cross-referenced all Lib Tech and GNU infographic bar positions against evo,
+backcountry, and TGR ability level and terrain data. Finalized T1=10%, T2=85%.
 
-Gather ability level specs from retailer detail pages for boards across all clusters. The more retailer data points available, the better the threshold calibration.
+### Step 2: Finalize thresholds ✅
 
-Key boards to check:
-- Cluster 2: Golden Orca, Apex Orca, Skunk Ape (start 21-24%)
-- Cluster 4: Legitimizer, Jamie Lynn, Dynamo (start 32-33%)
-- Cluster 5: T.Rice Pro, T.Rice Orca (start 36-39%)
-
-### Step 2: Finalize thresholds
-
-Adjust start/end thresholds based on evo data. The start threshold is the critical
-one — need to determine if boards with start 21-24% are "beginner" or "intermediate"
-according to retailers.
+See "Finalized thresholds" section above.
 
 ### Step 3: Extract all 3 bar properties, not just rider level
 
 The infographic contains 3 bars: terrain, rider level, and flex. Currently only
 rider level is analyzed. Extend `analyzeInfographic()` to return all 3 bars and
 map each to the corresponding spec field:
-- **Rider level bar** → ability level (beginner/intermediate/advanced range)
-- **Terrain bar** → terrain scores (relates to Task 27 multi-dimensional terrain)
-- **Flex bar** → flex rating (1-10 scale)
+- **Rider level bar** → ability level range (beginner/intermediate/advanced via T1=10%, T2=85%)
+- **Terrain bar** → terrain scores (3-zone model → 5-dimension TerrainScores, 1-3 scale)
+- **Flex bar** → flex rating (midpoint / 10, rounded to 1-10 scale)
 
 ### Step 4: Add GNU infographic support ✅
 
@@ -221,8 +263,8 @@ shapes positioned above black scale borders, rather than gray-to-color gradient 
 - Added manufacturer + retailer links under board names on both audit pages
 
 **Remaining:**
-- Add `mapRiderLevelToAbility(riderLevel: BarAnalysis)` to `lib-tech-infographic.ts`
-- Add terrain and flex mapping functions
+- Add ability level mapping function using T1=10%, T2=85% thresholds
+- Add terrain mapping function (3-zone → TerrainScores)
+- Add flex mapping function: `Math.round(((startPct + endPct) / 2) / 10)` → 1-10
 - Wire infographic analysis into the scraper pipeline so boards get
   terrain/ability/flex from pixel analysis during `scrapeSpecs()`
-- Validate thresholds (Steps 1–2) before finalizing the mapping
