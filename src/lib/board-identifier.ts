@@ -3,10 +3,11 @@ import {
   detectCondition,
   detectGender,
   normalizeConditionString,
-  normalizeModel,
   inferYear,
 } from "./normalization";
-import { normalizeBrand } from "./scraping/utils";
+import { BrandIdentifier } from "./strategies/brand-identifier";
+import { getStrategy } from "./strategies";
+import type { BoardSignal } from "./strategies/types";
 
 export class BoardIdentifier {
   readonly rawModel: string;
@@ -16,7 +17,7 @@ export class BoardIdentifier {
   private readonly genderHint: string | undefined;
   private readonly yearHint: number | undefined;
 
-  private _brand?: string;
+  readonly brandId: BrandIdentifier;
   private _model?: string;
   private _condition?: ListingCondition;
   private _gender?: GenderTarget;
@@ -26,6 +27,7 @@ export class BoardIdentifier {
   constructor(input: {
     rawModel: string;
     rawBrand: string;
+    brandId?: BrandIdentifier;
     url?: string;
     conditionHint?: string;
     genderHint?: string;
@@ -37,14 +39,26 @@ export class BoardIdentifier {
     this.conditionHint = input.conditionHint;
     this.genderHint = input.genderHint;
     this.yearHint = input.yearHint;
+    this.brandId = input.brandId ?? new BrandIdentifier(this.rawBrand);
   }
 
   get brand(): string {
-    return (this._brand ??= normalizeBrand(this.rawBrand));
+    return this.brandId.canonical || "Unknown";
   }
 
   get model(): string {
-    return (this._model ??= normalizeModel(this.rawModel, this.brand));
+    if (this._model === undefined) {
+      const signal: BoardSignal = {
+        rawModel: this.rawModel,
+        brand: this.brand,
+        manufacturer: this.brandId.manufacturer,
+        source: "",
+        sourceUrl: this.url || "",
+      };
+      const strategy = getStrategy(this.brandId.manufacturer);
+      this._model = strategy.identify(signal).model;
+    }
+    return this._model;
   }
 
   get condition(): ListingCondition {

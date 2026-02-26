@@ -76,7 +76,8 @@ export function filterBoardsWithListings(
           lower.includes("youth") ||
           lower.includes("junior") ||
           lower.includes("grom") ||
-          lower.includes("children")
+          lower.includes("children") ||
+          lower.includes("toddler")
         ) {
           return false;
         }

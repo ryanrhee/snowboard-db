@@ -16,8 +16,10 @@ export interface ManufacturerSpec {
   extras: Record<string, string>;
   listings?: ScrapedListing[];
 }
-import { normalizeBrand } from "../scraping/utils";
-import { normalizeModel, detectGender, extractComboContents } from "../normalization";
+import { detectGender, extractComboContents } from "../normalization";
+import { BrandIdentifier } from "../strategies/brand-identifier";
+import { getStrategy } from "../strategies";
+import type { BoardSignal } from "../strategies/types";
 
 /**
  * Group RawBoard[] (one per size/listing) from a retailer into ScrapedBoard[]
@@ -31,10 +33,22 @@ export function adaptRetailerOutput(
   const groups = new Map<string, { board: Partial<ScrapedBoard>; listings: ScrapedListing[] }>();
 
   for (const raw of rawBoards) {
-    const brand = normalizeBrand(raw.brand || "Unknown");
+    const brandId = raw.brand ?? new BrandIdentifier("Unknown");
+    const brand = brandId.canonical;
     const rawModel = raw.model || "Unknown";
     const comboContents = extractComboContents(rawModel);
-    const model = normalizeModel(rawModel, brand);
+    const signal: BoardSignal = {
+      rawModel,
+      brand: brandId.canonical,
+      manufacturer: brandId.manufacturer,
+      source: `retailer:${retailerName}`,
+      sourceUrl: raw.url,
+      profile: raw.profile,
+      gender: raw.gender,
+    };
+    const strategy = getStrategy(brandId.manufacturer);
+    const identity = strategy.identify(signal);
+    const model = identity.model;
     const detectedGender = (raw.gender || detectGender(raw.model || "", raw.url)).toLowerCase();
     const genderSuffix = (detectedGender === "womens" || detectedGender === "kids") ? `|${detectedGender}` : "";
     const groupKey = `${brand.toLowerCase()}|${model.toLowerCase()}${genderSuffix}`;
@@ -43,7 +57,7 @@ export function adaptRetailerOutput(
       groups.set(groupKey, {
         board: {
           source: `retailer:${retailerName}`,
-          brand,
+          brandId,
           model,
           rawModel: rawModel,
           year: raw.year ?? undefined,
@@ -95,7 +109,7 @@ export function adaptRetailerOutput(
 
   return Array.from(groups.values()).map(({ board, listings }) => ({
     source: board.source!,
-    brand: board.brand!,
+    brandId: board.brandId!,
     model: board.model!,
     rawModel: board.rawModel,
     year: board.year,
@@ -122,7 +136,7 @@ export function adaptManufacturerOutput(
 ): ScrapedBoard[] {
   return specs.map((spec) => ({
     source: `manufacturer:${brand.toLowerCase()}`,
-    brand: spec.brand,
+    brandId: new BrandIdentifier(spec.brand),
     model: spec.model,
     rawModel: spec.model,
     year: spec.year ?? undefined,

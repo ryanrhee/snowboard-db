@@ -3,8 +3,9 @@ import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
 import { SearchRun, Board, Listing, BoardWithListings, TerrainScores } from "./types";
-import { normalizeModel } from "./normalization";
-import { canonicalizeBrand } from "./scraping/utils";
+import { BrandIdentifier } from "./strategies/brand-identifier";
+import { getStrategy } from "./strategies";
+import type { BoardSignal } from "./strategies/types";
 
 let db: Database.Database | null = null;
 let cacheDb: Database.Database | null = null;
@@ -279,9 +280,19 @@ export function generateListingId(
 
 // ===== Spec Key =====
 
-export function specKey(brand: string, model: string, gender?: string): string {
-  const cb = canonicalizeBrand(brand);
-  let normalizedModel = normalizeModel(model, cb).toLowerCase();
+export function specKey(brand: string, model: string, gender?: string, manufacturer?: string): string {
+  const brandId = manufacturer ? null : new BrandIdentifier(brand);
+  const cb = brandId ? brandId.canonical : brand;
+  const mfr = manufacturer ?? (brandId ? brandId.manufacturer : "default");
+  const signal: BoardSignal = {
+    rawModel: model,
+    brand: cb,
+    manufacturer: mfr,
+    source: "",
+    sourceUrl: "",
+  };
+  const strategy = getStrategy(mfr);
+  let normalizedModel = strategy.identify(signal).model.toLowerCase();
   const g = gender?.toLowerCase();
   // Strip leading "kids " from model for kids/youth to deduplicate
   // e.g. "burton|kids custom smalls|kids" → "burton|custom smalls|kids"

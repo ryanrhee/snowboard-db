@@ -54,6 +54,8 @@ export enum GenderTarget {
   UNISEX = "unisex",
 }
 
+import { BrandIdentifier } from "./strategies/brand-identifier";
+
 // ===== Raw Board (retailer output, messy) =====
 
 export interface RawBoard {
@@ -61,7 +63,7 @@ export interface RawBoard {
   region: Region;
   url: string;
   imageUrl?: string;
-  brand?: string;
+  brand?: BrandIdentifier;
   model?: string;
   year?: number;
   lengthCm?: number;

@@ -3,7 +3,8 @@ import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay } from "../scraping/utils";
+import { fetchPageWithBrowser, parsePrice, parseLengthCm, delay } from "../scraping/utils";
+import { BrandIdentifier } from "../strategies/brand-identifier";
 
 const BC_BASE_URL = "https://www.backcountry.com";
 
@@ -54,7 +55,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
             url: url
               ? (url.startsWith("http") ? url : `${BC_BASE_URL}${url}`)
               : undefined,
-            brand: brand?.name,
+            brand: BrandIdentifier.from(brand?.name),
             model: product.name as string,
             salePrice: (aggregates?.minSalePrice as number | undefined) || (aggregates?.minListPrice as number | undefined),
             originalPrice: aggregates?.minListPrice as number | undefined,
@@ -80,7 +81,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
             ? (product.url.startsWith("http") ? product.url : `${BC_BASE_URL}${product.url}`)
             : undefined,
           imageUrl: product.imageUrl || product.image || undefined,
-          brand: product.brand?.name || product.brandName || product.brand,
+          brand: BrandIdentifier.from(product.brand?.name, product.brandName, product.brand),
           model: product.title || product.name,
           salePrice: product.salePrice || product.price?.sale || product.price?.current,
           originalPrice: product.originalPrice || product.price?.original || product.price?.regular,
@@ -108,7 +109,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
           region: Region.US,
           url: product.url,
           imageUrl: product.image,
-          brand: product.brand?.name || product.brand,
+          brand: BrandIdentifier.from(product.brand?.name, product.brand),
           model: product.name,
           salePrice: offer?.price ? parseFloat(offer.price) : undefined,
           currency: Currency.USD,
@@ -168,7 +169,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
         region: Region.US,
         url: fullUrl,
         imageUrl: imgEl.attr("src") || imgEl.attr("data-src"),
-        brand: brandEl.text().trim() || undefined,
+        brand: BrandIdentifier.from(brandEl.text().trim()),
         model: nameEl.text().trim() || link.text().trim() || undefined,
         salePrice,
         originalPrice,
@@ -181,15 +182,11 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
   return boards;
 }
 
-async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | RawBoard[] | null> {
-  if (!partial.url) return null;
-
-  try {
-    await delay(config.scrapeDelayMs);
-    const html = await fetchPageWithBrowser(partial.url);
+/** Parse detail page HTML into RawBoard(s). Exported for testing. */
+export function parseDetailHtml(html: string, partial: Partial<RawBoard>): RawBoard | RawBoard[] | null {
     const $ = cheerio.load(html);
 
-    let brand = partial.brand;
+    let brand: BrandIdentifier | undefined = partial.brand;
     let model = partial.model;
     let salePrice = partial.salePrice;
     let originalPrice = partial.originalPrice;
@@ -203,7 +200,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       try {
         const data = JSON.parse($(el).text());
         if (data["@type"] === "Product") {
-          brand = brand || data.brand?.name || data.brand;
+          brand = brand ?? BrandIdentifier.from(data.brand?.name, data.brand);
           model = model || data.name;
           description = description || data.description;
           imageUrl = imageUrl || data.image;
@@ -211,7 +208,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
           if (offer?.price && !salePrice) salePrice = parseFloat(offer.price);
           if (offer?.availability) specs["availability"] = offer.availability;
         } else if (data["@type"] === "ProductGroup") {
-          brand = brand || data.brand?.name;
+          brand = brand ?? BrandIdentifier.from(data.brand?.name);
           model = model || data.name;
           description = description || data.description;
           if (Array.isArray(data.image)) imageUrl = imageUrl || data.image[0];
@@ -239,7 +236,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
         const nextData = JSON.parse(nextDataScript.text());
         const product = nextData?.props?.pageProps?.product;
         if (product) {
-          brand = brand || product.brand?.name || product.brand;
+          brand = brand ?? BrandIdentifier.from(product.brand?.name, product.brand);
           model = model || product.title;
           description = description || product.description;
 
@@ -336,7 +333,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
           region: Region.US,
           url: partial.url,
           imageUrl,
-          brand: brand ? normalizeBrand(brand) : "Unknown",
+          brand,
           model: model || "Unknown",
           year: undefined,
           lengthCm: sizeCm,
@@ -368,7 +365,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       region: Region.US,
       url: partial.url,
       imageUrl,
-      brand: brand ? normalizeBrand(brand) : "Unknown",
+      brand,
       model: model || "Unknown",
       year: undefined,
       lengthCm: undefined,
@@ -386,6 +383,15 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       specs,
       scrapedAt: new Date().toISOString(),
     };
+}
+
+async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard | RawBoard[] | null> {
+  if (!partial.url) return null;
+
+  try {
+    await delay(config.scrapeDelayMs);
+    const html = await fetchPageWithBrowser(partial.url);
+    return parseDetailHtml(html, partial);
   } catch (error) {
     console.error(`[backcountry] Failed to fetch details for ${partial.url}:`, error);
     return null;

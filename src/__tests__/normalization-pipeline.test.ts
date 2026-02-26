@@ -58,6 +58,26 @@ describe("pipeline step: strip-combo", () => {
   it("strips w/ package info", () => {
     expect(step.transform("Board w/ Package", undefined)).toBe("Board");
   });
+
+  it("strips & Bindings pattern", () => {
+    expect(step.transform("Poppy & Bindings Snowboard", undefined)).toBe("Poppy");
+  });
+
+  it("strips & Binding (singular) pattern", () => {
+    expect(step.transform("Recess & Binding", undefined)).toBe("Recess");
+  });
+});
+
+describe("pipeline step: strip-pipe", () => {
+  const step = findStep("strip-pipe");
+
+  it("replaces pipe with space", () => {
+    expect(step.transform("Warpspeed | Automobili", undefined)).toBe("Warpspeed Automobili");
+  });
+
+  it("no-ops without pipe", () => {
+    expect(step.transform("Custom", undefined)).toBe("Custom");
+  });
 });
 
 describe("pipeline step: strip-retail-tags", () => {
@@ -357,6 +377,18 @@ describe("pipeline step: strip-gnu-asym", () => {
 
   it("strips trailing Asym", () => {
     expect(step.transform("Finest Asym", "GNU")).toBe("Finest");
+  });
+});
+
+describe("pipeline step: strip-package", () => {
+  const step = findStep("strip-package");
+
+  it("strips Package keyword", () => {
+    expect(step.transform("After School Special Package", undefined)).toBe("After School Special");
+  });
+
+  it("no-ops without Package keyword", () => {
+    expect(step.transform("Custom", undefined)).toBe("Custom");
   });
 });
 

@@ -96,8 +96,8 @@
   },
   {
     "raw": "Forest Bailey Head Space C3 Snowboard (Closeout) 2025",
-    "brand": null,
-    "expected": "Forest Bailey Head Space"
+    "brand": "GNU",
+    "expected": "Head Space"
   },
   {
     "raw": "Gloss-C",
@@ -146,7 +146,7 @@
   },
   {
     "raw": "Process Flying V",
-    "brand": null,
+    "brand": "Burton",
     "expected": "Process"
   },
   {
@@ -206,7 +206,7 @@
   },
   {
     "raw": "Women's Frosting C2 Snowboard 2025",
-    "brand": null,
+    "brand": "GNU",
     "expected": "Frosting"
   },
   {
@@ -773,5 +773,25 @@
     "raw": "FK 136 Powskate Snowboard",
     "brand": "Aesmo",
     "expected": "FK Powskate"
+  },
+  {
+    "raw": "Warpspeed | Automobili Lamborghini Snowboard 2026",
+    "brand": "CAPiTA",
+    "expected": "Warpspeed Automobili Lamborghini"
+  },
+  {
+    "raw": "After School Special Package",
+    "brand": "Burton",
+    "expected": "After School Special"
+  },
+  {
+    "raw": "Poppy & Bindings Snowboard",
+    "brand": "Burton",
+    "expected": "Poppy"
+  },
+  {
+    "raw": "Recess & Binding",
+    "brand": "Burton",
+    "expected": "Recess"
   }
 ]

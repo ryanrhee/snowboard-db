@@ -16,12 +16,10 @@ import {
   normalizeShape,
   normalizeCategory,
   normalizeAbilityLevel,
-  normalizeModel,
   convertToUsd,
-  extractProfileSuffix,
-  PROFILE_SUFFIX_RE,
 } from "../normalization";
-import { canonicalizeBrand } from "../scraping/utils";
+import { getStrategy } from "../strategies";
+import type { BoardSignal } from "../strategies/types";
 import { calcBeginnerScoreForBoard } from "../scoring";
 import { categoryToTerrain } from "../terrain";
 
@@ -43,109 +41,130 @@ export function identifyBoards(
 ): Map<string, BoardGroup> {
   const boardGroups = new Map<string, BoardGroup>();
 
-  for (const sb of allScrapedBoards) {
-    const brand = canonicalizeBrand(sb.brand);
-    const gender = sb.gender ?? undefined;
-    const key = specKey(brand, sb.model, gender);
-
-    if (!boardGroups.has(key)) {
-      boardGroups.set(key, {
-        scraped: [],
-        brand: brand,
-        model: normalizeModel(sb.model, brand),
-        rawModels: [],
-      });
-    }
-    const group = boardGroups.get(key)!;
-    group.scraped.push(sb);
-    if (sb.rawModel) group.rawModels.push(sb.rawModel);
+  // Phase 1: identify each board via strategy, collecting profile variants
+  interface AnnotatedBoard {
+    sb: ScrapedBoard;
+    brand: string;
+    model: string;
+    profileVariant: string | null;
+    key: string;
   }
 
-  // --- Profile variant collision detection and splitting ---
-  // If a board group has multiple distinct manufacturer source URLs, the model
-  // has profile variants (e.g. "Custom Camber" and "Custom Flying V") that
-  // were collapsed into the same key. Split them into separate groups.
-  for (const [key, group] of Array.from(boardGroups.entries())) {
-    const mfrUrls = new Set<string>();
-    const mfrProfileSuffixes = new Set<string>();
-    for (const sb of group.scraped) {
-      if (sb.source.startsWith("manufacturer:")) {
-        mfrUrls.add(sb.sourceUrl);
-        const raw = sb.rawModel ?? sb.model;
-        const suffix = extractProfileSuffix(raw, group.brand);
-        mfrProfileSuffixes.add(suffix ?? "__none__");
-      }
+  const annotated: AnnotatedBoard[] = [];
+
+  for (const sb of allScrapedBoards) {
+    const brandId = sb.brandId;
+    const brand = brandId.canonical;
+    const gender = sb.gender ?? undefined;
+
+    const signal: BoardSignal = {
+      rawModel: sb.rawModel ?? sb.model,
+      brand,
+      manufacturer: brandId.manufacturer,
+      source: sb.source,
+      sourceUrl: sb.sourceUrl,
+      profile: sb.profile,
+      gender: sb.gender,
+    };
+    const strategy = getStrategy(brandId.manufacturer);
+    const identity = strategy.identify(signal);
+
+    const key = specKey(brand, identity.model, gender, brandId.manufacturer);
+
+    annotated.push({
+      sb,
+      brand,
+      model: identity.model,
+      profileVariant: identity.profileVariant,
+      key,
+    });
+  }
+
+  // Phase 2: group by key (brand|model|gender)
+  const groupedAnnotated = new Map<string, AnnotatedBoard[]>();
+  for (const a of annotated) {
+    if (!groupedAnnotated.has(a.key)) groupedAnnotated.set(a.key, []);
+    groupedAnnotated.get(a.key)!.push(a);
+  }
+
+  // Phase 3: split profile variants within each group
+  for (const [key, entries] of groupedAnnotated) {
+    // Collect distinct profile variants
+    const variants = new Set<string | null>();
+    for (const e of entries) {
+      variants.add(e.profileVariant);
     }
-    // Only split if there are multiple manufacturer URLs AND they have
-    // different profile suffixes. Multiple URLs with the same profile
-    // (e.g. rider signature editions) should not trigger a split.
-    if (mfrUrls.size <= 1 || mfrProfileSuffixes.size <= 1) continue;
 
-    // This group has profile variant collisions — split it
-    boardGroups.delete(key);
+    // Check if there are multiple DISTINCT non-null variants
+    const nonNullVariants = new Set([...variants].filter(v => v !== null));
 
-    // Collect known profile suffixes from manufacturer rawModels
-    const mfrSuffixes = new Map<string, string>(); // suffix → variant model name
-    for (const sb of group.scraped) {
-      if (!sb.source.startsWith("manufacturer:")) continue;
-      const raw = sb.rawModel ?? sb.model;
-      const suffix = extractProfileSuffix(raw, group.brand);
-      if (suffix) {
-        mfrSuffixes.set(suffix, normalizeModel(raw, group.brand, { keepProfile: true }));
-      }
+    if (nonNullVariants.size <= 1) {
+      // No splitting needed — single variant or all null
+      const model = entries[0].model;
+      const brand = entries[0].brand;
+      boardGroups.set(key, {
+        scraped: entries.map(e => e.sb),
+        brand,
+        model,
+        rawModels: entries.map(e => e.sb.rawModel).filter(Boolean) as string[],
+      });
+      continue;
     }
 
-    // Build a profile value → suffix lookup from manufacturer boards
-    const profileToSuffix = new Map<string, string>();
-    for (const sb of group.scraped) {
-      if (!sb.source.startsWith("manufacturer:")) continue;
-      const raw = sb.rawModel ?? sb.model;
-      const suffix = extractProfileSuffix(raw, group.brand);
-      if (suffix && sb.profile) {
-        const normalizedProfile = normalizeProfile(sb.profile);
+    // Multiple variants — split into separate groups
+    // Build a profile value → variant lookup from entries that have profile specs
+    const profileToVariant = new Map<string, string>();
+    for (const e of entries) {
+      if (e.profileVariant && e.sb.profile) {
+        const normalizedProfile = normalizeProfile(e.sb.profile);
         if (normalizedProfile) {
-          profileToSuffix.set(normalizedProfile, suffix);
+          profileToVariant.set(normalizedProfile, e.profileVariant);
         }
       }
     }
 
-    // Default suffix: for Burton use "camber", for Lib Tech/GNU use "c2"
-    const brandLower = group.brand.toLowerCase();
-    const defaultSuffix = (brandLower === "lib tech" || brandLower === "gnu") ? "c2" : "camber";
+    // Determine default variant: pick the most common non-null variant, or first
+    const variantCounts = new Map<string, number>();
+    for (const e of entries) {
+      if (e.profileVariant) {
+        variantCounts.set(e.profileVariant, (variantCounts.get(e.profileVariant) || 0) + 1);
+      }
+    }
+    // Default for unresolved entries: use first variant alphabetically as fallback
+    const sortedVariants = [...nonNullVariants].sort();
+    const defaultVariant = sortedVariants[0];
 
-    for (const sb of group.scraped) {
-      const raw = sb.rawModel ?? sb.model;
-      let suffix = extractProfileSuffix(raw, group.brand);
+    for (const e of entries) {
+      let variant = e.profileVariant;
 
-      // If no suffix in the name, try matching via profile spec
-      if (!suffix && sb.profile) {
-        const normalizedProfile = normalizeProfile(sb.profile);
-        if (normalizedProfile && profileToSuffix.has(normalizedProfile)) {
-          suffix = profileToSuffix.get(normalizedProfile)!;
+      // If no variant, try matching via profile spec
+      if (!variant && e.sb.profile) {
+        const normalizedProfile = normalizeProfile(e.sb.profile);
+        if (normalizedProfile && profileToVariant.has(normalizedProfile)) {
+          variant = profileToVariant.get(normalizedProfile)!;
         }
       }
 
-      // Last resort: use the default (standard) variant
-      if (!suffix) {
-        suffix = defaultSuffix;
+      // Last resort: use default variant
+      if (!variant) {
+        variant = defaultVariant;
       }
 
-      const variantModel = `${group.model} ${suffix.replace(/\b\w/g, c => c.toUpperCase())}`;
-      // Build variant key: replace the model portion of the original key
+      const variantModel = `${e.model} ${variant.replace(/\b\w/g, c => c.toUpperCase())}`;
       const keyParts = key.split("|");
       const variantKey = `${keyParts[0]}|${variantModel.toLowerCase()}|${keyParts[keyParts.length - 1]}`;
 
       if (!boardGroups.has(variantKey)) {
         boardGroups.set(variantKey, {
           scraped: [],
-          brand: group.brand,
+          brand: e.brand,
           model: variantModel,
           rawModels: [],
         });
       }
       const variantGroup = boardGroups.get(variantKey)!;
-      variantGroup.scraped.push(sb);
-      if (sb.rawModel) variantGroup.rawModels.push(sb.rawModel);
+      variantGroup.scraped.push(e.sb);
+      if (e.sb.rawModel) variantGroup.rawModels.push(e.sb.rawModel);
     }
   }
 
@@ -286,7 +305,8 @@ export function coalesce(
       for (const sl of sb.listings) {
         const identifier = new BoardIdentifier({
           rawModel: sb.model,
-          rawBrand: sb.brand,
+          rawBrand: sb.brandId.canonical,
+          brandId: sb.brandId,
           url: sl.url,
           conditionHint: sl.condition,
           genderHint: sl.gender ?? sb.gender,

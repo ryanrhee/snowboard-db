@@ -814,7 +814,7 @@ describe("normalizeModel", () => {
       ["Women's Saturday Snowboard 2025", undefined, "Saturday"],
       ["Women's Darrah Snowboard 2025", undefined, "Darrah"],
       ["Women's No Drama Snowboard (Closeout) 2024", undefined, "No Drama"],
-      ["Women's Frosting C2 Snowboard 2025", undefined, "Frosting"],
+      ["Women's Frosting C2 Snowboard 2025", "GNU", "Frosting"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
     });
@@ -823,7 +823,7 @@ describe("normalizeModel", () => {
   describe("strips retail tags", () => {
     it.each([
       ["Psychocandy Snowboard (Closeout) 2025", undefined, "Psychocandy"],
-      ["Forest Bailey Head Space C3 Snowboard (Closeout) 2025", undefined, "Forest Bailey Head Space"],
+      ["Forest Bailey Head Space C3 Snowboard (Closeout) 2025", "GNU", "Head Space"],
       ["T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "Apex Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
@@ -871,7 +871,7 @@ describe("normalizeModel", () => {
   describe("handles models that need no cleanup", () => {
     it.each([
       ["Custom", undefined, "Custom"],
-      ["Process Flying V", undefined, "Process"],
+      ["Process Flying V", "Burton", "Process"],
       ["Halldor", undefined, "Halldor"],
       ["Flagship Pro", undefined, "Flagship Pro"],
     ])('%s → %s', (input, brand, expected) => {
@@ -1268,6 +1268,42 @@ describe("zero-width chars + alias resolution", () => {
 });
 
 // =============================================================================
+// Pipe char stripping (Task 39 round 7)
+// =============================================================================
+
+describe("normalizeModel — pipe char", () => {
+  it("replaces pipe with space", () => {
+    expect(normalizeModel("Warpspeed | Automobili Lamborghini Snowboard 2026", "CAPiTA")).toBe(
+      "Warpspeed Automobili Lamborghini"
+    );
+  });
+});
+
+// =============================================================================
+// Package deal stripping (Task 39 round 7)
+// =============================================================================
+
+describe("normalizeModel — package deals", () => {
+  it("strips Package keyword", () => {
+    expect(normalizeModel("After School Special Package", "Burton")).toBe(
+      "After School Special"
+    );
+  });
+
+  it("strips & Bindings from combo listing", () => {
+    expect(normalizeModel("Poppy & Bindings Snowboard", "Burton")).toBe(
+      "Poppy"
+    );
+  });
+
+  it("strips & Binding (singular) from combo listing", () => {
+    expect(normalizeModel("Recess & Binding", "Burton")).toBe(
+      "Recess"
+    );
+  });
+});
+
+// =============================================================================
 // Period stripping edge cases (Task 39)
 // =============================================================================
 
@@ -1428,6 +1464,20 @@ describe("detectGender — WMN detection", () => {
 
   it("detects Wmn in model as WOMENS", () => {
     expect(detectGender("Navigator Wmn Split")).toBe(GenderTarget.WOMENS);
+  });
+});
+
+describe("detectGender — toddler detection", () => {
+  it("detects Toddlers' as KIDS", () => {
+    expect(detectGender("Ripper Toddlers'")).toBe(GenderTarget.KIDS);
+  });
+
+  it("detects Toddler as KIDS", () => {
+    expect(detectGender("Ripper Toddler")).toBe(GenderTarget.KIDS);
+  });
+
+  it("detects Toddlers as KIDS", () => {
+    expect(detectGender("Ripper Toddlers")).toBe(GenderTarget.KIDS);
   });
 });
 

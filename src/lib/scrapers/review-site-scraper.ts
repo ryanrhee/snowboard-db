@@ -2,6 +2,7 @@ import { ScrapedBoard, ScraperModule } from "./types";
 import { tryReviewSiteLookup } from "../review-sites/the-good-ride";
 import { delay } from "../scraping/utils";
 import { config } from "../config";
+import { BrandIdentifier } from "../strategies/brand-identifier";
 
 /**
  * Create a ScraperModule that looks up review site specs for a list of
@@ -37,7 +38,7 @@ export function createReviewSiteScraper(
 
         boards.push({
           source: "review-site:the-good-ride",
-          brand,
+          brandId: new BrandIdentifier(brand),
           model,
           sourceUrl: reviewSpec.sourceUrl,
           flex: reviewSpec.flex ?? undefined,

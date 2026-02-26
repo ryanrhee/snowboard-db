@@ -3,14 +3,13 @@ import { coalesce } from "../lib/scrapers/coalesce";
 import { Currency, Region } from "../lib/types";
 import type { ScrapedBoard } from "../lib/scrapers/types";
 import { setSpecSource } from "../lib/db";
+import { BrandIdentifier } from "../lib/strategies/brand-identifier";
 
 vi.mock("../lib/db", () => ({
   specKey: vi.fn(
-    (brand: string, model: string, gender?: string) => {
-      // Strip profile suffixes like the real specKey → normalizeModel does
-      let m = model
-        .replace(/\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i, "");
-      const base = `${brand.toLowerCase()}|${m.toLowerCase()}`;
+    (brand: string, model: string, gender?: string, _manufacturer?: string) => {
+      // Strategy already strips profile suffixes, so specKey just lowercases
+      const base = `${brand.toLowerCase()}|${model.toLowerCase()}`;
       const g = gender?.toLowerCase();
       if (g === "womens") return `${base}|womens`;
       if (g === "kids" || g === "youth") return `${base}|kids`;
@@ -31,6 +30,22 @@ vi.mock("../lib/db", () => ({
   getCachedSpecs: vi.fn(() => null),
 }));
 
+vi.mock("../lib/strategies/brand-identifier", () => {
+  class MockBrandIdentifier {
+    raw: string;
+    constructor(raw: string) { this.raw = raw; }
+    get cleaned() { return this.raw; }
+    get canonical() { return this.raw; }
+    get manufacturer() {
+      const lower = this.raw.toLowerCase();
+      if (lower === "burton") return "burton";
+      if (lower === "gnu" || lower === "lib tech") return "mervin";
+      return "default";
+    }
+  }
+  return { BrandIdentifier: MockBrandIdentifier };
+});
+
 vi.mock("../lib/scraping/utils", () => ({
   canonicalizeBrand: vi.fn((b: string) => b),
 }));
@@ -40,16 +55,17 @@ vi.mock("../lib/scoring", () => ({
 }));
 
 function makeScrapedBoard(
-  overrides: Partial<ScrapedBoard> = {}
+  overrides: Partial<ScrapedBoard> & { brand?: string } = {}
 ): ScrapedBoard {
+  const { brand, ...rest } = overrides;
   return {
     source: "retailer:tactics",
-    brand: "Burton",
+    brandId: new BrandIdentifier(brand ?? "Burton"),
     model: "Custom",
     sourceUrl: "https://tactics.com/custom",
     extras: {},
     listings: [],
-    ...overrides,
+    ...rest,
   };
 }
 

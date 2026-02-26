@@ -232,7 +232,6 @@ const RETAILER_BADGE_COLOR: Record<string, string> = {
   evo: "bg-purple-900/50 text-purple-300",
   backcountry: "bg-blue-900/50 text-blue-300",
   rei: "bg-green-900/50 text-green-300",
-  bestsnowboard: "bg-orange-900/50 text-orange-300",
 };
 
 const CONDITION_BADGE: Record<string, string> = {

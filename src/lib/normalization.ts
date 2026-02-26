@@ -32,7 +32,7 @@ export function normalizeConditionString(raw: string): ListingCondition {
 export function detectGender(rawModel: string, url?: string): GenderTarget {
   if (/women'?s|wmns|\bwmn\b/i.test(rawModel) || (url && /[\/-]womens?\b/i.test(url)))
     return GenderTarget.WOMENS;
-  if (/kids'?|boys'?|girls'?|youth|junior/i.test(rawModel))
+  if (/kids'?|boys'?|girls'?|youth|junior|toddlers?'?/i.test(rawModel))
     return GenderTarget.KIDS;
   return GenderTarget.UNISEX;
 }
@@ -226,10 +226,15 @@ export const NORMALIZATION_PIPELINE: NormalizationStep[] = [
     transform: (m) => m.replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, ""),
   },
   {
+    name: "strip-pipe",
+    transform: (m) => m.replace(/\s*\|\s*/g, " "),
+  },
+  {
     name: "strip-combo",
     transform: (m) => {
       m = m.replace(/\s*\+\s.*$/, "");
       m = m.replace(/\s+w\/\s.*$/i, "");
+      m = m.replace(/\s+&\s+Bindings?\b.*$/i, "");
       return m;
     },
   },
@@ -378,6 +383,10 @@ export const NORMALIZATION_PIPELINE: NormalizationStep[] = [
     },
   },
   {
+    name: "strip-package",
+    transform: (m) => m.replace(/\s+Package\b/gi, ""),
+  },
+  {
     name: "clean-whitespace",
     transform: (m) => {
       m = m.replace(/\/+$/, "");
@@ -397,29 +406,33 @@ function stepApplies(step: NormalizationStep, brand: string | undefined): boolea
   return step.brands.includes(brand);
 }
 
+import { BrandIdentifier } from "./strategies/brand-identifier";
+import { getStrategy } from "./strategies";
+import type { BoardSignal } from "./strategies/types";
+
 /**
- * Run the full normalization pipeline on a raw model string.
+ * Run model normalization via the strategy pattern.
+ * Delegates to the appropriate manufacturer strategy (Burton, Mervin, Default).
  */
-export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile?: boolean }): string {
+export function normalizeModel(raw: string, brand?: string, manufacturer?: string): string {
   if (!raw || raw === "Unknown") return raw;
 
-  let model = raw;
-
-  for (const step of NORMALIZATION_PIPELINE) {
-    if (!stepApplies(step, brand)) continue;
-    // "strip-profile" is injected between normalize-trice and strip-leading-the
-    if (step.name === "strip-leading-the" && !opts?.keepProfile) {
-      model = model.replace(PROFILE_SUFFIX_RE, "");
-    }
-    model = step.transform(model, brand);
-  }
-
-  return model || raw;
+  const brandId = manufacturer ? null : (brand ? new BrandIdentifier(brand) : null);
+  const signal: BoardSignal = {
+    rawModel: raw,
+    brand: brandId?.canonical ?? (brand || ""),
+    manufacturer: manufacturer ?? brandId?.manufacturer ?? "default",
+    source: "",
+    sourceUrl: "",
+  };
+  const strategy = getStrategy(signal.manufacturer);
+  return strategy.identify(signal).model || raw;
 }
 
 /**
  * Run the normalization pipeline and return the intermediate result after each step.
  * Useful for debugging which step(s) caused unexpected normalization.
+ * Note: This uses the legacy pipeline directly for step-by-step tracing.
  */
 export function normalizeModelDebug(
   raw: string,
@@ -452,18 +465,6 @@ export function normalizeModelDebug(
   }
 
   return trace;
-}
-
-/**
- * Extract the profile suffix that normalizeModel() would strip.
- * Returns the lowercased suffix (e.g. "camber", "flying v", "c2") or null.
- */
-export function extractProfileSuffix(rawModel: string, brand?: string): string | null {
-  if (!rawModel) return null;
-  const withProfile = normalizeModel(rawModel, brand, { keepProfile: true });
-  const match = withProfile.match(PROFILE_SUFFIX_RE);
-  if (!match) return null;
-  return match[0].trim().toLowerCase();
 }
 
 export function normalizeFlex(raw: string): number | null {

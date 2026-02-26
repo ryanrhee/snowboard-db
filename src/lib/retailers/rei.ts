@@ -1,7 +1,8 @@
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPageWithBrowser, normalizeBrand, delay } from "../scraping/utils";
+import { fetchPageWithBrowser, delay } from "../scraping/utils";
+import { BrandIdentifier } from "../strategies/brand-identifier";
 import { fetchPage } from "../scraping/utils";
 import { config } from "../config";
 import * as cheerio from "cheerio";
@@ -162,7 +163,7 @@ function productsToRawBoards(allProducts: ReiProduct[]): RawBoard[] {
         region: Region.US,
         url: `${REI_BASE_URL}${p.link}`,
         imageUrl: p.thumbnailImageLink || undefined,
-        brand: normalizeBrand(p.brand || "Unknown"),
+        brand: BrandIdentifier.from(p.brand),
         model: (p.cleanTitle || p.title || "Unknown").replace(/\/+$/, ""),
         year: undefined,
         lengthCm: undefined,

@@ -16,6 +16,19 @@ interface ScraperModule {
 
 Scrapers are registered in `src/lib/scrapers/registry.ts` as a flat list. No separate registries or adapter layers exist — each scraper directly returns `ScrapedBoard[]`. Review-site scrapers are not in the registry; they are created dynamically by the pipeline (see [Review Sites](#review-sites) below).
 
+### Brand Handling
+
+Retailer scrapers create `BrandIdentifier` instances (from `src/lib/strategies/brand-identifier.ts`) at scrape time and attach them to `RawBoard.brand`. This ensures brand canonicalization happens once, early in the pipeline. The `BrandIdentifier` flows through `adaptRetailerOutput()` into `ScrapedBoard.brandId`, where it drives strategy dispatch for model normalization and profile variant extraction.
+
+Manufacturer scrapers pass plain brand strings; `adaptManufacturerOutput()` wraps them in `BrandIdentifier` instances.
+
+### Adapter Layer (`src/lib/scrapers/adapters.ts`)
+
+Two adapter functions convert scraper-internal types to `ScrapedBoard[]`:
+
+- **`adaptRetailerOutput(rawBoards, retailerName)`** — Groups `RawBoard[]` (one per size) into `ScrapedBoard[]` (one per model). Uses `getStrategy(manufacturer).identify()` to normalize models for grouping. Detects gender, extracts combo contents.
+- **`adaptManufacturerOutput(specs, brand)`** — Maps `ManufacturerSpec[]` to `ScrapedBoard[]` with empty listings.
+
 ## Active Scrapers
 
 ### Retailers
@@ -26,7 +39,6 @@ Scrapers are registered in `src/lib/scrapers/registry.ts` as a flat list. No sep
 | `retailer:evo` | US | Playwright | Yes | Active |
 | `retailer:backcountry` | US | Playwright | Yes | Active |
 | `retailer:rei` | US | Playwright (system Chrome) | Yes (CDP pre-cache) | Active |
-| `retailer:bestsnowboard` | KR | HTTP | Yes | Blocked (Cloudflare) |
 
 ### Manufacturers
 
@@ -50,7 +62,6 @@ Retailers that fetch detail pages provide specs directly from product pages.
 | Evo | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | Yes (per-size) | Yes | Yes |
 | Backcountry | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes (per-size) | No | Yes | Yes |
 | REI | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes |
-| BestSnowboard | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes |
 
 ---
 
@@ -106,7 +117,7 @@ Two-phase: listing page, then individual product detail pages.
 
 **Listing page** uses a multi-fallback extraction pipeline: Apollo GraphQL cache → legacy data shapes → JSON-LD → HTML cards.
 
-**Detail pages** extract from `#__NEXT_DATA__`: specs from `product.features`, size variants from `product.skusCollection`, reviews from `product.customerReviews`.
+**Detail pages** extract from `#__NEXT_DATA__`: specs from `product.features`, size variants from `product.skusCollection`, reviews from `product.customerReviews`. For combo/package deals (board + binding), the scraper reads `packageComponents` from `__NEXT_DATA__`, finds the snowboard component, and uses its `componentName` as the model — this preserves gender indicators (e.g. "- Women's") that would be lost from the generic package title.
 
 ---
 
@@ -123,18 +134,6 @@ REI embeds product data as inline JavaScript objects in Vue.js server-rendered t
 **Detail pages** use plain HTTP with 24h cache. First uncached URL that gets WAF blocked stops further attempts. Extracts from `table.tech-specs`.
 
 **CDP pre-caching workaround:** REI's Akamai WAF aggressively blocks automated requests. Use `./debug.sh '{"action":"slow-scrape","useSystemChrome":true}'` to drive a real Chrome instance via CDP and pre-cache detail pages.
-
----
-
-### BestSnowboard (bestsnowboard.co.kr)
-
-- **File:** `src/lib/retailers/bestsnowboard.ts`
-- **Base URL:** `https://www.bestsnowboard.co.kr`
-- **Fetch method:** HTTP (`fetchPage`)
-- **Currency:** KRW
-- **Status:** Blocked (Cloudflare)
-
-Korean retailer with bilingual spec extraction (English + Korean keys).
 
 ---
 
@@ -168,7 +167,7 @@ Two-phase: catalog page (`.product-item` cards), then detail pages (concurrency 
 - **Base URL:** `https://www.capitasnowboarding.com`
 - **Fetch method:** HTTP (Shopify JSON API + HTML fallback)
 
-Shopify JSON API (primary) → HTML catalog (fallback). Detail pages extract hexagon chart (`data-skills` attribute for jibbing, skill level, powder, groomers, versatility, jumps) and flex from `.c-spec` elements.
+Shopify JSON API (primary) → HTML catalog (fallback). Detail pages extract hexagon chart (`data-skills` attribute for jibbing, skill level, powder, groomers, versatility, jumps) and flex from `.c-spec` elements. Gender detection normalizes Unicode smart apostrophes (U+2019 `'`) to ASCII before matching "Women's" in category labels and Shopify tags.
 
 ---
 
@@ -257,34 +256,39 @@ Rate-limited with `config.scrapeDelayMs` between fetches. Sitemap and URL mappin
    ```typescript
    import { ScraperModule, ScrapedBoard } from "../scrapers/types";
    import { adaptRetailerOutput } from "../scrapers/adapters"; // for retailers
+   import { BrandIdentifier } from "../strategies/brand-identifier";
    // or: import { ManufacturerSpec, adaptManufacturerOutput } from "../scrapers/adapters"; // for manufacturers
 
-   export const myBrand: ScraperModule = {
-     name: "manufacturer:mybrand",  // or "retailer:myretailer"
-     sourceType: "manufacturer",    // or "retailer"
+   export const myRetailer: ScraperModule = {
+     name: "retailer:myretailer",
+     sourceType: "retailer",
      baseUrl: "https://...",
-     region: Region.US,             // optional, for retailers
+     region: Region.US,
      async scrape(scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-       // Scrape and return ScrapedBoard[]
-       // Retailers: build RawBoard[], then return adaptRetailerOutput(boards, "myretailer")
-       // Manufacturers: build ManufacturerSpec[], then return adaptManufacturerOutput(specs, "My Brand")
+       // Build RawBoard[] — use BrandIdentifier for brand:
+       //   brand: new BrandIdentifier(rawBrandString)
+       // Then: return adaptRetailerOutput(boards, "myretailer")
      },
    };
    ```
 
 2. Register in `src/lib/scrapers/registry.ts`:
    ```typescript
-   import { myBrand } from "../manufacturers/my-brand";
-   const ALL_SCRAPERS: ScraperModule[] = [...existing, myBrand];
+   import { myRetailer } from "../retailers/my-retailer";
+   const ALL_SCRAPERS: ScraperModule[] = [...existing, myRetailer];
    ```
 
-3. For blocked scrapers, add to `BLOCKED_SCRAPERS` set.
+3. For blocked scrapers, add to `BLOCKED_SCRAPERS` set in `registry.ts`.
 
-4. Platform-specific patterns:
+4. If the new brand has profile variants (like Burton's Camber/Flying V or Mervin's C2/C3), add a new strategy in `src/lib/strategies/` and register it in `getStrategy()`.
+
+5. If the brand has spelling variants, add entries to `BRAND_ALIASES` in `src/lib/strategies/brand-identifier.ts`. If the brand belongs to a manufacturer group (like GNU/Lib Tech → Mervin), add it to `CANONICAL_TO_MANUFACTURER`.
+
+6. Platform-specific patterns:
    - **Shopify:** Use `/collections/{name}/products.json` API first. See `capita.ts`.
    - **Magento:** Server-rendered HTML, use `fetchPage()` + cheerio. See `lib-tech.ts`.
    - **Custom:** May need `__bootstrap` JSON extraction (Burton) or browser rendering.
 
-5. Test with `./debug.sh '{"action":"run","sites":["manufacturer:mybrand"]}'`.
+7. Test with `./debug.sh '{"action":"run","sites":["retailer:myretailer"]}'`.
 
-6. Write tests for HTML/JSON parsing in `src/__tests__/{brand}.test.ts`.
+8. Write tests for HTML/JSON parsing in `src/__tests__/{brand}.test.ts`.

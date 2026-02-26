@@ -1,4 +1,5 @@
 import { Currency, Region, ScrapeScope } from "../types";
+import type { BrandIdentifier } from "../strategies/brand-identifier";
 
 /** One size/price variant from a retailer listing */
 export interface ScrapedListing {
@@ -20,7 +21,7 @@ export interface ScrapedListing {
 /** Unified scraper output — one per board model per source */
 export interface ScrapedBoard {
   source: string; // "retailer:tactics", "manufacturer:burton"
-  brand: string;
+  brandId: BrandIdentifier;
   model: string;
   rawModel?: string;
   year?: number;

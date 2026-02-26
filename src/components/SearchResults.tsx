@@ -48,7 +48,6 @@ const retailerBadgeColor = (retailer: string) => {
     evo: "bg-purple-900/50 text-purple-300",
     backcountry: "bg-blue-900/50 text-blue-300",
     rei: "bg-green-900/50 text-green-300",
-    bestsnowboard: "bg-orange-900/50 text-orange-300",
   };
   return colors[retailer] || "bg-gray-800 text-gray-300";
 };

@@ -7,13 +7,13 @@ This document describes the snowboard-finder system architecture.
 The pipeline is orchestrated by `runSearchPipeline()` in `src/lib/pipeline.ts`. It runs in these phases:
 
 1. **Setup** — Accept an optional `ScrapeScope` to filter which scrapers run. Generate a unique `runId`.
-2. **Scraping** — Run all selected scrapers (retailers + manufacturers) in parallel via `Promise.allSettled()`. Each returns `ScrapedBoard[]`.
-3. **Board identification** — `identifyBoards()` groups scraped boards by identity (`brand|model|gender`) and splits profile variants. Returns a map of board key → `{brand, model}`.
+2. **Scraping** — Run all selected scrapers (retailers + manufacturers) in parallel via `Promise.allSettled()`. Each returns `ScrapedBoard[]`. Retailers attach `BrandIdentifier` instances to each `RawBoard`.
+3. **Board identification** — `identifyBoards()` uses the strategy system (see [Board Identification Strategies](#board-identification-strategies)) to normalize models and extract profile variants, then groups by identity (`brand|model|gender`). Boards with multiple distinct profile variants are split into separate entries. Returns a map of board key → `BoardGroup`.
 4. **Review site scraping** — For each unique board identified in step 3, look up specs from The Good Ride. Produces additional `ScrapedBoard[]` entries with `source: "review-site:the-good-ride"` and empty listings.
 5. **Coalescence** — `coalesce()` processes ALL `ScrapedBoard[]` (retailer + manufacturer + review-site) uniformly: groups by identity, writes all specs to `spec_sources`, builds `Board` and `Listing` entities.
 6. **Spec resolution** — Apply priority-based spec resolution across sources (manufacturer > review-site > retailer). Calculate beginner scores.
 7. **Price enrichment** — Fill in discount percentages using manufacturer MSRP.
-8. **Persistence** — Upsert boards, insert listings, record the search run, prune expired cache entries.
+8. **Persistence** — Upsert boards, insert listings, record the search run, delete orphan boards, prune expired cache entries.
 
 ### ScrapeScope
 
@@ -46,6 +46,73 @@ interface ScrapeScope {
 
 **Review sites** are scraped after board identification, using the identified board keys as targets. They produce `ScrapedBoard[]` entries (with empty listings) that flow through coalesce like any other source. This ensures review sites only enrich boards that exist from retailer/manufacturer data — they never introduce new boards. Currently: The Good Ride (`review-site:the-good-ride`).
 
+## Board Identification Strategies
+
+Board identification uses a **strategy pattern** to handle manufacturer-specific model normalization and profile variant extraction. Each manufacturer group has its own strategy that transforms raw scraped model names into canonical identities.
+
+### Architecture
+
+```
+                     ┌──────────────────────────────┐
+                     │        BrandIdentifier        │
+                     │  raw → cleaned → canonical    │
+                     │  canonical → manufacturer     │
+                     │   ("burton"|"mervin"|"default")│
+                     └──────────┬───────────────────┘
+                                │
+                     getStrategy(manufacturer)
+                                │
+           ┌────────────────────┼────────────────────┐
+           ▼                    ▼                     ▼
+   BurtonStrategy       MervinStrategy        DefaultStrategy
+   (profile names)      (contour codes)       (rider names,
+                                               model aliases)
+           │                    │                     │
+           ▼                    ▼                     ▼
+    BoardSignal ──► identify() ──► BoardIdentity
+                                    { model, profileVariant }
+```
+
+### Key Types (`src/lib/strategies/types.ts`)
+
+- **`BoardSignal`** — Immutable input: `rawModel`, `brand`, `manufacturer`, `source`, `sourceUrl`, optional `profile` and `gender`.
+- **`BoardIdentity`** — Computed output: `model` (normalized, profile stripped) and `profileVariant` (e.g. `"camber"`, `"c2x"`, or `null`).
+- **`BoardIdentificationStrategy`** — Interface with single method `identify(signal: BoardSignal): BoardIdentity`.
+
+### BrandIdentifier (`src/lib/strategies/brand-identifier.ts`)
+
+Immutable identifier that resolves a raw brand string through three lazy-computed stages:
+
+1. **`cleaned`** — Strip zero-width chars, "Snowboard(s/ing)" suffixes
+2. **`canonical`** — Resolve aliases (e.g. `"Lib Technologies"` → `"Lib Tech"`, `"capita"` → `"CAPiTA"`)
+3. **`manufacturer`** — Strategy dispatch key: `"burton"`, `"mervin"` (GNU + Lib Tech), or `"default"`
+
+Retailers create `BrandIdentifier` instances at scrape time and attach them to `RawBoard.brand`. The identifier flows through the pipeline: `RawBoard` → `adaptRetailerOutput()` → `ScrapedBoard.brandId` → `identifyBoards()` / `coalesce()`.
+
+### Strategies
+
+**`BurtonStrategy`** — Profile names appear in product titles (Camber, Flying V, Flat Top, PurePop Camber). Extracts the profile suffix from the model name and returns it as `profileVariant`.
+
+**`MervinStrategy`** — Handles GNU and Lib Tech. Contour codes (C2, C2X, C2E, C3, BTX) appear as model suffixes in retailer data (especially evo URLs). Extracts the code as `profileVariant`. If no code is in the model name, derives it from the raw `profile` spec. Also handles GNU-specific transforms: "C " prefix / " C" suffix stripping (profile indicators), "Asym" stripping, GNU/Lib Tech rider names.
+
+**`DefaultStrategy`** — Generic strategy for all other brands. Handles per-brand rider name stripping (CAPiTA, Nitro, Jones, Arbor, Gentemstick, Aesmo), model aliases (`"mega merc"` → `"mega mercury"`, `"paradice"` → `"paradise"`), prefix aliases (`"sb "` → `"spring break "`). Always returns `profileVariant: null` — no profile splitting.
+
+### Shared Normalization (`src/lib/strategies/shared.ts`)
+
+Brand-agnostic transforms composed by each strategy in two phases:
+
+1. **`sharedNormalize()`** (pre-strategy) — Strip unicode, pipe chars, combo/binding info, retail tags, "Snowboard" suffix, years, season suffixes, trailing sizes, gender prefixes/suffixes, brand prefix.
+2. **`sharedPostNormalize()`** (post-strategy) — Strip leading "the", replace " - " with space, strip acronym periods, replace hyphens, strip "Package" keyword, clean whitespace.
+
+### Strategy Dispatch
+
+`getStrategy(manufacturer)` in `src/lib/strategies/index.ts` returns the singleton strategy instance. Called from:
+
+- **`identifyBoards()`** — Board grouping and profile variant splitting
+- **`adaptRetailerOutput()`** — Grouping `RawBoard[]` into `ScrapedBoard[]`
+- **`BoardIdentifier.model`** — Lazy model normalization
+- **`specKey()`** — Canonical board key generation
+
 ## Scraper Registry
 
 `src/lib/scrapers/registry.ts` provides a unified `getScrapers()` function. Retailers and manufacturers directly implement the `ScraperModule` interface and are registered in a single flat list. Review-site scrapers are not in the registry — they are created dynamically by the pipeline after board identification.
@@ -63,7 +130,6 @@ getScrapers(opts?)
 | `retailer:evo` | retailer | US | Browser/CDP | Active |
 | `retailer:backcountry` | retailer | US | Browser/CDP | Active |
 | `retailer:rei` | retailer | US | Browser/CDP | Active |
-| `retailer:bestsnowboard` | retailer | KR | Plain HTTP | Blocked (Cloudflare) |
 | `manufacturer:burton` | manufacturer | — | Plain HTTP | Active |
 | `manufacturer:lib tech` | manufacturer | — | Plain HTTP | Active |
 | `manufacturer:capita` | manufacturer | — | Plain HTTP | Active |
@@ -100,7 +166,7 @@ The fetch method is chosen per scraper module at import time — there is no run
 - Uses `undici` with random user-agent rotation
 - Checks HTTP cache first; only fetches on miss/expiry
 - Fast, no browser overhead
-- Used by: Tactics, BestSnowboard, all manufacturers
+- Used by: Tactics, all manufacturers
 
 **Phase 2 — CDP-Assisted Browser** (`fetchPageWithBrowser()` in `src/lib/scraping/browser.ts`):
 - Launches Playwright Chromium with per-domain context pooling

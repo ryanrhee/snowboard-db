@@ -3,13 +3,14 @@ import { adaptRetailerOutput, adaptManufacturerOutput } from "../lib/scrapers/ad
 import { Currency, Region } from "../lib/types";
 import type { RawBoard } from "../lib/types";
 import type { ManufacturerSpec } from "../lib/scrapers/adapters";
+import { BrandIdentifier } from "../lib/strategies/brand-identifier";
 
 function makeRawBoard(overrides: Partial<RawBoard> = {}): RawBoard {
   return {
     retailer: "tactics",
     region: Region.US,
     url: "https://tactics.com/board/155",
-    brand: "Burton",
+    brand: new BrandIdentifier("Burton"),
     model: "Custom",
     salePrice: 349,
     currency: Currency.USD,
@@ -47,7 +48,7 @@ describe("adaptRetailerOutput", () => {
     const result = adaptRetailerOutput(rawBoards, "tactics");
 
     expect(result).toHaveLength(1);
-    expect(result[0].brand).toBe("Burton");
+    expect(result[0].brandId.canonical).toBe("Burton");
     expect(result[0].model).toBe("Custom");
     expect(result[0].source).toBe("retailer:tactics");
     expect(result[0].listings).toHaveLength(3);
@@ -121,7 +122,7 @@ describe("adaptManufacturerOutput", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].source).toBe("manufacturer:burton");
-    expect(result[0].brand).toBe("Burton");
+    expect(result[0].brandId.canonical).toBe("Burton");
     expect(result[0].model).toBe("Custom");
     expect(result[0].flex).toBe("5/10");
     expect(result[0].profile).toBe("camber");

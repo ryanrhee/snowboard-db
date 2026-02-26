@@ -1,3 +1,7 @@
+# Workflow Rules
+
+- **Test-first fixes:** When the user points out a bug or data problem, always write a failing test _before_ implementing the fix.
+
 # Development Environment
 
 ## Sandbox Constraints

@@ -3,7 +3,8 @@ import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPage, parsePrice, normalizeBrand, delay } from "../scraping/utils";
+import { fetchPage, parsePrice, delay } from "../scraping/utils";
+import { BrandIdentifier } from "../strategies/brand-identifier";
 
 const TACTICS_BASE_URL = "https://www.tactics.com";
 
@@ -56,14 +57,14 @@ function parseProductCards(html: string): Partial<RawBoard>[] {
 
     // Brand
     const brandEl = $el.find(".browse-grid-item-brand").first();
-    const brand = brandEl.text().trim() || undefined;
+    const brandStr = brandEl.text().trim() || undefined;
 
     // Full link text = brand + model + year
     const fullText = link.text().trim();
     // Remove brand name from start to get model
     let model = fullText;
-    if (brand && model.startsWith(brand)) {
-      model = model.slice(brand.length).trim();
+    if (brandStr && model.startsWith(brandStr)) {
+      model = model.slice(brandStr.length).trim();
     }
 
     // Price parsing
@@ -92,7 +93,7 @@ function parseProductCards(html: string): Partial<RawBoard>[] {
       region: Region.US,
       url: fullUrl,
       imageUrl,
-      brand,
+      brand: BrandIdentifier.from(brandStr),
       model,
       salePrice,
       originalPrice,
@@ -103,17 +104,11 @@ function parseProductCards(html: string): Partial<RawBoard>[] {
   return boards;
 }
 
-async function fetchBoardDetails(
-  partial: Partial<RawBoard>
-): Promise<RawBoard[]> {
-  if (!partial.url) return [];
-
-  try {
-    await delay(config.scrapeDelayMs);
-    const html = await fetchPage(partial.url);
+/** Parse detail page HTML into RawBoard(s). Exported for testing. */
+export function parseDetailHtml(html: string, partial: Partial<RawBoard>): RawBoard[] {
     const $ = cheerio.load(html);
 
-    let brand = partial.brand;
+    let brand: BrandIdentifier | undefined = partial.brand;
     let model = partial.model;
     let salePrice = partial.salePrice;
     let originalPrice = partial.originalPrice;
@@ -134,7 +129,7 @@ async function fetchBoardDetails(
       try {
         const data = JSON.parse($(el).text());
         if (data["@type"] === "Product") {
-          brand = brand || data.brand?.name;
+          brand = brand ?? BrandIdentifier.from(data.brand?.name);
           model = model || data.name;
           if (Array.isArray(data.image) && data.image[0]) {
             imageUrl = imageUrl || data.image[0];
@@ -247,7 +242,7 @@ async function fetchBoardDetails(
           region: Region.US,
           url: partial.url,
           imageUrl,
-          brand: brand ? normalizeBrand(brand) : "Unknown",
+          brand,
           model: model || "Unknown",
           year,
           lengthCm: s.cm,
@@ -278,7 +273,7 @@ async function fetchBoardDetails(
       region: Region.US,
       url: partial.url,
       imageUrl,
-      brand: brand ? normalizeBrand(brand) : "Unknown",
+      brand,
       model: model || "Unknown",
       year,
       lengthCm: undefined,
@@ -296,6 +291,17 @@ async function fetchBoardDetails(
       specs,
       scrapedAt: new Date().toISOString(),
     }];
+}
+
+async function fetchBoardDetails(
+  partial: Partial<RawBoard>
+): Promise<RawBoard[]> {
+  if (!partial.url) return [];
+
+  try {
+    await delay(config.scrapeDelayMs);
+    const html = await fetchPage(partial.url);
+    return parseDetailHtml(html, partial);
   } catch (error) {
     console.error(
       `[tactics] Failed to fetch details for ${partial.url}:`,

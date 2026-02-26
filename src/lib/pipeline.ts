@@ -92,7 +92,7 @@ export async function runSearchPipeline(
 
     // Write review-site specs to spec_sources
     for (const rb of reviewBoards) {
-      const key = specKey(rb.brand, rb.model, rb.gender);
+      const key = specKey(rb.brandId.canonical, rb.model, rb.gender);
       writeSpecSources(key, [rb]);
     }
 

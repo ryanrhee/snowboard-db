@@ -15,17 +15,16 @@ import { tactics } from "../retailers/tactics";
 import { evo } from "../retailers/evo";
 import { backcountry } from "../retailers/backcountry";
 import { rei } from "../retailers/rei";
-import { bestsnowboard } from "../retailers/bestsnowboard";
 
 const ALL_SCRAPERS: ScraperModule[] = [
   // Retailers
-  tactics, evo, backcountry, rei, bestsnowboard,
+  tactics, evo, backcountry, rei,
   // Manufacturers
   burton, libTech, capita, jones, gnu, yes, season,
 ];
 
 // Scrapers that are actually working (not blocked by Cloudflare/bot protection)
-const BLOCKED_SCRAPERS = new Set(["retailer:bestsnowboard"]);
+const BLOCKED_SCRAPERS = new Set<string>([]);
 
 export interface GetScrapersOpts {
   regions?: Region[] | null;
