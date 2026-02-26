@@ -2,6 +2,7 @@ import { Board, Listing } from "../types";
 import { ScrapedBoard } from "./types";
 import {
   specKey,
+  genderFromKey,
   setSpecSource,
   generateListingId,
   setCachedSpecs,
@@ -353,11 +354,11 @@ export function coalesce(
     }
 
     // Build the Board entity — specs are left null here, filled by resolveSpecSources
-    // Gender is derived from the board_key suffix, not stored separately
     const board: Board = {
       boardKey: key,
       brand: group.brand,
       model: group.model,
+      gender: genderFromKey(key),
       year: bestYear,
       flex: null,
       profile: null,

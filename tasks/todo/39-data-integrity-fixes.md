@@ -1,6 +1,6 @@
 # Task 39: Fix board data integrity issues
 
-**Status:** In progress — Round 3 fixes applied, awaiting further review
+**Status:** In progress — Round 4 fixes applied and verified with pipeline re-run
 
 ## Progress
 
@@ -34,36 +34,49 @@
 - [x] Strip trailing 3-digit board lengths (140-220 cm, e.g. "Doughboy 185" → "Doughboy")
 - [x] Profile collision splitting: only split when profiles actually differ, not just when URLs differ (fixes Jones Stratos signature editions creating spurious variants)
 
+### Round 4: Model aliases, embedded size stripping, gender column fix (verified)
+
+- [x] **Model aliases added:** hel yes→hell yes, dreamweaver→dream weaver, paradice→paradise, fish 3d directional→3d fish directional, fish 3d→3d fish directional, 3d family tree channel surfer→family tree 3d channel surfer, x konvoi surfer→konvoi x nitro surfer
+- [x] **Prefix alias added:** darkhorse→dark horse (CAPiTA spelling inconsistency)
+- [x] **Embedded size stripping:** Extended strip-trailing-size to strip mid-string 3-digit board sizes (130-229 cm range), not just trailing. Fixes Aesmo SI 144/152 duplication and CAPiTA LTD edition redundant sizes (DOA 154, Navigator 158)
+- [x] **Aesmo rider name:** Added "Fernando Elvira" to RIDER_NAMES
+- [x] **Gender column fix:** `upsertBoard()` now writes gender derived from `genderFromKey(boardKey)`. Previously the `gender` column on the `boards` table always defaulted to 'unisex' because it was never set. Added `gender` field to `Board` interface and all 3 Board construction sites (coalesce, mapRowToNewBoard, getBoardsWithListings)
+
 ### Pipeline results
 
-| Metric | Before | After Round 1 | After Round 2 | After Round 3 |
-|--------|--------|---------------|---------------|---------------|
-| Total boards | 544 | 513 | 500 | 490 |
-| Total listings | — | 3272 | 3272 | 3272 |
-| Duplicate keys | ~30 | 0 | 0 | 0 |
-| Orphan boards | 3 | 0 | 0 | 0 |
-| Mis-split brands | 6 | 0 | 0 | 0 |
-| Zero-width dupes | 3 | 0 | 0 | 0 |
-| Near-dupe pairs | ~130 | 123 | 107 | 101 |
+| Metric | Before | After Round 1 | After Round 2 | After Round 3 | After Round 4 |
+|--------|--------|---------------|---------------|---------------|---------------|
+| Total boards | 544 | 513 | 500 | 490 | 483 |
+| Total listings | — | 3272 | 3272 | 3272 | 3272 |
+| Duplicate keys | ~30 | 0 | 0 | 0 | 0 |
+| Orphan boards | 3 | 0 | 0 | 0 | 0 |
+| Mis-split brands | 6 | 0 | 0 | 0 | 0 |
+| Zero-width dupes | 3 | 0 | 0 | 0 | 0 |
+| Near-dupe pairs | ~130 | 123 | 107 | 101 | 102 |
+| Gender column accuracy | — | — | — | 0% (all unisex) | 100% (359u/98w/26k) |
 
 ### Files modified
 
 | File | Changes |
 |------|---------|
-| `src/lib/normalization.ts` | Zero-width strip, model aliases, period/hyphen/article normalization, rider name stripping (prefix/suffix/infix), GNU C/Asym stripping, WMN gender detection, season suffix stripping, trailing size stripping, new rider names (Lib Tech/Arbor/Gentemstick) |
+| `src/lib/normalization.ts` | Zero-width strip, model aliases (hel yes, dreamweaver, paradice, fish 3d variants, 3d family tree, x konvoi surfer, darkhorse prefix), period/hyphen/article normalization, rider name stripping (prefix/suffix/infix, added Aesmo Fernando Elvira), GNU C/Asym stripping, WMN gender detection, season suffix stripping, embedded size stripping (130-229 range, mid-string), new rider names (Lib Tech/Arbor/Gentemstick/Aesmo) |
+| `src/lib/types.ts` | Added `gender` field to `Board` interface |
+| `src/lib/db.ts` | `upsertBoard()` writes gender column; `mapRowToNewBoard()` and `getBoardsWithListings()` read gender; kids prefix strip in `specKey()`; `deleteOrphanBoards()` |
+| `src/lib/scrapers/coalesce.ts` | Board construction sets `gender` from `genderFromKey(key)`; profile collision splitting checks profile suffixes |
 | `src/lib/scraping/utils.ts` | Zero-width strip in `normalizeBrand`, brand aliases |
-| `src/lib/scrapers/coalesce.ts` | Profile collision splitting: check profile suffixes differ, not just URLs |
-| `src/lib/db.ts` | Kids prefix strip in `specKey()`, `deleteOrphanBoards()` |
 | `src/lib/retailers/evo.ts` | Multi-word brand parsing, prefer JSON-LD brand |
 | `src/lib/pipeline.ts` | Orphan cleanup at end of run |
 | `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender` |
-| `src/__tests__/canonicalization.test.ts` | 403 tests (added tests for all normalization rules) |
+| `src/__tests__/normalization-pipeline.test.ts` | 228 tests (snapshot + step-level + debug) |
+| `src/__tests__/fixtures/normalization-inputs.json` | 156 snapshot entries |
+| `src/__tests__/coalesce.test.ts` | Added `genderFromKey` to db mock |
+| `src/__tests__/canonicalization.test.ts` | 403 tests (all normalization rules) |
 | `src/__tests__/orphan-boards.test.ts` | 3 tests for orphan board cleanup |
 | `src/__tests__/evo-brand-parsing.test.ts` | 9 tests for multi-word brand parsing |
 
 ### Test results
 
-All 641 tests pass across 16 test files.
+All 869 tests pass across 17 test files (641 original + 202 from task 40 + 26 new in round 4).
 
 ### Remaining near-dupes (101 pairs) — all legitimate
 

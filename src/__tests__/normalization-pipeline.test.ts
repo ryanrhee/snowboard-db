@@ -119,12 +119,32 @@ describe("pipeline step: strip-season-suffix", () => {
 describe("pipeline step: strip-trailing-size", () => {
   const step = findStep("strip-trailing-size");
 
-  it("strips 3-digit board length", () => {
+  it("strips 3-digit board length at end", () => {
     expect(step.transform("Doughboy 185", undefined)).toBe("Doughboy");
+  });
+
+  it("strips 3-digit board length mid-string", () => {
+    expect(step.transform("SI 144 Pow Surfer", undefined)).toBe("SI Pow Surfer");
+  });
+
+  it("strips multiple embedded sizes", () => {
+    expect(step.transform("DOA 154 Benny Milam LTD", undefined)).toBe("DOA Benny Milam LTD");
+  });
+
+  it("strips sizes in 130-139 range", () => {
+    expect(step.transform("FK 136 Powskate", undefined)).toBe("FK Powskate");
   });
 
   it("does not strip 2-digit numbers", () => {
     expect(step.transform("Board 42", undefined)).toBe("Board 42");
+  });
+
+  it("does not strip 4-digit numbers", () => {
+    expect(step.transform("K2000 ATSB LTD", undefined)).toBe("K2000 ATSB LTD");
+  });
+
+  it("does not strip numbers outside board size range", () => {
+    expect(step.transform("Board 100", undefined)).toBe("Board 100");
   });
 });
 
@@ -250,6 +270,38 @@ describe("pipeline step: apply-model-aliases", () => {
   it("aliases Son Of A Birdman → son of birdman", () => {
     expect(step.transform("Son Of A Birdman", undefined)).toBe("son of birdman");
   });
+
+  it("aliases Hel Yes → hell yes", () => {
+    expect(step.transform("Hel Yes", undefined)).toBe("hell yes");
+  });
+
+  it("aliases Dreamweaver → dream weaver", () => {
+    expect(step.transform("Dreamweaver", undefined)).toBe("dream weaver");
+  });
+
+  it("aliases Paradice → paradise", () => {
+    expect(step.transform("Paradice", undefined)).toBe("paradise");
+  });
+
+  it("aliases Fish 3D Directional → 3d fish directional", () => {
+    expect(step.transform("Fish 3D Directional", undefined)).toBe("3d fish directional");
+  });
+
+  it("aliases Fish 3D → 3d fish directional", () => {
+    expect(step.transform("Fish 3D", undefined)).toBe("3d fish directional");
+  });
+
+  it("aliases 3D Family Tree Channel Surfer → family tree 3d channel surfer", () => {
+    expect(step.transform("3D Family Tree Channel Surfer", undefined)).toBe("family tree 3d channel surfer");
+  });
+
+  it("aliases X Konvoi Surfer → konvoi x nitro surfer", () => {
+    expect(step.transform("X Konvoi Surfer", undefined)).toBe("konvoi x nitro surfer");
+  });
+
+  it("aliases Darkhorse prefix → dark horse", () => {
+    expect(step.transform("Darkhorse Austin Vizz LTD", undefined)).toBe("dark horse Austin Vizz LTD");
+  });
 });
 
 describe("pipeline step: strip-rider-names", () => {
@@ -265,6 +317,10 @@ describe("pipeline step: strip-rider-names", () => {
 
   it("strips 'by rider' infix", () => {
     expect(step.transform("Equalizer By Jess Kimura", "CAPiTA")).toBe("Equalizer");
+  });
+
+  it("strips Aesmo rider suffix", () => {
+    expect(step.transform("SI Pow Surfer Fernando Elvira", "Aesmo")).toBe("SI Pow Surfer");
   });
 
   it("no-ops without brand", () => {

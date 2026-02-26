@@ -365,12 +365,13 @@ export function upsertBoard(board: Board): void {
   const db = getDb();
   db.prepare(`
     INSERT INTO boards (
-      board_key, brand, model, year, flex, profile, shape, category,
+      board_key, brand, model, gender, year, flex, profile, shape, category,
       ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
       description, beginner_score, created_at, updated_at,
       terrain_piste, terrain_powder, terrain_park, terrain_freeride, terrain_freestyle
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(board_key) DO UPDATE SET
+      gender = excluded.gender,
       year = COALESCE(excluded.year, boards.year),
       flex = COALESCE(excluded.flex, boards.flex),
       profile = COALESCE(excluded.profile, boards.profile),
@@ -389,7 +390,7 @@ export function upsertBoard(board: Board): void {
       terrain_freeride = COALESCE(excluded.terrain_freeride, boards.terrain_freeride),
       terrain_freestyle = COALESCE(excluded.terrain_freestyle, boards.terrain_freestyle)
   `).run(
-    board.boardKey, board.brand, board.model, board.year,
+    board.boardKey, board.brand, board.model, board.gender, board.year,
     board.flex, board.profile, board.shape, board.category,
     board.abilityLevelMin, board.abilityLevelMax,
     board.msrpUsd, board.manufacturerUrl,
@@ -517,6 +518,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
           boardKey,
           brand: row.brand as string,
           model: row.model as string,
+          gender: (row.gender as string) || "unisex",
           year: (row.year as number) || null,
           flex: (row.flex as number) || null,
           profile: (row.profile as string) || null,
@@ -676,6 +678,7 @@ function mapRowToNewBoard(row: Record<string, unknown>): Board {
     boardKey: row.board_key as string,
     brand: row.brand as string,
     model: row.model as string,
+    gender: (row.gender as string) || "unisex",
     year: (row.year as number) || null,
     flex: (row.flex as number) || null,
     profile: (row.profile as string) || null,

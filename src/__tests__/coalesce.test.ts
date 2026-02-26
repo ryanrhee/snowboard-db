@@ -17,6 +17,11 @@ vi.mock("../lib/db", () => ({
       return `${base}|unisex`;
     }
   ),
+  genderFromKey: vi.fn((boardKey: string) => {
+    const last = boardKey.split("|").pop()!;
+    if (last === "womens" || last === "kids") return last;
+    return "unisex";
+  }),
   setSpecSource: vi.fn(),
   generateListingId: vi.fn(
     (retailer: string, url: string, lengthCm?: number) =>

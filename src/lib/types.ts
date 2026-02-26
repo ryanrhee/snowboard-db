@@ -99,6 +99,7 @@ export interface Board {
   boardKey: string;
   brand: string;
   model: string;
+  gender: string;
   year: number | null;
   flex: number | null;
   profile: string | null;

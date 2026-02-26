@@ -713,5 +713,65 @@
     "raw": "Yes. Airmaster 3D Snowboard 2026",
     "brand": "Yes.",
     "expected": "Airmaster 3D"
+  },
+  {
+    "raw": "Hel Yes Snowboard - Women's",
+    "brand": "Yes.",
+    "expected": "hell yes"
+  },
+  {
+    "raw": "Hell Yes Snowboard - Women's",
+    "brand": "Yes.",
+    "expected": "Hell Yes"
+  },
+  {
+    "raw": "Dreamweaver Snowboard - Women's",
+    "brand": "Jones",
+    "expected": "dream weaver"
+  },
+  {
+    "raw": "Fish 3D Directional Flat Top Snowboard 2026",
+    "brand": "Burton",
+    "expected": "3d fish directional"
+  },
+  {
+    "raw": "Fish 3D Flat Top Snowboard 2026",
+    "brand": "Burton",
+    "expected": "3d fish directional"
+  },
+  {
+    "raw": "3D Family Tree Channel Surfer Snowboard",
+    "brand": "Burton",
+    "expected": "family tree 3d channel surfer"
+  },
+  {
+    "raw": "Paradice Snowboard 2026",
+    "brand": "CAPiTA",
+    "expected": "paradise"
+  },
+  {
+    "raw": "Nitro X Konvoi Surfer Snowboard",
+    "brand": "Nitro",
+    "expected": "konvoi x nitro surfer"
+  },
+  {
+    "raw": "Darkhorse 154 Austin Vizz LTD Snowboard",
+    "brand": "CAPiTA",
+    "expected": "dark horse Austin Vizz LTD"
+  },
+  {
+    "raw": "SI 144 Pow Surfer Snowboard Fernando Elvira",
+    "brand": "Aesmo",
+    "expected": "SI Pow Surfer"
+  },
+  {
+    "raw": "SI 152 Pow Surfer Snowboard Fernando Elvira",
+    "brand": "Aesmo",
+    "expected": "SI Pow Surfer"
+  },
+  {
+    "raw": "FK 136 Powskate Snowboard",
+    "brand": "Aesmo",
+    "expected": "FK Powskate"
   }
 ]

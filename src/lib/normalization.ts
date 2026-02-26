@@ -186,11 +186,19 @@ export interface NormalizationStep {
 const MODEL_ALIASES: Record<string, string> = {
   "mega merc": "mega mercury",
   "son of a birdman": "son of birdman",
+  "hel yes": "hell yes",
+  "dreamweaver": "dream weaver",
+  "paradice": "paradise",
+  "fish 3d directional": "3d fish directional",
+  "fish 3d": "3d fish directional",
+  "3d family tree channel surfer": "family tree 3d channel surfer",
+  "x konvoi surfer": "konvoi x nitro surfer",
 };
 
 const MODEL_PREFIX_ALIASES: [string, string][] = [
   ["sb ", "spring break "],
   ["snowboards ", ""],
+  ["darkhorse ", "dark horse "],
 ];
 
 const RIDER_NAMES: Record<string, string[]> = {
@@ -201,6 +209,7 @@ const RIDER_NAMES: Record<string, string[]> = {
   "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore", "Mike Liddle", "Danny Kass", "DK"],
   "Lib Tech": ["T. Rice", "Travis Rice"],
   "Gentemstick": ["Alex Yoder"],
+  "Aesmo": ["Fernando Elvira"],
 };
 
 /**
@@ -250,7 +259,7 @@ export const NORMALIZATION_PIPELINE: NormalizationStep[] = [
   },
   {
     name: "strip-trailing-size",
-    transform: (m) => m.replace(/\s+\b(1[4-9]\d|2[0-2]\d)\b$/g, ""),
+    transform: (m) => m.replace(/\s+\b(1[3-9]\d|2[0-2]\d)\b/g, ""),
   },
   {
     name: "strip-gender-suffix",
