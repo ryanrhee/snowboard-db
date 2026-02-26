@@ -1,6 +1,8 @@
 # Task 39: Fix board data integrity issues
 
-**Status:** In progress — Round 7 data audit
+**Status:** Completed — 2026-02-27
+
+**Summary:** Seven rounds of data integrity fixes across 7 commits. Reduced board count from 544 to 479 by eliminating duplicates. Fixed: zero-width characters, brand parsing (Never Summer, United Shapes), model normalization (aliases, rider names, embedded sizes, season suffixes), gender detection (WMN pattern, CAPiTA smart apostrophes, Backcountry combo packages, toddler→kids), orphan board cleanup, package deal stripping, pipe character stripping, and BrandIdentifier/BoardIdentificationStrategy architecture (Burton profiles, Mervin contour codes, DefaultStrategy). 932+ tests added. Remaining issues (Mervin profile disambiguation, profile normalization, kids dupes, model casing, compound profiles) tracked in tasks 41 and 42.
 
 ## Progress
 
