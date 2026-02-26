@@ -1,87 +1,101 @@
 # Task 39: Fix board data integrity issues
 
-## Problem
+**Status:** In progress — pipeline verified, remaining near-dupes under review
+
+## Progress
+
+### Round 1: Initial fixes (all verified with pipeline re-run)
+
+- [x] Zero-width character stripping in `normalizeModel()` and `normalizeBrand()`
+- [x] Multi-word brand parsing in evo.ts (`MULTI_WORD_BRANDS` list)
+- [x] Prefer JSON-LD brand on evo detail pages
+- [x] `BRAND_ALIASES`: "never summer", "united shapes"
+- [x] Model normalization: strip leading "the ", replace ` - ` with space, strip acronym periods, replace hyphens with spaces
+- [x] `MODEL_ALIASES`: mega merc→mega mercury, son of a birdman→son of birdman, sb→spring break, snowboards→strip
+- [x] `specKey()` strips "kids " prefix for kids/youth gender
+- [x] `deleteOrphanBoards()` at end of pipeline
+
+### Round 2: Rider names, GNU profile letters, WMN gender (verified)
+
+- [x] Rider name prefix stripping (brand-scoped): GNU (Forest Bailey, Max Warbington, Cummins'), CAPiTA (Arthur Longo, Jess Kimura), Nitro (Hailey Langland, Marcus Kleveland), Jones (Harry Kearney, Ruiki Masuda), Arbor (Bryan Iguchi, Erik Leon, Jared Elston, Pat Moore)
+- [x] Rider name suffix stripping (e.g. "Team Pro Marcus Kleveland" → "Team Pro")
+- [x] "By <rider>" infix stripping (e.g. "Equalizer By Jess Kimura" → "Equalizer")
+- [x] "Signature Series" / "Ltd" prefix stripping after rider name removal
+- [x] GNU "C " profile prefix and " C" suffix stripping
+- [x] GNU "Asym" prefix/suffix stripping (shape attribute, not model name)
+- [x] `detectGender`: added `\bwmn\b` pattern
+- [x] CAPiTA `deriveGender`: added "wmn" check
+- [x] Navigator WMN now correctly tagged as womens
+
+### Pipeline results
+
+| Metric | Before | After Round 1 | After Round 2 |
+|--------|--------|---------------|---------------|
+| Total boards | 544 | 513 | 500 |
+| Total listings | — | 3272 | 3272 |
+| Duplicate keys | ~30 | 0 | 0 |
+| Orphan boards | 3 | 0 | 0 |
+| Mis-split brands | 6 | 0 | 0 |
+| Zero-width dupes | 3 | 0 | 0 |
+| Near-dupe pairs | ~130 | 123 | 107 |
+
+### Files modified
+
+| File | Changes |
+|------|---------|
+| `src/lib/normalization.ts` | Zero-width strip, model aliases, period/hyphen/article normalization, rider name stripping (prefix/suffix/infix), GNU C/Asym stripping, WMN gender detection |
+| `src/lib/scraping/utils.ts` | Zero-width strip in `normalizeBrand`, brand aliases |
+| `src/lib/db.ts` | Kids prefix strip in `specKey()`, `deleteOrphanBoards()` |
+| `src/lib/retailers/evo.ts` | Multi-word brand parsing, prefer JSON-LD brand |
+| `src/lib/pipeline.ts` | Orphan cleanup at end of run |
+| `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender` |
+| `src/__tests__/canonicalization.test.ts` | 388 tests (added ~30 new tests for all normalization rules) |
+| `src/__tests__/orphan-boards.test.ts` | 3 tests for orphan board cleanup |
+| `src/__tests__/evo-brand-parsing.test.ts` | 9 tests for multi-word brand parsing |
+
+### Test results
+
+All 626 tests pass across 16 test files.
+
+### Remaining near-dupes (107 pairs) — likely legitimate
+
+Most are expected variants: Pro/non-Pro editions, Split/non-Split, version 2.0 vs original, signature rider editions (Benny Milam Ltd, Miles Fallon Ltd), Junior/Youth variants, profile splits from `identifyBoards()` (e.g. Money C2 vs Money C3).
+
+### Verification queries
+
+```sql
+-- No duplicates
+SELECT board_key, COUNT(*) c FROM boards GROUP BY board_key HAVING c > 1;
+-- No mis-split brands
+SELECT board_key FROM boards WHERE board_key LIKE 'never|%' OR board_key LIKE 'united|%';
+-- No orphans
+SELECT board_key FROM boards WHERE board_key NOT IN (SELECT DISTINCT board_key FROM listings);
+-- Near-dupe count
+SELECT COUNT(*) FROM (
+  SELECT a.board_key FROM boards a, boards b
+  WHERE a.brand = b.brand AND a.board_key < b.board_key
+  AND (INSTR(LOWER(a.model), LOWER(b.model)) > 0 OR INSTR(LOWER(b.model), LOWER(a.model)) > 0)
+);
+```
+
+---
+
+## Original Problem
 
 Analysis of the `boards` table (544 boards) revealed multiple categories of data integrity issues caused by inconsistent board key normalization in the scraping pipeline.
 
-## Issues
+### 1. Zero-width characters creating phantom duplicates (3 boards) — FIXED
 
-### 1. Zero-width characters creating phantom duplicates (3 boards)
+### 2. Brand name parsing errors (6 boards) — FIXED
 
-Invisible Unicode characters (U+200B zero-width space) in board keys create exact duplicates with split data:
+### 3. True duplicate boards (20+ pairs) — FIXED
 
-- `bataleon|evil twin|unisex` + `bataleon|evil twin​|unisex` (with hidden U+200B)
-- `bataleon|goliath|unisex` + `bataleon|goliath​|unisex`
-- `bataleon|push up|womens` + `bataleon|push up​|womens`
+All punctuation/formatting, article/prefix, kids prefix, abbreviation, rider name, and GNU profile letter duplicates resolved.
 
-**Fix:** Strip zero-width characters during board key normalization.
-
-### 2. Brand name parsing errors (6 boards)
-
-Multi-word brand names split incorrectly at the first space:
-
-- `never|summer valhalla|unisex` → should be `never summer|valhalla|unisex`
-- `united|shapes cadet|unisex` → `united shapes|cadet|unisex` (5 boards: cadet, deep reach, experiment, horizon, transmission)
-
-**Fix:** Ensure the brand normalization lookup handles "Never Summer" and "United Shapes" before the brand/model split.
-
-### 3. True duplicate boards — same product, different keys (20+ pairs)
-
-Same board appearing under two different normalized names. Some have conflicting spec values.
-
-**Punctuation/formatting differences:**
-- `salomon|hps - goop` vs `salomon|hps goop` (conflicting profiles: `hybrid_rocker` vs `Camber with Rocker`)
-- `capita|super d.o.a.` vs `capita|super doa` (conflicting profiles: `hybrid_camber` vs `hybrid_rocker`)
-- `gnu|gloss c` vs `gnu|gloss-c` (conflicting profiles: `camber` vs `hybrid_camber`)
-
-**Article/prefix differences:**
-- `lib tech|son of a birdman` vs `lib tech|son of birdman`
-- `burton|the throwback` vs `burton|throwback`
-- `capita|black of death` vs `capita|the black of death`
-
-**"kids" prefix duplication:**
-- `burton|custom smalls` vs `burton|kids custom smalls`
-- `burton|grom` vs `burton|kids grom`
-- `capita|kids micro mini` vs `capita|micro mini`
-- `capita|kids scott stevens mini` vs `capita|scott stevens mini`
-
-**Abbreviation differences:**
-- `capita|mega mercury` vs `capita|mega merc`
-- `capita|sb *` vs `capita|spring break *` (5 pairs: powder racers, powder twin, resort twin, slush slashers, stairmaster)
-- `public|outreach` vs `public|snowboards outreach` (+ research)
-
-**Version/variant that may or may not be the same board:**
-- `jones|dreamweaver` vs `jones|dream weaver 2.0`
-
-### 4. Orphan boards with no listings (3 boards)
-
-- `burton|custom|unisex`
-- `burton|feelgood|womens`
-- `burton|process|unisex`
-
-These exist in `boards` but have zero rows in `listings`. Likely remnants of a previous pipeline run or naming change.
-
-## Approach
-
-The root cause is in the board key normalization logic. Fixes should go there so issues don't recur on re-scrape.
-
-1. **Find the normalization code** — likely in `src/lib/pipeline.ts` or a shared utility that builds `board_key` from scraped data.
-2. **Add zero-width character stripping** — strip `\u200b`, `\u200c`, `\u200d`, `\ufeff`, `\u00ad` from all board key components.
-3. **Fix multi-word brand lookup** — ensure "Never Summer", "United Shapes", and any other multi-word brands are recognized before the brand/model split.
-4. **Add duplicate normalization rules** — canonicalize known aliases:
-   - Strip leading "the " from model names
-   - Normalize "hps - goop" → "hps goop" (strip hyphens surrounded by spaces)
-   - Normalize "d.o.a." → "doa" (strip periods)
-   - Normalize "gloss-c" → "gloss c" (hyphens to spaces in model names)
-   - Normalize "sb " → "spring break " for Capita
-   - Strip leading "kids " when gender is already "kids"
-   - Normalize "snowboards " prefix for Public brand
-   - Canonicalize "mega merc" → "mega mercury" (or vice versa)
-5. **Clean up orphan boards** — delete boards with no listings, or investigate why they lost their listings.
-6. **Write a validation script** that can be run after pipeline runs to catch new duplicates.
+### 4. Orphan boards with no listings (3 boards) — FIXED
 
 ## Out of scope
 
-- Spec conflicts across sources (1,851 conflicts) — this is a separate resolution/judgment issue, not a normalization bug.
-- Missing `ability_level` field (empty for all 544 boards) — not populated by any source yet.
-- Missing flex for 349 boards — most are from retailers that don't provide structured flex.
+- Spec conflicts across sources — separate resolution/judgment issue
+- Missing `ability_level` field — not populated by any source yet
+- Missing flex for many boards — most retailers don't provide structured flex

@@ -11,6 +11,7 @@ import {
   detectGender,
   extractComboContents,
 } from "../lib/normalization";
+import { specKey } from "../lib/db";
 import { BoardProfile, BoardShape, BoardCategory, ListingCondition, GenderTarget } from "../lib/types";
 
 // =============================================================================
@@ -799,7 +800,7 @@ describe("normalizeModel", () => {
       ["Algorhythm Snowboard - 2026 - Men's", undefined, "Algorhythm"],
       ["Lotus Snowboard - 2025 - Women's", undefined, "Lotus"],
       ["Ultra Prodigy Snowboard - Kids'", undefined, "Ultra Prodigy"],
-      ["Lectra Cam-Out Snowboard - 2026 - Women's", undefined, "Lectra Cam-Out"],
+      ["Lectra Cam-Out Snowboard - 2026 - Women's", undefined, "Lectra Cam Out"],
       ["Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
@@ -880,7 +881,7 @@ describe("normalizeModel", () => {
 
   describe("strips brand name prefix from model (generic)", () => {
     it.each([
-      ["GNU Asym Ladies Choice C2X Snowboard - Women's 2025", "GNU", "Asym Ladies Choice"],
+      ["GNU Asym Ladies Choice C2X Snowboard - Women's 2025", "GNU", "Ladies Choice"],
       ["Jones Dream Weaver 2.0 Snowboard - Women's 2026", "Jones", "Dream Weaver 2.0"],
       ["Rossignol Juggernaut Snowboard 2025", "Rossignol", "Juggernaut"],
       ["Sims Bowl Squad Snowboard 2026", "Sims", "Bowl Squad"],
@@ -940,8 +941,8 @@ describe("normalizeModel", () => {
       ["Legitimizer C3", "Lib Tech", "Legitimizer"],
       ["Rasman C2X", "Lib Tech", "Rasman"],
       ["Frosting C2", "GNU", "Frosting"],
-      ["Gloss-C C3", "GNU", "Gloss-C"],
-      ["C Money C3", "GNU", "C Money"],
+      ["Gloss-C C3", "GNU", "Gloss"],
+      ["C Money C3", "GNU", "Money"],
       ["T. Rice Pro C2", "Lib Tech", "T. Rice Pro"],
     ])('Lib Tech/GNU: %s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
@@ -1129,5 +1130,309 @@ describe("extractComboContents", () => {
     it("returns null for empty string", () => {
       expect(extractComboContents("")).toBeNull();
     });
+  });
+});
+
+// =============================================================================
+// Zero-width character stripping (Task 39)
+// =============================================================================
+
+describe("zero-width character stripping", () => {
+  it("normalizeModel strips zero-width chars", () => {
+    expect(normalizeModel("Custom\u200b")).toBe("Custom");
+    expect(normalizeModel("Cus\u200ctom")).toBe("Custom");
+    expect(normalizeModel("\ufeffCustom")).toBe("Custom");
+    expect(normalizeModel("Custom\u00ad")).toBe("Custom");
+  });
+
+  it("normalizeBrand strips zero-width chars", () => {
+    expect(normalizeBrand("Burton\u200b")).toBe("Burton");
+    expect(normalizeBrand("\ufeffBurton")).toBe("Burton");
+  });
+});
+
+// =============================================================================
+// New brand aliases (Task 39)
+// =============================================================================
+
+describe("canonicalizeBrand — new aliases", () => {
+  it('maps "never summer" to "Never Summer"', () => {
+    expect(canonicalizeBrand("never summer")).toBe("Never Summer");
+  });
+
+  it('maps "united shapes" to "United Shapes"', () => {
+    expect(canonicalizeBrand("united shapes")).toBe("United Shapes");
+  });
+});
+
+// =============================================================================
+// Model normalization — new rules (Task 39)
+// =============================================================================
+
+describe("normalizeModel — Task 39 rules", () => {
+  describe("strips leading 'the '", () => {
+    it.each([
+      ["The Throwback Snowboard 2026", undefined, "Throwback"],
+      ["The Black Of Death Snowboard 2026", undefined, "Black Of Death"],
+    ])('%s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand || undefined)).toBe(expected);
+    });
+  });
+
+  describe("replaces space-dash-space with space", () => {
+    it("hps - goop → hps goop", () => {
+      expect(normalizeModel("HPS - Goop")).toBe("HPS Goop");
+    });
+  });
+
+  describe("strips periods from model names", () => {
+    it.each([
+      ["D.O.A.", undefined, "DOA"],
+      ["Super D.O.A.", undefined, "Super DOA"],
+    ])('%s → %s', (input, brand, expected) => {
+      expect(normalizeModel(input, brand || undefined)).toBe(expected);
+    });
+  });
+
+  describe("replaces hyphens with spaces", () => {
+    it("Gloss-C → Gloss C", () => {
+      expect(normalizeModel("Gloss-C")).toBe("Gloss C");
+    });
+  });
+
+  describe("model aliases", () => {
+    it("Mega Merc → mega mercury", () => {
+      expect(normalizeModel("Mega Merc", "CAPiTA")).toBe("mega mercury");
+    });
+
+    it("SB Slush Slashers → spring break Slush Slashers", () => {
+      expect(normalizeModel("SB Slush Slashers", "CAPiTA")).toBe("spring break Slush Slashers");
+    });
+
+    it("Son Of A Birdman → son of birdman", () => {
+      expect(normalizeModel("Son Of A Birdman", "Lib Tech")).toBe("son of birdman");
+    });
+
+    it("Snowboards Something → Something", () => {
+      expect(normalizeModel("Snowboards Display", "Public")).toBe("Display");
+    });
+  });
+});
+
+// =============================================================================
+// specKey — kids prefix deduplication (Task 39)
+// =============================================================================
+
+describe("specKey — kids prefix stripping", () => {
+  it("strips 'kids ' prefix for kids gender", () => {
+    const key1 = specKey("Burton", "Kids Custom Smalls", "kids");
+    const key2 = specKey("Burton", "Custom Smalls", "kids");
+    expect(key1).toBe(key2);
+  });
+
+  it("does not strip 'kids ' for unisex gender", () => {
+    const key = specKey("Burton", "Kids Custom Smalls", "unisex");
+    expect(key).toContain("kids custom smalls");
+  });
+
+  it("strips 'kids ' prefix for youth gender", () => {
+    const key1 = specKey("Burton", "Kids Custom Smalls", "youth");
+    const key2 = specKey("Burton", "Custom Smalls", "kids");
+    expect(key1).toBe(key2);
+  });
+});
+
+// =============================================================================
+// Zero-width chars + alias resolution interaction (Task 39)
+// =============================================================================
+
+describe("zero-width chars + alias resolution", () => {
+  it("normalizeBrand resolves alias after stripping zero-width chars", () => {
+    expect(normalizeBrand("never\u200b summer")).toBe("Never Summer");
+    expect(normalizeBrand("lib\u200d tech")).toBe("Lib Tech");
+    expect(normalizeBrand("\ufeffcapita")).toBe("CAPiTA");
+    expect(normalizeBrand("united\u200c shapes")).toBe("United Shapes");
+  });
+
+  it("normalizeModel produces same key with and without zero-width chars", () => {
+    const clean = normalizeModel("Custom", "Burton");
+    const dirty = normalizeModel("Cus\u200btom", "Burton");
+    expect(clean).toBe(dirty);
+  });
+
+  it("specKey produces identical keys with and without zero-width chars", () => {
+    const clean = specKey("Burton", "Custom", "unisex");
+    const dirty = specKey("Burton", "Cus\u200btom", "unisex");
+    expect(clean).toBe(dirty);
+  });
+});
+
+// =============================================================================
+// Period stripping edge cases (Task 39)
+// =============================================================================
+
+describe("normalizeModel — period stripping edge cases", () => {
+  it("preserves version numbers like 2.0", () => {
+    expect(normalizeModel("Dream Weaver 2.0", "Jones")).toBe("Dream Weaver 2.0");
+    expect(normalizeModel("Frontier 2.0", "Jones")).toBe("Frontier 2.0");
+    expect(normalizeModel("Slush Slashers 2.0", "CAPiTA")).toBe("Slush Slashers 2.0");
+  });
+
+  it("preserves name initials like T. Rice", () => {
+    expect(normalizeModel("T. Rice Pro", "Lib Tech")).toBe("T. Rice Pro");
+    expect(normalizeModel("T. Rice Orca", "Lib Tech")).toBe("T. Rice Orca");
+  });
+
+  it("strips acronym periods between letters", () => {
+    expect(normalizeModel("D.O.A.")).toBe("DOA");
+    expect(normalizeModel("B.O.D.")).toBe("BOD");
+  });
+
+  it("strips acronym periods in compound names", () => {
+    expect(normalizeModel("Super D.O.A.")).toBe("Super DOA");
+  });
+
+  it("handles mixed periods — acronym + version number", () => {
+    // Hypothetical: version number preserved, acronym stripped
+    expect(normalizeModel("D.O.A. 2.0")).toBe("DOA 2.0");
+  });
+});
+
+// =============================================================================
+// specKey — end-to-end deduplication (Task 39)
+// =============================================================================
+
+describe("specKey — deduplication of variant names", () => {
+  it("D.O.A. and DOA produce the same key", () => {
+    expect(specKey("CAPiTA", "D.O.A.", "unisex")).toBe(specKey("CAPiTA", "DOA", "unisex"));
+  });
+
+  it("Gloss-C and Gloss C produce the same key", () => {
+    expect(specKey("GNU", "Gloss-C", "unisex")).toBe(specKey("GNU", "Gloss C", "unisex"));
+  });
+
+  it("The Throwback and Throwback produce the same key", () => {
+    expect(specKey("Rome", "The Throwback", "unisex")).toBe(specKey("Rome", "Throwback", "unisex"));
+  });
+
+  it("HPS - Goop and HPS Goop produce the same key", () => {
+    expect(specKey("Jones", "HPS - Goop", "unisex")).toBe(specKey("Jones", "HPS Goop", "unisex"));
+  });
+
+  it("Mega Merc and Mega Mercury produce the same key", () => {
+    expect(specKey("CAPiTA", "Mega Merc", "unisex")).toBe(specKey("CAPiTA", "Mega Mercury", "unisex"));
+  });
+
+  it("SB and Spring Break prefix produce the same key", () => {
+    expect(specKey("CAPiTA", "SB Slush Slashers", "unisex")).toBe(
+      specKey("CAPiTA", "Spring Break Slush Slashers", "unisex")
+    );
+  });
+});
+
+// =============================================================================
+// Remaining duplicates — GNU model naming (Task 39)
+// =============================================================================
+
+describe("specKey — GNU model deduplication", () => {
+  it("C Money and Money produce the same key", () => {
+    // Evo/backcountry list as "Money", Tactics/GNU list as "C Money"
+    // "C" is a profile designation (C3 camber line), not part of the model name
+    expect(specKey("GNU", "C Money", "unisex")).toBe(specKey("GNU", "Money", "unisex"));
+  });
+
+  it("Gloss C and Gloss produce the same key", () => {
+    // "C" suffix is a profile designation that should be stripped
+    expect(specKey("GNU", "Gloss C", "womens")).toBe(specKey("GNU", "Gloss", "womens"));
+  });
+
+  it("Forest Bailey Head Space and Head Space produce the same key", () => {
+    // "Forest Bailey" is a rider name prefix
+    expect(specKey("GNU", "Forest Bailey Head Space", "unisex")).toBe(
+      specKey("GNU", "Head Space", "unisex")
+    );
+  });
+
+  it("Forest Bailey 4x4 and 4x4 produce the same key", () => {
+    expect(specKey("GNU", "Forest Bailey 4x4", "unisex")).toBe(
+      specKey("GNU", "4x4", "unisex")
+    );
+  });
+
+  it("Max Warbington Finest Asym and Finest produce the same key", () => {
+    // "Max Warbington" is rider name prefix, "Asym" is shape descriptor
+    expect(specKey("GNU", "Max Warbington Finest Asym", "unisex")).toBe(
+      specKey("GNU", "Finest", "unisex")
+    );
+  });
+
+  it("Cummins' Banked Country and Banked Country produce the same key", () => {
+    expect(specKey("GNU", "Cummins' Banked Country", "unisex")).toBe(
+      specKey("GNU", "Banked Country", "unisex")
+    );
+  });
+});
+
+// =============================================================================
+// Remaining duplicates — CAPiTA model naming (Task 39)
+// =============================================================================
+
+describe("specKey — CAPiTA model deduplication", () => {
+  it("Arthur Longo Aeronaut and Aeronaut produce the same key", () => {
+    expect(specKey("CAPiTA", "Arthur Longo Aeronaut", "unisex")).toBe(
+      specKey("CAPiTA", "Aeronaut", "unisex")
+    );
+  });
+
+  it("Equalizer By Jess Kimura and Equalizer produce the same key (womens)", () => {
+    // Manufacturer uses "Equalizer By Jess Kimura", retailers use "Equalizer"
+    expect(specKey("CAPiTA", "Equalizer By Jess Kimura", "womens")).toBe(
+      specKey("CAPiTA", "Equalizer", "womens")
+    );
+  });
+
+  it("Jess Kimura Equalizer and Equalizer produce the same key (womens)", () => {
+    // Tactics uses "Jess Kimura Equalizer", others use "Equalizer"
+    expect(specKey("CAPiTA", "Jess Kimura Equalizer", "womens")).toBe(
+      specKey("CAPiTA", "Equalizer", "womens")
+    );
+  });
+});
+
+// =============================================================================
+// Remaining duplicates — other rider name prefixes (Task 39)
+// =============================================================================
+
+describe("specKey — rider name prefix stripping", () => {
+  it("Hailey Langland Alternator and Alternator produce the same key", () => {
+    expect(specKey("Nitro", "Hailey Langland Alternator", "womens")).toBe(
+      specKey("Nitro", "Alternator", "womens")
+    );
+  });
+
+  it("Team Pro Marcus Kleveland and Team Pro produce the same key (suffix)", () => {
+    expect(specKey("Nitro", "Team Pro Marcus Kleveland", "unisex")).toBe(
+      specKey("Nitro", "Team Pro", "unisex")
+    );
+  });
+});
+
+// =============================================================================
+// Gender detection — WMN suffix (Task 39)
+// =============================================================================
+
+describe("detectGender — WMN detection", () => {
+  it("detects WMN in model as WOMENS", () => {
+    expect(detectGender("Navigator WMN")).toBe(GenderTarget.WOMENS);
+  });
+
+  it("detects Wmn in model as WOMENS", () => {
+    expect(detectGender("Navigator Wmn Split")).toBe(GenderTarget.WOMENS);
+  });
+});
+
+describe("specKey — WMN gender resolution", () => {
+  it("Navigator WMN gets womens gender key", () => {
+    expect(specKey("CAPiTA", "Navigator WMN", "womens")).toContain("|womens");
   });
 });

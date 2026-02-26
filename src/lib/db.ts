@@ -281,8 +281,14 @@ export function generateListingId(
 
 export function specKey(brand: string, model: string, gender?: string): string {
   const cb = canonicalizeBrand(brand);
-  const base = `${cb.toLowerCase()}|${normalizeModel(model, cb).toLowerCase()}`;
+  let normalizedModel = normalizeModel(model, cb).toLowerCase();
   const g = gender?.toLowerCase();
+  // Strip leading "kids " from model for kids/youth to deduplicate
+  // e.g. "burton|kids custom smalls|kids" → "burton|custom smalls|kids"
+  if (g === "kids" || g === "youth") {
+    normalizedModel = normalizedModel.replace(/^kids\s+/, "");
+  }
+  const base = `${cb.toLowerCase()}|${normalizedModel}`;
   if (g === "womens") return `${base}|womens`;
   if (g === "kids" || g === "youth") return `${base}|kids`;
   return `${base}|unisex`;
@@ -717,6 +723,16 @@ function mapRowToListing(row: Record<string, unknown>): Listing {
     stockCount: (row.stock_count as number) ?? null,
     comboContents: (row.combo_contents as string) || null,
   };
+}
+
+// ===== Orphan Board Cleanup =====
+
+export function deleteOrphanBoards(): number {
+  const db = getDb();
+  const result = db.prepare(
+    "DELETE FROM boards WHERE board_key NOT IN (SELECT DISTINCT board_key FROM listings)"
+  ).run();
+  return result.changes;
 }
 
 // ===== Spec Cache CRUD =====

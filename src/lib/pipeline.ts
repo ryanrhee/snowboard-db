@@ -19,6 +19,7 @@ import {
   updateListingPriceAndStock,
   getAllBoards,
   specKey,
+  deleteOrphanBoards,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
@@ -241,6 +242,12 @@ export async function runSearchPipeline(
   insertSearchRun(run);
   upsertBoards(resolvedBoards);
   insertListings(listings);
+
+  // Clean up orphan boards (boards with no listings)
+  const orphansDeleted = deleteOrphanBoards();
+  if (orphansDeleted > 0) {
+    console.log(`[pipeline] Deleted ${orphansDeleted} orphan boards with no listings`);
+  }
 
   pruneHttpCache();
 

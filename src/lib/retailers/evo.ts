@@ -58,14 +58,26 @@ function parseProductCards(html: string): Partial<RawBoard>[] {
       salePrice = parsePrice(priceMatches[0]!) || undefined;
     }
 
-    // Parse brand from title (first word is typically the brand)
+    // Parse brand from title — check multi-word brands first, then fall back to first word
     let brand: string | undefined;
     let model = title;
     if (title) {
-      const parts = title.split(/\s+/);
-      brand = parts[0];
-      // Remove brand from model to avoid duplication like "Rossignol Rossignol Ultraviolet"
-      model = parts.slice(1).join(" ") || title;
+      const MULTI_WORD_BRANDS = [
+        "Never Summer", "United Shapes", "Lib Tech", "Dinosaurs Will Die",
+      ];
+      const titleLower = title.toLowerCase();
+      for (const b of MULTI_WORD_BRANDS) {
+        if (titleLower.startsWith(b.toLowerCase() + " ")) {
+          brand = title.slice(0, b.length);
+          model = title.slice(b.length).trim();
+          break;
+        }
+      }
+      if (!brand) {
+        const parts = title.split(/\s+/);
+        brand = parts[0];
+        model = parts.slice(1).join(" ") || title;
+      }
     }
 
     boards.push({
@@ -106,7 +118,7 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       try {
         const data = JSON.parse($(el).text());
         if (data["@type"] === "Product") {
-          brand = brand || data.brand?.name || data.brand;
+          brand = data.brand?.name || data.brand || brand;
           model = model || data.name;
           description = data.description;
           imageUrl = imageUrl || data.image;

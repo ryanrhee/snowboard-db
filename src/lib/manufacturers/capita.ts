@@ -372,7 +372,7 @@ function parseShapeFromTags(tags: string[]): string | null {
 
 function deriveGender(title: string, tags: string[]): string | null {
   const lower = title.toLowerCase();
-  if (lower.includes("women") || lower.includes("wmns") || tags.includes("women") || tags.includes("womens"))
+  if (lower.includes("women") || lower.includes("wmns") || lower.includes("wmn") || tags.includes("women") || tags.includes("womens"))
     return "womens";
   if (lower.includes("youth") || lower.includes("kid") || tags.includes("youth") || tags.includes("kids"))
     return "kids";

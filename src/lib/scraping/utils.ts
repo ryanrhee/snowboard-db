@@ -117,6 +117,8 @@ const BRAND_ALIASES: Record<string, string> = {
   "capita": "CAPiTA",
   "capita snowboarding": "CAPiTA",
   "gnu": "GNU",
+  "never summer": "Never Summer",
+  "united shapes": "United Shapes",
 };
 
 export function canonicalizeBrand(brand: string): string {
@@ -127,6 +129,8 @@ export function canonicalizeBrand(brand: string): string {
 export function normalizeBrand(raw: string): string {
   if (!raw) return "Unknown";
   const cleaned = raw
+    // Strip zero-width Unicode characters
+    .replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, "")
     // "Snowboard Co." must be checked before bare "Snowboard(s)"
     .replace(/\s*snowboard\s*co\.?\s*/gi, "")
     .replace(/\s*snowboarding\b/gi, "")

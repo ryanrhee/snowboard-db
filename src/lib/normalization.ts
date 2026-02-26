@@ -30,7 +30,7 @@ export function normalizeConditionString(raw: string): ListingCondition {
 }
 
 export function detectGender(rawModel: string, url?: string): GenderTarget {
-  if (/women'?s|wmns/i.test(rawModel) || (url && /[\/-]womens?\b/i.test(url)))
+  if (/women'?s|wmns|\bwmn\b/i.test(rawModel) || (url && /[\/-]womens?\b/i.test(url)))
     return GenderTarget.WOMENS;
   if (/kids'?|boys'?|girls'?|youth|junior/i.test(rawModel))
     return GenderTarget.KIDS;
@@ -175,6 +175,9 @@ export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile
 
   let model = raw;
 
+  // Strip zero-width Unicode characters
+  model = model.replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, "");
+
   // Strip binding/package info: everything after " + " or " w/ "
   model = model.replace(/\s*\+\s.*$/, "");
   model = model.replace(/\s+w\/\s.*$/i, "");
@@ -221,6 +224,94 @@ export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile
   // Strip trailing profile designators (profile is stored as a separate field)
   if (!opts?.keepProfile) {
     model = model.replace(PROFILE_SUFFIX_RE, "");
+  }
+
+  // Strip leading "the " (e.g. "the throwback" → "throwback")
+  model = model.replace(/^the\s+/i, "");
+
+  // Replace " - " (space-dash-space) with single space (e.g. "hps - goop" → "hps goop")
+  model = model.replace(/\s+-\s+/g, " ");
+
+  // Strip acronym-style periods (period between letters, e.g. "D.O.A." → "DOA")
+  // Preserves version numbers ("2.0") and name initials ("T. Rice" — single letter + period + space)
+  model = model.replace(/\.(?=[a-zA-Z])/g, "");
+  // Strip trailing acronym period (letter.space or letter.end) but not single-letter initials
+  model = model.replace(/(?<=[a-zA-Z]{2})\.(?=\s|$)/g, "");
+
+  // Replace hyphens with spaces (e.g. "gloss-c" → "gloss c")
+  model = model.replace(/-/g, " ");
+
+  // Apply model aliases
+  const modelLowerForAlias = model.toLowerCase();
+  const MODEL_ALIASES: Record<string, string> = {
+    "mega merc": "mega mercury",
+    "son of a birdman": "son of birdman",
+  };
+  // Prefix-based aliases
+  const MODEL_PREFIX_ALIASES: [string, string][] = [
+    ["sb ", "spring break "],
+    ["snowboards ", ""],
+  ];
+  if (MODEL_ALIASES[modelLowerForAlias]) {
+    // Preserve original casing style by using the alias directly
+    model = MODEL_ALIASES[modelLowerForAlias];
+  } else {
+    for (const [prefix, replacement] of MODEL_PREFIX_ALIASES) {
+      if (modelLowerForAlias.startsWith(prefix)) {
+        model = replacement + model.slice(prefix.length);
+        break;
+      }
+    }
+  }
+
+  // Strip rider name prefixes (brand-scoped)
+  // Some retailers include the pro rider's name, others don't
+  if (brand) {
+    const RIDER_NAMES: Record<string, string[]> = {
+      "GNU": ["Forest Bailey", "Max Warbington", "Cummins'"],
+      "CAPiTA": ["Arthur Longo", "Jess Kimura"],
+      "Nitro": ["Hailey Langland", "Marcus Kleveland"],
+      "Jones": ["Harry Kearney", "Ruiki Masuda"],
+      "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore"],
+    };
+    const riders = RIDER_NAMES[brand];
+    if (riders) {
+      const mLower = model.toLowerCase();
+      for (const rider of riders) {
+        const rLower = rider.toLowerCase();
+        // Strip "by <rider>" infix (e.g. "Equalizer By Jess Kimura" → "Equalizer")
+        const byIdx = mLower.indexOf(" by " + rLower);
+        if (byIdx >= 0) {
+          model = model.slice(0, byIdx) + model.slice(byIdx + 4 + rider.length);
+          break;
+        }
+        // Strip "<rider> " prefix (e.g. "Forest Bailey Head Space" → "Head Space")
+        if (mLower.startsWith(rLower + " ")) {
+          model = model.slice(rider.length).trimStart();
+          break;
+        }
+        // Strip " <rider>" suffix (e.g. "Team Pro Marcus Kleveland" → "Team Pro")
+        if (mLower.endsWith(" " + rLower)) {
+          model = model.slice(0, model.length - rider.length - 1);
+          break;
+        }
+      }
+    }
+
+    // Also handle "Signature Series" / "Ltd" infixes after rider name stripping
+    // e.g. "Harry Kearney Signature Series Stratos" → "Stratos" (rider stripped above)
+    // Remaining: "Signature Series Stratos" → "Stratos"
+    model = model.replace(/^(?:Signature Series|Ltd)\s+/i, "");
+  }
+
+  // GNU-specific: strip profile letter prefix "C " and suffix " C"
+  // GNU uses "C" to denote C3 camber line (e.g. "C Money" = "Money" with C3 profile)
+  // Also strip "Asym" (asymmetric sidecut — shape attribute, not model differentiator)
+  if (brand === "GNU") {
+    model = model.replace(/^C\s+/i, "");
+    model = model.replace(/\s+C$/i, "");
+    model = model.replace(/^Asym\s+/i, "");
+    model = model.replace(/\s+Asym\b/i, "");
   }
 
   // Clean up leftover dashes, slashes, and whitespace
