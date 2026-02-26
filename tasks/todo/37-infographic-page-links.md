@@ -11,6 +11,14 @@ The `/lt-infographics` and `/gnu-infographics` audit pages show links to both ma
 3. Remove retailer links from these pages entirely.
 4. The manufacturer link doesn't need to be a purchasable page — informational product pages are fine.
 
+## Known issues
+
+- **Skunk Ape Camber** links to the non-Camber (C2?) Skunk Ape product page — wrong variant linked
+- **Apex Orca** has no links — DB has "Lib Tech T. Rice Apex Orca", possibly a name matching issue between infographic board name and DB board key
+- **Legitimizer** shows 2 evo links (2025 vs 2026) — should only show the manufacturer link, not retailer links at all
+
+Analyze the full dataset for more issues like these: wrong variant links, missing links, duplicate links, retailer links that shouldn't be there.
+
 ## Approach
 
 1. Check the API routes (`src/app/api/lt-infographics/route.ts`, `src/app/api/gnu-infographics/route.ts`) to see where links are sourced from. They likely pull from the `listings` table which mixes manufacturer and retailer sources.
