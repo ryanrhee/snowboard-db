@@ -129,8 +129,6 @@ function productsToRawBoards(allProducts: ReiProduct[]): RawBoard[] {
   return uniqueProducts
     .filter((p) => {
       if (!p.displayPrice?.min) return false;
-      // Only include boards that are actually discounted
-      if (!p.sale && !p.clearance && !parseFloat(p.percentageOff || "0")) return false;
       return true;
     })
     .map((p) => {

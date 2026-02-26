@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         console.log(`[slow-scrape] Fetching ${url}`);
         const html = await fetcher(url);
 
-        if (html.length < 5000 || html.includes("Access Denied")) {
+        if (html.length < 50000 || html.includes("Access Denied")) {
           console.log(`[slow-scrape] Blocked (${html.length} bytes)`);
           return { url, status: "blocked", htmlLength: html.length };
         }
@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
       const context = browser.contexts()[0] || await browser.newContext();
       fetcher = async (url: string) => {
         const page = await context.newPage();
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-        await delayFn(3000);
+        await page.goto(url, { waitUntil: "load", timeout: 45000 });
+        await delayFn(5000);
         const html = await page.content();
         await page.close();
         return html;
@@ -234,6 +234,79 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ action, status });
+  }
+
+  if (action === "inspect-pagination") {
+    // Fetch listing page for a retailer and dump pagination-related HTML
+    const site = body.site || "evo";
+    const urls: Record<string, string> = {
+      evo: "https://www.evo.com/shop/snowboard/snowboards",
+      tactics: "https://www.tactics.com/snowboards",
+      backcountry: "https://www.backcountry.com/snowboards",
+    };
+    const url = urls[site];
+    if (!url) return NextResponse.json({ error: `Unknown site: ${site}` });
+
+    const { fetchPageWithBrowser } = await import("@/lib/scraping/utils");
+    const cheerio = await import("cheerio");
+    const html = await fetchPageWithBrowser(url);
+    const $ = cheerio.load(html);
+
+    // Dump various pagination selectors
+    const paginationHtml: string[] = [];
+    const selectors = [
+      ".pagination", "[class*=pagination]", "[class*=Pagination]",
+      ".paging", "[class*=paging]", "[class*=Paging]",
+      "[class*=page-nav]", "[class*=PageNav]",
+      "nav[aria-label*=page]", "nav[aria-label*=Page]",
+      "[data-page]", "[class*=next-page]", "[class*=load-more]",
+      "[class*=LoadMore]", "[class*=show-more]",
+    ];
+    for (const sel of selectors) {
+      const els = $(sel);
+      if (els.length > 0) {
+        paginationHtml.push(`--- ${sel} (${els.length} matches) ---`);
+        els.each((_, el) => { paginationHtml.push($(el).html()?.slice(0, 2000) || ""); });
+      }
+    }
+
+    // Also check __NEXT_DATA__ for pagination info (backcountry)
+    const nextData = $("#__NEXT_DATA__").text();
+    let nextDataPagination: unknown = null;
+    if (nextData) {
+      try {
+        const parsed = JSON.parse(nextData);
+        const pageProps = parsed?.props?.pageProps;
+        // Look for pagination-related keys
+        nextDataPagination = {
+          totalResults: pageProps?.totalResults ?? pageProps?.totalCount,
+          totalPages: pageProps?.totalPages,
+          pageSize: pageProps?.pageSize,
+          keys: Object.keys(pageProps || {}),
+        };
+      } catch {}
+    }
+
+    // Look for any links with page numbers in href
+    const pageLinks: string[] = [];
+    $("a[href]").each((_, el) => {
+      const href = $(el).attr("href") || "";
+      if (/page|p[=_]\d/i.test(href)) pageLinks.push(href);
+    });
+
+
+    return NextResponse.json({
+      action,
+      site,
+      url,
+      htmlLength: html.length,
+      productCount: site === "evo" ? $(".product-thumb").length :
+                    site === "tactics" ? $("div.browse-grid-item").length :
+                    $("[data-id='productCard']").length,
+      paginationHtml: paginationHtml.join("\n"),
+      nextDataPagination,
+      pageLinks: [...new Set(pageLinks)].slice(0, 20),
+    });
   }
 
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });

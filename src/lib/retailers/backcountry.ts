@@ -7,8 +7,22 @@ import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay 
 
 const BC_BASE_URL = "https://www.backcountry.com";
 
-function buildSearchUrl(): string {
-  return `${BC_BASE_URL}/snowboards`;
+function buildSearchUrl(page?: number): string {
+  const base = `${BC_BASE_URL}/snowboards`;
+  return page && page > 1 ? `${base}?page=${page}` : base;
+}
+
+function extractTotalPages(html: string): number {
+  const $ = cheerio.load(html);
+  const nextDataScript = $("#__NEXT_DATA__");
+  if (nextDataScript.length > 0) {
+    try {
+      const nextData = JSON.parse(nextDataScript.text());
+      const totalPages = nextData?.props?.pageProps?.totalPages;
+      if (typeof totalPages === "number") return totalPages;
+    } catch { /* fall through */ }
+  }
+  return 1;
 }
 
 function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
@@ -42,7 +56,7 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
               : undefined,
             brand: brand?.name,
             model: product.name as string,
-            salePrice: aggregates?.minSalePrice as number | undefined,
+            salePrice: (aggregates?.minSalePrice as number | undefined) || (aggregates?.minListPrice as number | undefined),
             originalPrice: aggregates?.minListPrice as number | undefined,
             currency: Currency.USD,
           });
@@ -371,14 +385,28 @@ export const backcountry: ScraperModule = {
   region: Region.US,
 
   async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-    const searchUrl = buildSearchUrl();
-    console.log(`[backcountry] Fetching search results from ${searchUrl}`);
+    const page1Url = buildSearchUrl();
+    console.log(`[backcountry] Fetching page 1 from ${page1Url}`);
 
-    const html = await fetchPageWithBrowser(searchUrl);
-    const partials = parseProductsFromHtml(html);
-    console.log(`[backcountry] Found ${partials.length} product cards`);
+    const page1Html = await fetchPageWithBrowser(page1Url);
+    const totalPages = extractTotalPages(page1Html);
+    console.log(`[backcountry] ${totalPages} total pages`);
 
-    const withUrls = partials.filter((p) => p.salePrice && p.url);
+    let allPartials = parseProductsFromHtml(page1Html);
+
+    for (let page = 2; page <= totalPages; page++) {
+      await delay(config.scrapeDelayMs);
+      const pageUrl = buildSearchUrl(page);
+      console.log(`[backcountry] Fetching page ${page} from ${pageUrl}`);
+      const html = await fetchPageWithBrowser(pageUrl);
+      const partials = parseProductsFromHtml(html);
+      console.log(`[backcountry] Page ${page}: ${partials.length} product cards`);
+      allPartials = allPartials.concat(partials);
+    }
+
+    console.log(`[backcountry] Found ${allPartials.length} total product cards`);
+
+    const withUrls = allPartials.filter((p) => p.url);
     console.log(`[backcountry] Fetching details for ${withUrls.length} boards`);
 
     const boards: RawBoard[] = [];

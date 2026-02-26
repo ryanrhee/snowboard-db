@@ -7,8 +7,29 @@ import { fetchPage, parsePrice, normalizeBrand, delay } from "../scraping/utils"
 
 const TACTICS_BASE_URL = "https://www.tactics.com";
 
-function buildSearchUrl(): string {
-  return `${TACTICS_BASE_URL}/snowboards/sale`;
+function buildSearchUrl(page?: number): string {
+  if (page && page > 1) return `${TACTICS_BASE_URL}/snowboards/page-${page}`;
+  return `${TACTICS_BASE_URL}/snowboards`;
+}
+
+function extractTotalPages(html: string): number {
+  const $ = cheerio.load(html);
+  let maxPage = 1;
+  $(".pagination-pages-content a").each((_, el) => {
+    const text = $(el).text().trim();
+    const num = parseInt(text);
+    if (!isNaN(num) && num > maxPage) maxPage = num;
+  });
+  // Also check the dropdown: "1 / 4" format
+  $(".pagination-drop-down-select option").each((_, el) => {
+    const text = $(el).text().trim();
+    const match = text.match(/\d+\s*\/\s*(\d+)/);
+    if (match) {
+      const total = parseInt(match[1]);
+      if (total > maxPage) maxPage = total;
+    }
+  });
+  return maxPage;
 }
 
 function parseProductCards(html: string): Partial<RawBoard>[] {
@@ -291,17 +312,30 @@ export const tactics: ScraperModule = {
   region: Region.US,
 
   async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-    const searchUrl = buildSearchUrl();
-    console.log(`[tactics] Fetching search results from ${searchUrl}`);
+    const page1Url = buildSearchUrl();
+    console.log(`[tactics] Fetching page 1 from ${page1Url}`);
 
-    const html = await fetchPage(searchUrl);
-    const partialBoards = parseProductCards(html);
-    console.log(`[tactics] Found ${partialBoards.length} product cards`);
+    const page1Html = await fetchPage(page1Url);
+    const totalPages = extractTotalPages(page1Html);
+    console.log(`[tactics] ${totalPages} total pages`);
 
-    console.log(`[tactics] Fetching details for ${partialBoards.length} boards`);
+    let allPartials = parseProductCards(page1Html);
+
+    for (let page = 2; page <= totalPages; page++) {
+      await delay(config.scrapeDelayMs);
+      const pageUrl = buildSearchUrl(page);
+      console.log(`[tactics] Fetching page ${page} from ${pageUrl}`);
+      const html = await fetchPage(pageUrl);
+      const partials = parseProductCards(html);
+      console.log(`[tactics] Page ${page}: ${partials.length} product cards`);
+      allPartials = allPartials.concat(partials);
+    }
+
+    console.log(`[tactics] Found ${allPartials.length} total product cards`);
+    console.log(`[tactics] Fetching details for ${allPartials.length} boards`);
 
     const boards: RawBoard[] = [];
-    for (const partial of partialBoards) {
+    for (const partial of allPartials) {
       const results = await fetchBoardDetails(partial);
       boards.push(...results);
     }

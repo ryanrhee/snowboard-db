@@ -7,8 +7,22 @@ import { fetchPageWithBrowser, parsePrice, parseLengthCm, normalizeBrand, delay 
 
 const EVO_BASE_URL = "https://www.evo.com";
 
-function buildSearchUrl(): string {
-  return `${EVO_BASE_URL}/shop/snowboard/snowboards/sale`;
+function buildSearchUrl(page?: number): string {
+  const base = `${EVO_BASE_URL}/shop/snowboard/snowboards`;
+  // Use 200 results per page to minimize fetches
+  if (page && page > 1) return `${base}/rpp_200/p_${page}`;
+  return `${base}/rpp_200`;
+}
+
+function extractTotalPages(html: string): number {
+  const $ = cheerio.load(html);
+  let maxPage = 1;
+  $(".results-pagination-numerals a.results-link").each((_, el) => {
+    const label = $(el).attr("aria-label") || "";
+    const num = parseInt(label);
+    if (!isNaN(num) && num > maxPage) maxPage = num;
+  });
+  return maxPage;
 }
 
 function parseProductCards(html: string): Partial<RawBoard>[] {
@@ -171,7 +185,10 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
       if (countMatch) specs["review count"] = countMatch[1];
     }
 
-    if (!salePrice) return null;
+    if (!salePrice && !originalPrice) return null;
+
+    // For full-price boards, use originalPrice as salePrice
+    if (!salePrice) salePrice = originalPrice;
 
     // Description fallback
     if (!description) {
@@ -305,14 +322,28 @@ export const evo: ScraperModule = {
   region: Region.US,
 
   async scrape(_scope?: ScrapeScope): Promise<ScrapedBoard[]> {
-    const searchUrl = buildSearchUrl();
-    console.log(`[evo] Fetching search results from ${searchUrl}`);
+    const page1Url = buildSearchUrl();
+    console.log(`[evo] Fetching page 1 from ${page1Url}`);
 
-    const html = await fetchPageWithBrowser(searchUrl);
-    const partialBoards = parseProductCards(html);
-    console.log(`[evo] Found ${partialBoards.length} product cards`);
+    const page1Html = await fetchPageWithBrowser(page1Url);
+    const totalPages = extractTotalPages(page1Html);
+    console.log(`[evo] ${totalPages} total pages`);
 
-    const withUrls = partialBoards.filter((p) => p.salePrice && p.url);
+    let allPartials = parseProductCards(page1Html);
+
+    for (let page = 2; page <= totalPages; page++) {
+      await delay(config.scrapeDelayMs);
+      const pageUrl = buildSearchUrl(page);
+      console.log(`[evo] Fetching page ${page} from ${pageUrl}`);
+      const html = await fetchPageWithBrowser(pageUrl);
+      const partials = parseProductCards(html);
+      console.log(`[evo] Page ${page}: ${partials.length} product cards`);
+      allPartials = allPartials.concat(partials);
+    }
+
+    console.log(`[evo] Found ${allPartials.length} total product cards`);
+
+    const withUrls = allPartials.filter((p) => p.url);
     console.log(`[evo] Fetching details for ${withUrls.length} boards`);
 
     const boards: RawBoard[] = [];
