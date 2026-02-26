@@ -50,18 +50,23 @@
 - [x] **Unit tests:** Smart apostrophe variant of `parseCategoriesText` gender detection; end-to-end board_key tests with smart apostrophe in categories text and tags
 - [x] **Coalesce integration tests:** 5 new tests in `coalesce.test.ts` verifying CAPiTA gender flows through `coalesce()` — womens/unisex/kids board_key and gender field, womens manufacturer+retailer merge, same model with different genders creates separate boards
 
+### Round 6: Backcountry combo package gender detection (verified)
+
+- [x] **Root cause:** Backcountry combo/package deals (board + binding) use a package title like "Paradice Snowboard + Union Juliet Binding - 2026" with no gender indicator. The individual component names in `__NEXT_DATA__.packageComponents` do include gender (e.g. "Paradise Snowboard - 2026 - Women's") but the scraper wasn't reading them.
+- [x] **Fix:** In `fetchBoardDetails`, when `__NEXT_DATA__` has `packageComponents`, find the snowboard component (matches "snowboard" but not "binding") and use its `componentName` as the model. Gender is then detected by `adaptRetailerOutput` → `detectGender` from the "- Women's" suffix.
+- [x] **Integration test:** `backcountry-combo.test.ts` — reads cached HTML from `http-cache.db`, mocks `fetchPageWithBrowser` to return it, runs `backcountry.scrape()`, asserts Paradise board has `gender: "womens"`.
+
 ### Pipeline results
 
-| Metric | Before | After Round 1 | After Round 2 | After Round 3 | After Round 4 | After Round 5 |
-|--------|--------|---------------|---------------|---------------|---------------|---------------|
-| Total boards | 544 | 513 | 500 | 490 | 483 | 482 |
-| Total listings | — | 3272 | 3272 | 3272 | 3272 | 3272 |
-| Duplicate keys | ~30 | 0 | 0 | 0 | 0 | 0 |
-| Orphan boards | 3 | 0 | 0 | 0 | 0 | 0 |
-| Mis-split brands | 6 | 0 | 0 | 0 | 0 | 0 |
-| Zero-width dupes | 3 | 0 | 0 | 0 | 0 | 0 |
-| Near-dupe pairs | ~130 | 123 | 107 | 101 | 102 | — |
-| Gender column accuracy | — | — | — | 0% (all unisex) | 100% (359u/98w/26k) | 100% (357u/99w/26k) |
+| Metric | Before | R1 | R2 | R3 | R4 | R5 | R6 |
+|--------|--------|----|----|----|----|----|-----|
+| Total boards | 544 | 513 | 500 | 490 | 483 | 482 | 479 |
+| Total listings | — | 3272 | 3272 | 3272 | 3272 | 3272 | 3272 |
+| Duplicate keys | ~30 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Orphan boards | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Mis-split brands | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Zero-width dupes | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Gender accuracy | — | — | — | 0% | 100% (359u/98w/26k) | 100% (357u/99w/26k) | 100% (354u/99w/26k) |
 
 ### Files modified
 
@@ -75,6 +80,8 @@
 | `src/lib/retailers/evo.ts` | Multi-word brand parsing, prefer JSON-LD brand |
 | `src/lib/pipeline.ts` | Orphan cleanup at end of run |
 | `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender`; extracted `parseCategoriesText` as testable function; smart apostrophe normalization in both `parseCategoriesText` and `deriveGender` |
+| `src/lib/retailers/backcountry.ts` | Combo package: use snowboard `packageComponents[].componentName` as model for gender detection |
+| `src/__tests__/backcountry-combo.test.ts` | Integration test: cached HTML → scraper → womens gender detection for combo deals |
 | `src/__tests__/normalization-pipeline.test.ts` | 228 tests (snapshot + step-level + debug) |
 | `src/__tests__/fixtures/normalization-inputs.json` | 156 snapshot entries |
 | `src/__tests__/coalesce.test.ts` | Added `genderFromKey` to db mock; 5 CAPiTA gender flow integration tests |
@@ -85,13 +92,15 @@
 
 ### Test results
 
-All 891 tests pass across 17 test files (641 original + 202 from task 40 + 26 from round 4 + 22 from round 5).
+All 892 tests pass across 18 test files.
 
 ### Remaining near-dupes — all legitimate
 
 Most are expected variants: Pro/non-Pro editions, Split/non-Split, version 2.0 vs original, signature rider editions (Benny Milam Ltd, Miles Fallon Ltd), Junior/Youth variants, profile splits from `identifyBoards()` (e.g. Money C2 vs Money C3).
 
-3 remaining unisex CAPiTA boards that are actually women's boards (`capita|paradise|unisex`, `capita|birds of a feather|unisex`, `capita|equalizer|unisex`) — all from backcountry combo packages that omit gender from URL/title. Fixing these would require combo package gender inference from the board component.
+### Next steps
+
+- [ ] Check if other retailers (evo, tactics) or manufacturers sell board-binding combos that need similar component-level gender detection
 
 ### Verification queries
 

@@ -275,6 +275,20 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
             if (reviews.average != null) specs["rating"] = String(reviews.average);
             if (reviews.count != null) specs["review count"] = String(reviews.count);
           }
+
+          // Combo/package deals: use the snowboard component name instead of
+          // the package title so gender and model are correctly detected.
+          // e.g. "Paradice Snowboard + Union Juliet Binding - 2026" →
+          //      "Paradise Snowboard - 2026 - Women's"
+          if (Array.isArray(product.packageComponents)) {
+            for (const comp of product.packageComponents) {
+              const name = comp.componentName as string | undefined;
+              if (name && /snowboard/i.test(name) && !/binding/i.test(name)) {
+                model = name;
+                break;
+              }
+            }
+          }
         }
       } catch { /* skip */ }
     }
