@@ -4,6 +4,10 @@
 
 The Claude process is sandboxed. Browsers (Chromium, Chrome, Firefox, etc.) cannot run in this sandbox. Do not run Playwright, Puppeteer, or anything that launches a browser. Running `node`, `npx`, and `npm run` directly is fine for tasks that don't depend on a browser (e.g. `npm run test` for unit tests).
 
+## Inline Scripts
+
+When you need to run Node.js analysis or one-off scripts, **always write a `.mjs` file first** and run it with `npx tsx <file>.mjs`. Do not try to pass JavaScript via `node -e '...'` — shell escaping issues (especially with `$`, `!`, template literals, and cheerio's `$`) will waste multiple attempts.
+
 ## Dev Server
 
 A separate terminal window runs the dev server in a restart loop:

@@ -25,3 +25,17 @@ Analyze the full dataset for more issues like these: wrong variant links, missin
 2. Filter to only `manufacturer:*` source URLs, or better yet, pull the product page URL directly from the manufacturer scraper output (the `sourceUrl` / `manufacturer_url` field on the board).
 3. For boards with no links (Apex Orca, Cold Brew), investigate why — they should have manufacturer URLs if they were scraped from lib-tech.com.
 4. Update the UI components to show a single manufacturer link per board instead of a list.
+
+## Completed: 2026-02-26
+
+Removed the `listings` table query from both API routes and replaced it with a single manufacturer link using `pageUrl` — the URL already present on each entry from the `http_cache`. This was the simplest correct fix because each infographic entry is extracted from a cached manufacturer page, so the cache URL *is* the manufacturer product page URL.
+
+**Changes:**
+- `src/app/api/lt-infographics/route.ts` — Removed `getDb()` import and listings query. Set `links` to `[{ label: "lib-tech.com", url: entry.pageUrl }]`.
+- `src/app/api/gnu-infographics/route.ts` — Same change, label `"gnu.com"`.
+- No UI changes needed — the frontend already renders `entry.links`.
+
+**Issues resolved:**
+- Wrong variant links (Skunk Ape Camber) — link now comes from the same page the infographic was extracted from
+- Missing links (Apex Orca, Cold Brew) — every cached page has a URL, so every board gets a link
+- Duplicate/retailer links (Legitimizer with 2 evo links) — eliminated entirely

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCacheDb, getDb } from "@/lib/db";
+import { getCacheDb } from "@/lib/db";
 import * as cheerio from "cheerio";
 import {
   analyzeGnuInfographic,
@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
     }
 
     const cacheDb = getCacheDb();
-    const mainDb = getDb();
     const rows = cacheDb
       .prepare(
         "SELECT url, body FROM http_cache WHERE url LIKE '%gnu.com/%' AND url NOT LIKE '%/snowboards/mens%' AND url NOT LIKE '%/snowboards/womens%'"
@@ -68,18 +67,9 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    // Look up retailer listings for each board
-    const listingStmt = mainDb.prepare(
-      "SELECT DISTINCT retailer, url FROM listings WHERE board_key LIKE ? ORDER BY retailer"
-    );
+    // Each entry already has pageUrl (the manufacturer product page from http_cache)
     for (const entry of unique) {
-      const cleanName = entry.boardName
-        .replace(/^GNU\s+/i, "")
-        .replace(/\s+Snowboard$/i, "")
-        .trim();
-      const boardKeyPattern = `gnu|${cleanName.toLowerCase()}|%`;
-      const listings = listingStmt.all(boardKeyPattern) as { retailer: string; url: string }[];
-      entry.links = listings.map((l) => ({ label: l.retailer, url: l.url }));
+      entry.links = [{ label: "gnu.com", url: entry.pageUrl }];
     }
 
     // Fetch and analyze each infographic image (3 concurrent)

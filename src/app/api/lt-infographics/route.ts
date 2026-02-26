@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCacheDb, getDb } from "@/lib/db";
+import { getCacheDb } from "@/lib/db";
 import * as cheerio from "cheerio";
 import {
   analyzeInfographic,
@@ -22,7 +22,6 @@ interface InfographicEntry {
 export async function GET() {
   try {
     const cacheDb = getCacheDb();
-    const mainDb = getDb();
     const rows = cacheDb
       .prepare(
         "SELECT url, body FROM http_cache WHERE url LIKE '%lib-tech.com/%' AND url NOT LIKE '%/snowboards'"
@@ -63,18 +62,9 @@ export async function GET() {
       return true;
     });
 
-    // Look up retailer listings for each board
-    const listingStmt = mainDb.prepare(
-      "SELECT DISTINCT retailer, url FROM listings WHERE board_key LIKE ? ORDER BY retailer"
-    );
+    // Each entry already has pageUrl (the manufacturer product page from http_cache)
     for (const entry of unique) {
-      const cleanName = entry.boardName
-        .replace(/^Lib\s*Tech\s+/i, "")
-        .replace(/\s+Snowboard$/i, "")
-        .trim();
-      const boardKeyPattern = `lib tech|${cleanName.toLowerCase()}|%`;
-      const listings = listingStmt.all(boardKeyPattern) as { retailer: string; url: string }[];
-      entry.links = listings.map((l) => ({ label: l.retailer, url: l.url }));
+      entry.links = [{ label: "lib-tech.com", url: entry.pageUrl }];
     }
 
     // Fetch and analyze each infographic image (3 concurrent)
