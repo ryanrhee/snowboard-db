@@ -349,6 +349,12 @@ function mapRowToSearchRun(row: Record<string, unknown>): SearchRun {
 
 // ===== Board CRUD (new board-centric model) =====
 
+export function getAllBoards(): Board[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT * FROM boards").all() as Record<string, unknown>[];
+  return rows.map(mapRowToNewBoard);
+}
+
 export function upsertBoard(board: Board): void {
   const db = getDb();
   db.prepare(`

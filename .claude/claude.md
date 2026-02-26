@@ -52,7 +52,7 @@ On first run after the split, cache tables are automatically migrated from the m
 
 ## Re-running the Pipeline
 
-All scraping goes through a single `run` action (the default). Use `sites`, `retailers`, or `manufacturers` to filter.
+All scraping goes through a single `run` action (the default). Use `sites`, `retailers`, or `manufacturers` to filter. Use `from` to skip early pipeline steps.
 
 ### Quick reference
 
@@ -71,6 +71,12 @@ All scraping goes through a single `run` action (the default). Use `sites`, `ret
 
 # Specific retailers + specific manufacturers
 ./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
+
+# Re-run review site enrichment + resolve (skip retailer/mfr scraping)
+./debug.sh '{"action":"run","from":"review-sites"}'
+
+# Re-resolve specs from existing spec_sources (skip all scraping)
+./debug.sh '{"action":"run","from":"resolve"}'
 ```
 
 ### Reset pipeline output + re-run

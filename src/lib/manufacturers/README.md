@@ -34,6 +34,8 @@ src/lib/manufacturers/
 src/lib/scrapers/
 ├── types.ts        # ScraperModule, ScrapedBoard interfaces
 ├── registry.ts     # Unified registry (all retailers + manufacturers)
+├── coalesce.ts     # identifyBoards() + coalesce() — board grouping, spec writing, entity building
+├── review-site-scraper.ts  # Review-site ScraperModule (created dynamically by pipeline)
 └── adapters.ts     # ManufacturerSpec type + adaptManufacturerOutput/adaptRetailerOutput helpers
 ```
 

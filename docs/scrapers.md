@@ -14,7 +14,7 @@ interface ScraperModule {
 }
 ```
 
-Scrapers are registered in `src/lib/scrapers/registry.ts` as a flat list. No separate registries or adapter layers exist — each scraper directly returns `ScrapedBoard[]`.
+Scrapers are registered in `src/lib/scrapers/registry.ts` as a flat list. No separate registries or adapter layers exist — each scraper directly returns `ScrapedBoard[]`. Review-site scrapers are not in the registry; they are created dynamically by the pipeline (see [Review Sites](#review-sites) below).
 
 ## Active Scrapers
 
@@ -224,6 +224,29 @@ Shopify JSON API only. Extracts flex, shape, profile, and category from `body_ht
 | GNU | 25 | 24 (96%) | 15 (60%) | 13 (52%) | 25 (100%) | 2 (8%) |
 | Yes. | 22 | 1 (5%) | — | 14 (64%) | 9 (41%) | 2 (9%) |
 | Season | 5 | 3 (60%) | 2 (40%) | 4 (80%) | 5 (100%) | 1 (20%) |
+
+---
+
+## Review Sites
+
+Review-site scrapers are not registered in the scraper registry. Instead, the pipeline creates them dynamically after board identification, so they only enrich boards that already exist from retailer/manufacturer data.
+
+### The Good Ride
+
+- **File:** `src/lib/scrapers/review-site-scraper.ts` (scraper module), `src/lib/review-sites/the-good-ride.ts` (lookup logic)
+- **Base URL:** `https://www.thegoodride.com`
+- **Source name:** `review-site:the-good-ride`
+- **Fetch method:** HTTP (`fetchPage`) with 7-day cache TTL
+
+The pipeline calls `createReviewSiteScraper(targets)` with the list of `{brand, model}` pairs identified from retailer + manufacturer data. For each target, it calls `tryReviewSiteLookup()` which:
+
+1. Resolves the board to a review URL via sitemap matching (Dice coefficient, threshold 0.6)
+2. Fetches and parses the review page HTML
+3. Returns a `ReviewSiteSpec` with flex, profile, shape, category, abilityLevel, MSRP, and extras
+
+The scraper converts each `ReviewSiteSpec` into a `ScrapedBoard` with empty listings, which then flows through `coalesce()` uniformly alongside retailer and manufacturer data.
+
+Rate-limited with `config.scrapeDelayMs` between fetches. Sitemap and URL mappings are cached in the cache DB.
 
 ---
 

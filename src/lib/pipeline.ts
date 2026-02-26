@@ -17,6 +17,8 @@ import {
   getBoardsWithListings,
   getListingsByRunId,
   updateListingPriceAndStock,
+  getAllBoards,
+  specKey,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
@@ -24,7 +26,8 @@ import { pruneHttpCache } from "./scraping/http-cache";
 import { SEED_BOARDS } from "./seed-data";
 import { resolveSpecSources } from "./spec-resolution";
 import { getScrapers } from "./scrapers/registry";
-import { coalesce } from "./scrapers/coalesce";
+import { identifyBoards, coalesce, writeSpecSources } from "./scrapers/coalesce";
+import { createReviewSiteScraper } from "./scrapers/review-site-scraper";
 import { adaptRetailerOutput } from "./scrapers/adapters";
 import { ScrapedBoard } from "./scrapers/types";
 import * as cheerio from "cheerio";
@@ -43,16 +46,86 @@ export async function runSearchPipeline(
 
   const startTime = Date.now();
   const runId = randomUUID();
+  const from = mergedScope.from ?? "scrape";
+  const errors: RetailerError[] = [];
 
-  // Get all scrapers (retailers + manufacturers)
+  // ---- from: "resolve" — skip all scraping, re-resolve existing spec_sources ----
+  if (from === "resolve") {
+    const existingBoards = getAllBoards();
+    console.log(`[pipeline] from=resolve: re-resolving ${existingBoards.length} boards`);
+
+    const resolvedBoards = await resolveSpecSources(existingBoards);
+    for (const board of resolvedBoards) {
+      board.beginnerScore = calcBeginnerScoreForBoard(board);
+    }
+    upsertBoards(resolvedBoards);
+
+    const durationMs = Date.now() - startTime;
+    const run = {
+      id: runId,
+      timestamp: new Date().toISOString(),
+      constraintsJson: JSON.stringify(mergedScope),
+      boardCount: resolvedBoards.length,
+      retailersQueried: "",
+      durationMs,
+    };
+    insertSearchRun(run);
+
+    console.log(
+      `[pipeline] from=resolve complete: ${resolvedBoards.length} boards in ${durationMs}ms`
+    );
+
+    return { run, boards: getBoardsWithListings(runId), errors };
+  }
+
+  // ---- from: "review-sites" — skip retailer/mfr scraping, run review sites ----
+  if (from === "review-sites") {
+    const existingBoards = getAllBoards();
+    console.log(
+      `[pipeline] from=review-sites: ${existingBoards.length} boards from DB`
+    );
+
+    const targets = existingBoards.map((b) => ({ brand: b.brand, model: b.model }));
+    const reviewScraper = createReviewSiteScraper(targets);
+    const reviewBoards = await reviewScraper.scrape();
+
+    // Write review-site specs to spec_sources
+    for (const rb of reviewBoards) {
+      const key = specKey(rb.brand, rb.model, rb.gender);
+      writeSpecSources(key, [rb]);
+    }
+
+    const resolvedBoards = await resolveSpecSources(existingBoards);
+    for (const board of resolvedBoards) {
+      board.beginnerScore = calcBeginnerScoreForBoard(board);
+    }
+    upsertBoards(resolvedBoards);
+
+    const durationMs = Date.now() - startTime;
+    const run = {
+      id: runId,
+      timestamp: new Date().toISOString(),
+      constraintsJson: JSON.stringify(mergedScope),
+      boardCount: resolvedBoards.length,
+      retailersQueried: "",
+      durationMs,
+    };
+    insertSearchRun(run);
+
+    console.log(
+      `[pipeline] from=review-sites complete: ${resolvedBoards.length} boards, ${reviewBoards.length} review lookups in ${durationMs}ms`
+    );
+
+    return { run, boards: getBoardsWithListings(runId), errors };
+  }
+
+  // ---- from: "scrape" (default) — full pipeline ----
   const scrapers = getScrapers({
     regions: mergedScope.regions,
     retailers: mergedScope.retailers,
     manufacturers: mergedScope.manufacturers,
     sites: mergedScope.sites,
   });
-
-  const errors: RetailerError[] = [];
 
   // Run all scrapers in parallel
   const results = await Promise.allSettled(
@@ -107,7 +180,19 @@ export async function runSearchPipeline(
     });
   }
 
-  // Coalesce: group by board identity, write spec_sources, build Board + Listing entities
+  // Identify boards from retailer + manufacturer data (grouping + profile variant splitting)
+  const boardIdentities = identifyBoards(allScrapedBoards);
+
+  // Scrape review sites using identified board keys
+  const uniqueTargets = [...boardIdentities.values()].map(({ brand, model }) => ({
+    brand,
+    model,
+  }));
+  const reviewScraper = createReviewSiteScraper(uniqueTargets);
+  const reviewBoards = await reviewScraper.scrape();
+  allScrapedBoards.push(...reviewBoards);
+
+  // Coalesce ALL sources (retailer + manufacturer + review-site) uniformly
   const { boards, listings } = coalesce(allScrapedBoards, runId);
 
   // Resolve spec sources: priority-based resolution

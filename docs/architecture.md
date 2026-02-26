@@ -1,17 +1,19 @@
 # Architecture
 
-This document describes the snowboard-finder system architecture as of Tasks 18 and 22.
+This document describes the snowboard-finder system architecture.
 
 ## Pipeline Overview
 
 The pipeline is orchestrated by `runSearchPipeline()` in `src/lib/pipeline.ts`. It runs in these phases:
 
 1. **Setup** — Accept an optional `ScrapeScope` to filter which scrapers run. Generate a unique `runId`.
-2. **Scraping** — Run all selected scrapers in parallel via `Promise.allSettled()`. Each returns `ScrapedBoard[]`.
-3. **Coalescence** — Group scraped boards by identity (`brand|model|gender`), write all specs to `spec_sources`, build `Board` and `Listing` entities.
-4. **Spec resolution** — Apply priority-based spec resolution across sources (manufacturer > review-site > retailer). Calculate beginner scores.
-5. **Price enrichment** — Fill in discount percentages using manufacturer MSRP.
-6. **Persistence** — Upsert boards, insert listings, record the search run, prune expired cache entries.
+2. **Scraping** — Run all selected scrapers (retailers + manufacturers) in parallel via `Promise.allSettled()`. Each returns `ScrapedBoard[]`.
+3. **Board identification** — `identifyBoards()` groups scraped boards by identity (`brand|model|gender`) and splits profile variants. Returns a map of board key → `{brand, model}`.
+4. **Review site scraping** — For each unique board identified in step 3, look up specs from The Good Ride. Produces additional `ScrapedBoard[]` entries with `source: "review-site:the-good-ride"` and empty listings.
+5. **Coalescence** — `coalesce()` processes ALL `ScrapedBoard[]` (retailer + manufacturer + review-site) uniformly: groups by identity, writes all specs to `spec_sources`, builds `Board` and `Listing` entities.
+6. **Spec resolution** — Apply priority-based spec resolution across sources (manufacturer > review-site > retailer). Calculate beginner scores.
+7. **Price enrichment** — Fill in discount percentages using manufacturer MSRP.
+8. **Persistence** — Upsert boards, insert listings, record the search run, prune expired cache entries.
 
 ### ScrapeScope
 
@@ -23,6 +25,7 @@ interface ScrapeScope {
   retailers?: string[] | null;      // e.g. ["tactics", "evo"]
   manufacturers?: string[] | null;  // e.g. ["burton", "capita"]
   sites?: string[] | null;          // e.g. ["retailer:tactics", "manufacturer:burton"]
+  from?: "scrape" | "review-sites" | "resolve";  // pipeline entry point
 }
 ```
 
@@ -30,6 +33,10 @@ interface ScrapeScope {
 - Empty array `[]` = skip that type entirely
 - Array with values = include only those scrapers
 - `sites` is the unified filter — matches scraper names directly
+- `from` controls which pipeline step to start at:
+  - `"scrape"` (default) — full pipeline
+  - `"review-sites"` — skip retailer/mfr scraping, load boards from DB, run review site enrichment, resolve, score
+  - `"resolve"` — skip all scraping, re-resolve specs from existing `spec_sources`, re-score
 
 ### Board Sources
 
@@ -37,11 +44,11 @@ interface ScrapeScope {
 
 **Manufacturers** produce boards without listings. Specs are authoritative (flex, profile, shape, category, MSRP).
 
-**Review sites** do **not** produce boards. They provide spec enrichment only (currently inactive — see [Review Sites](#review-sites) below).
+**Review sites** are scraped after board identification, using the identified board keys as targets. They produce `ScrapedBoard[]` entries (with empty listings) that flow through coalesce like any other source. This ensures review sites only enrich boards that exist from retailer/manufacturer data — they never introduce new boards. Currently: The Good Ride (`review-site:the-good-ride`).
 
 ## Scraper Registry
 
-`src/lib/scrapers/registry.ts` provides a unified `getScrapers()` function. All scrapers (retailers and manufacturers) directly implement the `ScraperModule` interface and are registered in a single flat list.
+`src/lib/scrapers/registry.ts` provides a unified `getScrapers()` function. Retailers and manufacturers directly implement the `ScraperModule` interface and are registered in a single flat list. Review-site scrapers are not in the registry — they are created dynamically by the pipeline after board identification.
 
 ```
 getScrapers(opts?)
@@ -110,7 +117,7 @@ All actions are triggered via POST to `/api/debug` (use `./debug.sh` wrapper). D
 
 ### `run`
 
-Runs the scrape pipeline. Default: all scrapers (retailers + manufacturers). Use `sites`, `retailers`, or `manufacturers` to filter.
+Runs the scrape pipeline. Default: all scrapers (retailers + manufacturers). Use `sites`, `retailers`, or `manufacturers` to filter. Use `from` to start at a later pipeline step.
 
 ```bash
 # All scrapers
@@ -127,6 +134,12 @@ Runs the scrape pipeline. Default: all scrapers (retailers + manufacturers). Use
 
 # Specific retailers + specific manufacturers
 ./debug.sh '{"action":"run","retailers":["tactics"],"manufacturers":["burton"]}'
+
+# Re-run review site enrichment + resolve (skip retailer/mfr scraping)
+./debug.sh '{"action":"run","from":"review-sites"}'
+
+# Re-resolve specs from existing spec_sources (skip all scraping)
+./debug.sh '{"action":"run","from":"resolve"}'
 ```
 
 Legacy aliases (`metadata-check`, `run-full`, `full-pipeline`, `scrape-specs`, `run-manufacturers`) all map to `run`.
@@ -194,13 +207,11 @@ Contains long-lived caches (~50 MB). Expensive to rebuild — do not delete casu
 
 ## Review Sites
 
-The Good Ride (`src/lib/review-sites/the-good-ride.ts`) provides spec enrichment but **does not produce boards**. It is not registered in the scraper registry and is never called during the scraping phase.
+The Good Ride is integrated as a review-site scraper via `createReviewSiteScraper()` in `src/lib/scrapers/review-site-scraper.ts`. It is not registered in the scraper registry — instead, the pipeline creates it dynamically after board identification, passing the unique `{brand, model}` targets.
 
-Functions: `getSitemapIndex()`, `resolveReviewUrl(brand, model)`, `scrapeReviewSpecs(url)`, `tryReviewSiteLookup(brand, model)`.
+The underlying lookup logic lives in `src/lib/review-sites/the-good-ride.ts`: `getSitemapIndex()`, `resolveReviewUrl(brand, model)`, `scrapeReviewSpecs(url)`, `tryReviewSiteLookup(brand, model)`.
 
-Sitemap and URL mappings are cached in the cache DB. When enabled, review-site specs are written to `spec_sources` with `source = "review-site"` and prioritized between manufacturer and retailer specs during resolution.
-
-**Gap:** The original Task 18 spec called for review sites to produce boards as a source (not just specs). This was not implemented. Review sites remain spec-only enrichment sources.
+Sitemap and URL mappings are cached in the cache DB. Review-site specs are written to `spec_sources` with `source = "review-site:the-good-ride"` and prioritized between manufacturer and retailer specs during resolution.
 
 ## What Was Deleted (Task 18)
 

@@ -24,19 +24,23 @@ import { canonicalizeBrand } from "../scraping/utils";
 import { calcBeginnerScoreForBoard } from "../scoring";
 import { categoryToTerrain } from "../terrain";
 
+export type BoardGroup = {
+  scraped: ScrapedBoard[];
+  brand: string;
+  model: string;
+  rawModels: string[];
+};
+
 /**
- * Coalesce all ScrapedBoard[] (from retailers + manufacturers) into
- * Board[] + Listing[] entities, writing spec_sources along the way.
+ * Identify unique boards from scraped data: group by board identity (specKey),
+ * then split profile variants that were collapsed into the same key.
+ *
+ * Returns a Map of board key → BoardGroup (with brand, model, and scraped entries).
  */
-export function coalesce(
-  allScrapedBoards: ScrapedBoard[],
-  runId: string
-): { boards: Board[]; listings: Listing[] } {
-  // Group by board identity (specKey = "brand|model")
-  const boardGroups = new Map<
-    string,
-    { scraped: ScrapedBoard[]; brand: string; model: string; rawModels: string[] }
-  >();
+export function identifyBoards(
+  allScrapedBoards: ScrapedBoard[]
+): Map<string, BoardGroup> {
+  const boardGroups = new Map<string, BoardGroup>();
 
   for (const sb of allScrapedBoards) {
     const brand = canonicalizeBrand(sb.brand);
@@ -137,100 +141,137 @@ export function coalesce(
     }
   }
 
+  return boardGroups;
+}
+
+/**
+ * Write spec fields from scraped boards into the spec_sources table.
+ * Returns aggregated MSRP and description from the sources.
+ *
+ * Extracted so that the `from: "review-sites"` pipeline path can write
+ * review-site specs without re-running the full coalesce.
+ */
+export function writeSpecSources(
+  boardKey: string,
+  scrapedBoards: ScrapedBoard[]
+): { msrpUsd: number | null; description: string | null } {
+  let msrpUsd: number | null = null;
+  let description: string | null = null;
+
+  for (const sb of scrapedBoards) {
+    const source = sb.source;
+
+    // Normalize and store individual spec fields
+    if (sb.flex) {
+      const normalizedFlex = normalizeFlex(sb.flex);
+      if (normalizedFlex !== null) {
+        setSpecSource(boardKey, "flex", source, String(normalizedFlex), sb.sourceUrl);
+      }
+    }
+    if (sb.profile) {
+      const normalizedProfile = normalizeProfile(sb.profile);
+      if (normalizedProfile !== null) {
+        setSpecSource(boardKey, "profile", source, normalizedProfile, sb.sourceUrl);
+      }
+    }
+    if (sb.shape) {
+      const normalizedShape = normalizeShape(sb.shape);
+      if (normalizedShape !== null) {
+        setSpecSource(boardKey, "shape", source, normalizedShape, sb.sourceUrl);
+      }
+    }
+    if (sb.category) {
+      const normalizedCategory = normalizeCategory(sb.category, sb.description);
+      if (normalizedCategory !== null) {
+        setSpecSource(boardKey, "category", source, normalizedCategory, sb.sourceUrl);
+      }
+    }
+    if (sb.abilityLevel) {
+      const normalizedAbility = normalizeAbilityLevel(sb.abilityLevel);
+      if (normalizedAbility !== null) {
+        setSpecSource(boardKey, "abilityLevel", source, normalizedAbility, sb.sourceUrl);
+      }
+    }
+
+    // Store extras
+    for (const [field, value] of Object.entries(sb.extras)) {
+      setSpecSource(boardKey, field, source, value, sb.sourceUrl);
+      // Also store abilityLevel alias
+      if (field === "ability level") {
+        const normalizedAbility = normalizeAbilityLevel(value);
+        if (normalizedAbility !== null) {
+          setSpecSource(boardKey, "abilityLevel", source, normalizedAbility, sb.sourceUrl);
+        }
+      }
+    }
+
+    // Derive terrain scores from category when source doesn't provide terrain_* fields
+    const hasTerrainExtras = Object.keys(sb.extras).some(k => k.startsWith("terrain_"));
+    if (!hasTerrainExtras) {
+      const normalizedCat = normalizeCategory(sb.category ?? undefined, sb.description);
+      if (normalizedCat) {
+        const terrain = categoryToTerrain(normalizedCat);
+        if (terrain.piste !== null) setSpecSource(boardKey, "terrain_piste", source, String(terrain.piste), sb.sourceUrl);
+        if (terrain.powder !== null) setSpecSource(boardKey, "terrain_powder", source, String(terrain.powder), sb.sourceUrl);
+        if (terrain.park !== null) setSpecSource(boardKey, "terrain_park", source, String(terrain.park), sb.sourceUrl);
+        if (terrain.freeride !== null) setSpecSource(boardKey, "terrain_freeride", source, String(terrain.freeride), sb.sourceUrl);
+        if (terrain.freestyle !== null) setSpecSource(boardKey, "terrain_freestyle", source, String(terrain.freestyle), sb.sourceUrl);
+      }
+    }
+
+    // Prefer manufacturer MSRP
+    if (sb.source.startsWith("manufacturer:")) {
+      if (sb.msrpUsd) msrpUsd = sb.msrpUsd;
+
+      // Update spec_cache for manufacturer sources
+      const existing = getCachedSpecs(boardKey);
+      if (!existing || existing.source !== "manufacturer") {
+        const cached: CachedSpecs = {
+          flex: sb.flex ? normalizeFlex(sb.flex) : null,
+          profile: sb.profile ? normalizeProfile(sb.profile) : null,
+          shape: sb.shape ? normalizeShape(sb.shape) : null,
+          category: normalizeCategory(sb.category ?? undefined, sb.description),
+          msrpUsd: sb.msrpUsd ?? null,
+          source: "manufacturer",
+          sourceUrl: sb.sourceUrl,
+        };
+        setCachedSpecs(boardKey, cached);
+      }
+    }
+
+    if (!description && sb.description) description = sb.description;
+  }
+
+  return { msrpUsd, description };
+}
+
+/**
+ * Coalesce all ScrapedBoard[] (from retailers + manufacturers + review sites)
+ * into Board[] + Listing[] entities, writing spec_sources along the way.
+ */
+export function coalesce(
+  allScrapedBoards: ScrapedBoard[],
+  runId: string
+): { boards: Board[]; listings: Listing[] } {
+  const boardGroups = identifyBoards(allScrapedBoards);
+
   const boards: Board[] = [];
   const listings: Listing[] = [];
   const now = new Date().toISOString();
 
   for (const [key, group] of boardGroups) {
     // Write specs from each source to spec_sources
-    let msrpUsd: number | null = null;
+    const { msrpUsd, description } = writeSpecSources(key, group.scraped);
+
     let manufacturerUrl: string | null = null;
-    let description: string | null = null;
     let bestYear: number | null = null;
 
     for (const sb of group.scraped) {
-      const source = sb.source;
-
-      // Normalize and store individual spec fields
-      if (sb.flex) {
-        const normalizedFlex = normalizeFlex(sb.flex);
-        if (normalizedFlex !== null) {
-          setSpecSource(key, "flex", source, String(normalizedFlex), sb.sourceUrl);
-        }
-      }
-      if (sb.profile) {
-        const normalizedProfile = normalizeProfile(sb.profile);
-        if (normalizedProfile !== null) {
-          setSpecSource(key, "profile", source, normalizedProfile, sb.sourceUrl);
-        }
-      }
-      if (sb.shape) {
-        const normalizedShape = normalizeShape(sb.shape);
-        if (normalizedShape !== null) {
-          setSpecSource(key, "shape", source, normalizedShape, sb.sourceUrl);
-        }
-      }
-      if (sb.category) {
-        const normalizedCategory = normalizeCategory(sb.category, sb.description);
-        if (normalizedCategory !== null) {
-          setSpecSource(key, "category", source, normalizedCategory, sb.sourceUrl);
-        }
-      }
-      if (sb.abilityLevel) {
-        const normalizedAbility = normalizeAbilityLevel(sb.abilityLevel);
-        if (normalizedAbility !== null) {
-          setSpecSource(key, "abilityLevel", source, normalizedAbility, sb.sourceUrl);
-        }
-      }
-
-      // Store extras
-      for (const [field, value] of Object.entries(sb.extras)) {
-        setSpecSource(key, field, source, value, sb.sourceUrl);
-        // Also store abilityLevel alias
-        if (field === "ability level") {
-          const normalizedAbility = normalizeAbilityLevel(value);
-          if (normalizedAbility !== null) {
-            setSpecSource(key, "abilityLevel", source, normalizedAbility, sb.sourceUrl);
-          }
-        }
-      }
-
-      // Derive terrain scores from category when source doesn't provide terrain_* fields
-      const hasTerrainExtras = Object.keys(sb.extras).some(k => k.startsWith("terrain_"));
-      if (!hasTerrainExtras) {
-        const normalizedCat = normalizeCategory(sb.category ?? undefined, sb.description);
-        if (normalizedCat) {
-          const terrain = categoryToTerrain(normalizedCat);
-          if (terrain.piste !== null) setSpecSource(key, "terrain_piste", source, String(terrain.piste), sb.sourceUrl);
-          if (terrain.powder !== null) setSpecSource(key, "terrain_powder", source, String(terrain.powder), sb.sourceUrl);
-          if (terrain.park !== null) setSpecSource(key, "terrain_park", source, String(terrain.park), sb.sourceUrl);
-          if (terrain.freeride !== null) setSpecSource(key, "terrain_freeride", source, String(terrain.freeride), sb.sourceUrl);
-          if (terrain.freestyle !== null) setSpecSource(key, "terrain_freestyle", source, String(terrain.freestyle), sb.sourceUrl);
-        }
-      }
-
-      // Prefer manufacturer MSRP and URL
+      // Prefer manufacturer URL
       if (sb.source.startsWith("manufacturer:")) {
-        if (sb.msrpUsd) msrpUsd = sb.msrpUsd;
         manufacturerUrl = sb.sourceUrl;
-
-        // Update spec_cache for manufacturer sources
-        const existing = getCachedSpecs(key);
-        if (!existing || existing.source !== "manufacturer") {
-          const cached: CachedSpecs = {
-            flex: sb.flex ? normalizeFlex(sb.flex) : null,
-            profile: sb.profile ? normalizeProfile(sb.profile) : null,
-            shape: sb.shape ? normalizeShape(sb.shape) : null,
-            category: normalizeCategory(sb.category ?? undefined, sb.description),
-            msrpUsd: sb.msrpUsd ?? null,
-            source: "manufacturer",
-            sourceUrl: sb.sourceUrl,
-          };
-          setCachedSpecs(key, cached);
-        }
       }
 
-      if (!description && sb.description) description = sb.description;
       if (sb.year && (!bestYear || sb.year > bestYear)) bestYear = sb.year;
 
       // Build listings from this source's listings

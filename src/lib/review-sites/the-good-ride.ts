@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchPage } from "../scraping/utils";
+import { getHttpCache, setHttpCache } from "../scraping/http-cache";
 import {
   getSitemapCache,
   setSitemapCache,
@@ -344,13 +345,23 @@ function parseReviewHtml(html: string, url: string): ReviewSiteSpec | null {
   };
 }
 
+const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+
 export async function scrapeReviewSpecs(url: string): Promise<ReviewSiteSpec | null> {
   let html: string;
-  try {
-    html = await fetchPage(url);
-  } catch (err) {
-    console.warn(`[the-good-ride] Failed to fetch review: ${url}`, (err as Error).message);
-    return null;
+
+  // Check http cache first (7-day TTL for review pages)
+  const cached = getHttpCache(url, SEVEN_DAYS);
+  if (cached) {
+    html = cached;
+  } else {
+    try {
+      html = await fetchPage(url);
+      setHttpCache(url, html, { ttlMs: SEVEN_DAYS });
+    } catch (err) {
+      console.warn(`[the-good-ride] Failed to fetch review: ${url}`, (err as Error).message);
+      return null;
+    }
   }
 
   return parseReviewHtml(html, url);

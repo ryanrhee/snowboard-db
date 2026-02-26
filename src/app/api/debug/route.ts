@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       retailers: body.retailers,
       manufacturers: body.manufacturers,
       sites: body.sites,
+      from: body.from,
     });
 
     // Query DB for distributions

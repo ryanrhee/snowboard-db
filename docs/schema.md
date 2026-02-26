@@ -263,35 +263,55 @@ The TypeScript types mirror the DB schema:
 ## Data Flow
 
 ```
-Retailers (Evo, Tactics, ...)    Manufacturers (Burton,     Review Sites (The Good Ride)
-         │                        Lib Tech, CAPiTA, ...)               │
-         │                                │                            │
-         ▼                                ▼                            │
-    ScrapedBoard[]               ScrapedBoard[]                        │
-         │                                │                            │
-         └────────────┬───────────────────┘                            │
-                      │                                                │
-                 coalesce()                                            │
-                      │                                                │
-              spec_sources + boards + listings                         │
-                      │                                                │
-             resolveSpecSources()◄─────────────────────────────────────┘
-                      │               (tryReviewSiteLookup()
-                      │                → spec_sources with
-                      │                  source="review-site")
+Retailers (Evo, Tactics, ...)    Manufacturers (Burton,
+         │                        Lib Tech, CAPiTA, ...)
+         │                                │
+         ▼                                ▼
+    ScrapedBoard[]               ScrapedBoard[]
+         │                                │
+         └────────────┬───────────────────┘
                       │
-                 ┌────┴─────┐
-                 ▼          ▼
-              Board[]    Listing[]
-                 │          │
-              upsertBoards()  insertListings()
-                 │          │
-                 ▼          ▼
-               boards     listings
-                 table      table
+               identifyBoards()
                       │
-                 getBoardsWithListings()
+              board keys: {brand, model}
                       │
                       ▼
-                BoardWithListings[]  ──►  API response  ──►  UI
+            createReviewSiteScraper(targets)
+                      │
+                      ▼
+          Review Sites (The Good Ride)
+                      │
+                      ▼
+               ScrapedBoard[]
+                (review-site source,
+                 empty listings)
+                      │
+     ┌────────────────┼─────────────────┐
+     │                │                 │
+     ▼                ▼                 ▼
+  retailer +     manufacturer +    review-site
+  ScrapedBoard[] ScrapedBoard[]    ScrapedBoard[]
+     │                │                 │
+     └────────────┬───┴─────────────────┘
+                  │
+             coalesce()
+                  │
+          spec_sources + boards + listings
+                  │
+         resolveSpecSources()
+                  │
+             ┌────┴─────┐
+             ▼          ▼
+          Board[]    Listing[]
+             │          │
+          upsertBoards()  insertListings()
+             │          │
+             ▼          ▼
+           boards     listings
+             table      table
+                  │
+             getBoardsWithListings()
+                  │
+                  ▼
+            BoardWithListings[]  ──►  API response  ──►  UI
 ```
