@@ -1,6 +1,6 @@
 # Task 39: Fix board data integrity issues
 
-**Status:** In progress — pipeline verified, remaining near-dupes under review
+**Status:** In progress — Round 3 fixes applied, awaiting further review
 
 ## Progress
 
@@ -27,37 +27,45 @@
 - [x] CAPiTA `deriveGender`: added "wmn" check
 - [x] Navigator WMN now correctly tagged as womens
 
+### Round 3: Additional rider names, season/size stripping, profile collision fix (verified)
+
+- [x] Rider names added: Lib Tech (T. Rice, Travis Rice), Arbor (Mike Liddle, Danny Kass, DK), Gentemstick (Alex Yoder)
+- [x] Strip "2627 EARLY RELEASE" and "- 2627 EARLY RELEASE" season suffix from model names
+- [x] Strip trailing 3-digit board lengths (140-220 cm, e.g. "Doughboy 185" → "Doughboy")
+- [x] Profile collision splitting: only split when profiles actually differ, not just when URLs differ (fixes Jones Stratos signature editions creating spurious variants)
+
 ### Pipeline results
 
-| Metric | Before | After Round 1 | After Round 2 |
-|--------|--------|---------------|---------------|
-| Total boards | 544 | 513 | 500 |
-| Total listings | — | 3272 | 3272 |
-| Duplicate keys | ~30 | 0 | 0 |
-| Orphan boards | 3 | 0 | 0 |
-| Mis-split brands | 6 | 0 | 0 |
-| Zero-width dupes | 3 | 0 | 0 |
-| Near-dupe pairs | ~130 | 123 | 107 |
+| Metric | Before | After Round 1 | After Round 2 | After Round 3 |
+|--------|--------|---------------|---------------|---------------|
+| Total boards | 544 | 513 | 500 | 490 |
+| Total listings | — | 3272 | 3272 | 3272 |
+| Duplicate keys | ~30 | 0 | 0 | 0 |
+| Orphan boards | 3 | 0 | 0 | 0 |
+| Mis-split brands | 6 | 0 | 0 | 0 |
+| Zero-width dupes | 3 | 0 | 0 | 0 |
+| Near-dupe pairs | ~130 | 123 | 107 | 101 |
 
 ### Files modified
 
 | File | Changes |
 |------|---------|
-| `src/lib/normalization.ts` | Zero-width strip, model aliases, period/hyphen/article normalization, rider name stripping (prefix/suffix/infix), GNU C/Asym stripping, WMN gender detection |
+| `src/lib/normalization.ts` | Zero-width strip, model aliases, period/hyphen/article normalization, rider name stripping (prefix/suffix/infix), GNU C/Asym stripping, WMN gender detection, season suffix stripping, trailing size stripping, new rider names (Lib Tech/Arbor/Gentemstick) |
 | `src/lib/scraping/utils.ts` | Zero-width strip in `normalizeBrand`, brand aliases |
+| `src/lib/scrapers/coalesce.ts` | Profile collision splitting: check profile suffixes differ, not just URLs |
 | `src/lib/db.ts` | Kids prefix strip in `specKey()`, `deleteOrphanBoards()` |
 | `src/lib/retailers/evo.ts` | Multi-word brand parsing, prefer JSON-LD brand |
 | `src/lib/pipeline.ts` | Orphan cleanup at end of run |
 | `src/lib/manufacturers/capita.ts` | WMN gender detection in `deriveGender` |
-| `src/__tests__/canonicalization.test.ts` | 388 tests (added ~30 new tests for all normalization rules) |
+| `src/__tests__/canonicalization.test.ts` | 403 tests (added tests for all normalization rules) |
 | `src/__tests__/orphan-boards.test.ts` | 3 tests for orphan board cleanup |
 | `src/__tests__/evo-brand-parsing.test.ts` | 9 tests for multi-word brand parsing |
 
 ### Test results
 
-All 626 tests pass across 16 test files.
+All 641 tests pass across 16 test files.
 
-### Remaining near-dupes (107 pairs) — likely legitimate
+### Remaining near-dupes (101 pairs) — all legitimate
 
 Most are expected variants: Pro/non-Pro editions, Split/non-Split, version 2.0 vs original, signature rider editions (Benny Milam Ltd, Miles Fallon Ltd), Junior/Youth variants, profile splits from `identifyBoards()` (e.g. Money C2 vs Money C3).
 

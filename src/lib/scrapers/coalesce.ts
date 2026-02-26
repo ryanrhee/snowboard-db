@@ -66,12 +66,19 @@ export function identifyBoards(
   // were collapsed into the same key. Split them into separate groups.
   for (const [key, group] of Array.from(boardGroups.entries())) {
     const mfrUrls = new Set<string>();
+    const mfrProfileSuffixes = new Set<string>();
     for (const sb of group.scraped) {
       if (sb.source.startsWith("manufacturer:")) {
         mfrUrls.add(sb.sourceUrl);
+        const raw = sb.rawModel ?? sb.model;
+        const suffix = extractProfileSuffix(raw, group.brand);
+        mfrProfileSuffixes.add(suffix ?? "__none__");
       }
     }
-    if (mfrUrls.size <= 1) continue;
+    // Only split if there are multiple manufacturer URLs AND they have
+    // different profile suffixes. Multiple URLs with the same profile
+    // (e.g. rider signature editions) should not trigger a split.
+    if (mfrUrls.size <= 1 || mfrProfileSuffixes.size <= 1) continue;
 
     // This group has profile variant collisions — split it
     boardGroups.delete(key);

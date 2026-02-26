@@ -824,7 +824,7 @@ describe("normalizeModel", () => {
     it.each([
       ["Psychocandy Snowboard (Closeout) 2025", undefined, "Psychocandy"],
       ["Forest Bailey Head Space C3 Snowboard (Closeout) 2025", undefined, "Forest Bailey Head Space"],
-      ["T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "T. Rice Apex Orca"],
+      ["T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "Apex Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand || undefined)).toBe(expected);
     });
@@ -848,7 +848,7 @@ describe("normalizeModel", () => {
       ["Tech Cold Brew C2 LTD Snowboard 2026", "Lib Tech", "Cold Brew C2 LTD"],
       ["Tech Rasman C2X Snowboard 2025", "Lib Tech", "Rasman"],
       ["Tech Mini Ramp C3 Snowboard - Boys' 2025", "Lib Tech", "Mini Ramp"],
-      ["Tech T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "T. Rice Apex Orca"],
+      ["Tech T. Rice Apex Orca Snowboard - Blem 2026", "Lib Tech", "Apex Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
     });
@@ -943,7 +943,7 @@ describe("normalizeModel", () => {
       ["Frosting C2", "GNU", "Frosting"],
       ["Gloss-C C3", "GNU", "Gloss"],
       ["C Money C3", "GNU", "Money"],
-      ["T. Rice Pro C2", "Lib Tech", "T. Rice Pro"],
+      ["T. Rice Pro C2", "Lib Tech", "Pro"],
     ])('Lib Tech/GNU: %s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
     });
@@ -958,10 +958,10 @@ describe("normalizeModel", () => {
     });
   });
 
-  describe("normalizes T.Rice → T. Rice", () => {
+  describe("normalizes T.Rice → T. Rice then strips rider name", () => {
     it.each([
-      ["T.Rice Pro", "Lib Tech", "T. Rice Pro"],
-      ["T.Rice Orca", "Lib Tech", "T. Rice Orca"],
+      ["T.Rice Pro", "Lib Tech", "Pro"],
+      ["T.Rice Orca", "Lib Tech", "Orca"],
     ])('%s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
     });
@@ -1278,9 +1278,9 @@ describe("normalizeModel — period stripping edge cases", () => {
     expect(normalizeModel("Slush Slashers 2.0", "CAPiTA")).toBe("Slush Slashers 2.0");
   });
 
-  it("preserves name initials like T. Rice", () => {
-    expect(normalizeModel("T. Rice Pro", "Lib Tech")).toBe("T. Rice Pro");
-    expect(normalizeModel("T. Rice Orca", "Lib Tech")).toBe("T. Rice Orca");
+  it("strips T. Rice rider name from Lib Tech models", () => {
+    expect(normalizeModel("T. Rice Pro", "Lib Tech")).toBe("Pro");
+    expect(normalizeModel("T. Rice Orca", "Lib Tech")).toBe("Orca");
   });
 
   it("strips acronym periods between letters", () => {
@@ -1434,5 +1434,105 @@ describe("detectGender — WMN detection", () => {
 describe("specKey — WMN gender resolution", () => {
   it("Navigator WMN gets womens gender key", () => {
     expect(specKey("CAPiTA", "Navigator WMN", "womens")).toContain("|womens");
+  });
+});
+
+// =============================================================================
+// Round 3 rider names: Lib Tech, Arbor, Gentemstick (Task 39)
+// =============================================================================
+
+describe("specKey — Lib Tech T. Rice rider name stripping", () => {
+  it("T. Rice Golden Orca → Golden Orca", () => {
+    expect(specKey("Lib Tech", "T. Rice Golden Orca", "unisex")).toBe(
+      specKey("Lib Tech", "Golden Orca", "unisex")
+    );
+  });
+
+  it("T. Rice Orca → Orca", () => {
+    expect(specKey("Lib Tech", "T. Rice Orca", "unisex")).toBe(
+      specKey("Lib Tech", "Orca", "unisex")
+    );
+  });
+
+  it("Travis Rice Orca → Orca", () => {
+    expect(specKey("Lib Tech", "Travis Rice Orca", "unisex")).toBe(
+      specKey("Lib Tech", "Orca", "unisex")
+    );
+  });
+});
+
+describe("specKey — Arbor additional rider names", () => {
+  it("Mike Liddle Metal Machine → Metal Machine", () => {
+    expect(specKey("Arbor", "Mike Liddle Metal Machine", "unisex")).toBe(
+      specKey("Arbor", "Metal Machine", "unisex")
+    );
+  });
+
+  it("Danny Kass Park Pro → Park Pro", () => {
+    expect(specKey("Arbor", "Danny Kass Park Pro", "unisex")).toBe(
+      specKey("Arbor", "Park Pro", "unisex")
+    );
+  });
+
+  it("DK Park Pro → Park Pro", () => {
+    expect(specKey("Arbor", "DK Park Pro", "unisex")).toBe(
+      specKey("Arbor", "Park Pro", "unisex")
+    );
+  });
+
+  it("Bryan Iguchi Pro → Pro (rider stripped)", () => {
+    expect(specKey("Arbor", "Bryan Iguchi Pro", "unisex")).toBe(
+      specKey("Arbor", "Pro", "unisex")
+    );
+  });
+});
+
+describe("specKey — Gentemstick rider names", () => {
+  it("Alex Yoder XY → XY (rider stripped)", () => {
+    expect(specKey("Gentemstick", "Alex Yoder XY", "unisex")).toBe(
+      specKey("Gentemstick", "XY", "unisex")
+    );
+  });
+});
+
+// =============================================================================
+// Season suffix and size number stripping (Task 39)
+// =============================================================================
+
+describe("normalizeModel — season and size stripping", () => {
+  it("strips '2627 EARLY RELEASE' suffix", () => {
+    expect(normalizeModel("Golden Orca 2627 EARLY RELEASE", "Lib Tech")).toBe(
+      "Golden Orca"
+    );
+  });
+
+  it("strips '- 2627 EARLY RELEASE' with dash prefix", () => {
+    expect(normalizeModel("Doughboy 185 - 2627 EARLY RELEASE", "Lib Tech")).toBe(
+      "Doughboy"
+    );
+  });
+
+  it("strips '2627 early release' case-insensitive", () => {
+    expect(normalizeModel("Orca II 2627 Early Release", "Lib Tech")).toBe(
+      "Orca II"
+    );
+  });
+
+  it("strips trailing 3-digit size number (185)", () => {
+    expect(normalizeModel("Doughboy 185", "Lib Tech")).toBe("Doughboy");
+  });
+
+  it("strips trailing 3-digit size number (195)", () => {
+    expect(normalizeModel("Doughboy 195", "Lib Tech")).toBe("Doughboy");
+  });
+
+  it("does NOT strip non-size numbers (e.g. 4x4)", () => {
+    expect(normalizeModel("4x4", "GNU")).toBe("4x4");
+  });
+
+  it("strips both size and season suffix together", () => {
+    expect(normalizeModel("Doughboy 185 2627 EARLY RELEASE", "Lib Tech")).toBe(
+      "Doughboy"
+    );
   });
 });

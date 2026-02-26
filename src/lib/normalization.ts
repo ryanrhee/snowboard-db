@@ -193,6 +193,14 @@ export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile
   model = model.replace(/\s*-?\s*\b20[1-2]\d\s*\/\s*20[1-2]\d\b/g, "");
   model = model.replace(/\s*-?\s*\b20[1-2]\d\b/g, "");
 
+  // Strip season shorthand + "early release" (e.g. "- 2627 EARLY RELEASE", "2627 EARLY RELEASE")
+  // Lib Tech uses "2627" for the 26/27 season designation, often with " - " prefix
+  model = model.replace(/\s*-?\s*\d{4}\s+early\s+release\b/gi, "");
+
+  // Strip trailing size numbers (3-digit cm lengths 140-220, e.g. "Doughboy 185")
+  // Only strip when it looks like a board length, not a model identifier
+  model = model.replace(/\s+\b(1[4-9]\d|2[0-2]\d)\b$/g, "");
+
   // Strip gendered suffixes: " - Men's", " - Women's", " - Kids'", " - Boys'", " - Girls'"
   model = model.replace(/\s*-\s*(?:Men's|Women's|Kids'|Boys'|Girls')$/i, "");
 
@@ -272,7 +280,9 @@ export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile
       "CAPiTA": ["Arthur Longo", "Jess Kimura"],
       "Nitro": ["Hailey Langland", "Marcus Kleveland"],
       "Jones": ["Harry Kearney", "Ruiki Masuda"],
-      "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore"],
+      "Arbor": ["Bryan Iguchi", "Erik Leon", "Jared Elston", "Pat Moore", "Mike Liddle", "Danny Kass", "DK"],
+      "Lib Tech": ["T. Rice", "Travis Rice"],
+      "Gentemstick": ["Alex Yoder"],
     };
     const riders = RIDER_NAMES[brand];
     if (riders) {
@@ -282,7 +292,7 @@ export function normalizeModel(raw: string, brand?: string, opts?: { keepProfile
         // Strip "by <rider>" infix (e.g. "Equalizer By Jess Kimura" → "Equalizer")
         const byIdx = mLower.indexOf(" by " + rLower);
         if (byIdx >= 0) {
-          model = model.slice(0, byIdx) + model.slice(byIdx + 4 + rider.length);
+          model = (model.slice(0, byIdx) + model.slice(byIdx + 4 + rider.length)).trim();
           break;
         }
         // Strip "<rider> " prefix (e.g. "Forest Bailey Head Space" → "Head Space")
