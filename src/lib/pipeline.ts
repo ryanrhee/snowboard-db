@@ -7,6 +7,7 @@ import {
   Currency,
   Region,
 } from "./types";
+import type { Board } from "./types";
 import { convertToUsd } from "./normalization";
 import {
   insertSearchRun,
@@ -20,6 +21,7 @@ import {
   getAllBoards,
   specKey,
   deleteOrphanBoards,
+  upsertProfileScores,
 } from "./db";
 import { fetchPage, parsePrice } from "./scraping/utils";
 import { fetchPageWithBrowser } from "./scraping/browser";
@@ -33,10 +35,24 @@ import { adaptRetailerOutput } from "./scrapers/adapters";
 import { ScrapedBoard } from "./scrapers/types";
 import { profiler } from "./profiler";
 import * as cheerio from "cheerio";
+import { ALL_RIDING_PROFILES, getSpecFitCriteria } from "./profiles";
+import { calcCoreFitScore, calcVersatilityScore } from "./scoring";
 
 const DEFAULT_SCOPE: ScrapeScope = {
   regions: [Region.US, Region.KR],
 };
+
+function computeAndStoreProfileScores(boards: Board[]): void {
+  for (const profile of ALL_RIDING_PROFILES) {
+    const criteria = getSpecFitCriteria(profile);
+    for (const board of boards) {
+      const fitScore = calcCoreFitScore(board, criteria);
+      const versatilityScore = calcVersatilityScore(board, profile);
+      upsertProfileScores(board.boardKey, profile, fitScore, versatilityScore);
+    }
+  }
+  console.log(`[pipeline] Computed profile scores for ${boards.length} boards × ${ALL_RIDING_PROFILES.length} profiles`);
+}
 
 export async function runSearchPipeline(
   scope?: Partial<ScrapeScope>
@@ -58,6 +74,7 @@ export async function runSearchPipeline(
 
     const resolvedBoards = await resolveSpecSources(existingBoards);
     upsertBoards(resolvedBoards);
+    computeAndStoreProfileScores(resolvedBoards);
 
     const durationMs = Date.now() - startTime;
     const run = {
@@ -96,6 +113,7 @@ export async function runSearchPipeline(
 
     const resolvedBoards = await resolveSpecSources(existingBoards);
     upsertBoards(resolvedBoards);
+    computeAndStoreProfileScores(resolvedBoards);
 
     const durationMs = Date.now() - startTime;
     const run = {
@@ -251,6 +269,7 @@ export async function runSearchPipeline(
   profiler.timeSync("db:insert-search-run", () => insertSearchRun(run));
   profiler.timeSync("db:insert-raw-scrapes", () => insertRawScrapes(allScrapedBoards, runId), { count: allScrapedBoards.length });
   profiler.timeSync("db:upsert-boards", () => upsertBoards(resolvedBoards), { count: resolvedBoards.length });
+  profiler.timeSync("db:profile-scores", () => computeAndStoreProfileScores(resolvedBoards), { count: resolvedBoards.length });
   profiler.timeSync("db:insert-listings", () => insertListings(listings), { count: listings.length });
   const orphansDeleted = profiler.timeSync("db:delete-orphans", () => deleteOrphanBoards());
   profiler.stop("pipeline:db-write");

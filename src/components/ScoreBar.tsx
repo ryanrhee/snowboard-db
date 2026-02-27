@@ -20,7 +20,7 @@ export function ScoreBar({ score, label, size = "sm" }: ScoreBarProps) {
   return (
     <div className="flex items-center gap-1.5">
       {label && (
-        <span className="text-xs text-gray-400 w-6 text-right shrink-0">
+        <span className="text-xs text-gray-400 w-8 text-right shrink-0">
           {label}
         </span>
       )}

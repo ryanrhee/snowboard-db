@@ -48,7 +48,9 @@ export interface BoardData {
   description: string | null;
   listings: Listing[];
   bestPrice: number;
-  valueScore: number;
+  dealScore: number;
+  fitScore: number;
+  versatilityScore: number;
   finalScore: number;
   specSources?: Record<string, SpecSourceEntry[]>;
 }
@@ -430,7 +432,9 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
 
           <div className="border-t border-gray-800 pt-3 space-y-2">
             <h3 className="text-sm font-medium text-gray-300">Scores</h3>
-            <ScoreBar score={board.valueScore} label="Val" size="md" />
+            <ScoreBar score={board.dealScore} label="Deal" size="md" />
+            <ScoreBar score={board.fitScore} label="Fit" size="md" />
+            <ScoreBar score={board.versatilityScore} label="Vers" size="md" />
           </div>
 
           {board.description && (

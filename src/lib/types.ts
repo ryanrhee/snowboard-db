@@ -144,7 +144,9 @@ export interface Listing {
 export interface BoardWithListings extends Board {
   listings: Listing[];
   bestPrice: number;
-  valueScore: number;
+  dealScore: number;
+  fitScore: number;
+  versatilityScore: number;
   finalScore: number;
   specSources?: Record<string, { source: string; value: string; sourceUrl?: string | null }[]>;
 }

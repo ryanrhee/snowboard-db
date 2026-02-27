@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { SearchResults } from "@/components/SearchResults";
 import { Filters, FilterState, DEFAULT_FILTERS } from "@/components/Filters";
 import { RunHistory, RunSummary } from "@/components/RunHistory";
@@ -31,6 +31,7 @@ export default function Home() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [profiles, setProfiles] = useState<ProfileData[]>([]);
+  const profilesRef = useRef<ProfileData[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,6 +48,10 @@ export default function Home() {
         if (filters.maxLength) params.set("maxLength", filters.maxLength);
         if (filters.gender) params.set("gender", filters.gender);
         if (filters.abilityLevel) params.set("abilityLevel", filters.abilityLevel);
+        if (activeProfileId !== null) {
+          const activeProfile = profilesRef.current.find(p => p.id === activeProfileId);
+          if (activeProfile) params.set("profile", activeProfile.ridingProfile);
+        }
 
         const res = await fetch(`/api/boards?${params}`);
         const data = await res.json();
@@ -63,7 +68,7 @@ export default function Home() {
         setError(err instanceof Error ? err.message : "Failed to load results");
       }
     },
-    [filters]
+    [filters, activeProfileId]
   );
 
   const loadRuns = async () => {
@@ -80,7 +85,9 @@ export default function Home() {
     try {
       const res = await fetch("/api/profiles");
       const data = await res.json();
-      setProfiles(data.profiles || []);
+      const loaded = data.profiles || [];
+      profilesRef.current = loaded;
+      setProfiles(loaded);
     } catch {
       // silent fail for profiles
     }

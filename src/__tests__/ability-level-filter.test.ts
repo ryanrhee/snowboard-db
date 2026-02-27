@@ -60,7 +60,9 @@ function makeBoard(
     updatedAt: "2025-01-01",
     listings: [listing],
     bestPrice: 400,
-    valueScore: 0.5,
+    dealScore: 0.5,
+    fitScore: 0.5,
+    versatilityScore: 0.5,
     finalScore: 0.5,
     ...overrides,
   };

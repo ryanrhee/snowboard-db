@@ -7,6 +7,8 @@ import { BrandIdentifier } from "./strategies/brand-identifier";
 import { getStrategy } from "./strategies";
 import type { BoardSignal } from "./strategies/types";
 import type { ScrapedBoard } from "./scrapers/types";
+import { calcDealScore, calcCoreFitScore, calcVersatilityScore, calcFinalScore } from "./scoring";
+import { getSpecFitCriteria } from "./profiles";
 
 let db: Database.Database | null = null;
 let cacheDb: Database.Database | null = null;
@@ -104,6 +106,14 @@ function initSchema(db: Database.Database): void {
       riding_profile TEXT NOT NULL DEFAULT 'beginner',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS board_profile_scores (
+      board_key TEXT NOT NULL REFERENCES boards(board_key),
+      profile TEXT NOT NULL,
+      fit_score REAL NOT NULL,
+      versatility_score REAL NOT NULL,
+      PRIMARY KEY (board_key, profile)
     );
   `);
 
@@ -566,7 +576,7 @@ export function getBoardByKey(boardKey: string): Board | null {
   return mapRowToNewBoard(row);
 }
 
-export function getBoardsWithListings(runId?: string): BoardWithListings[] {
+export function getBoardsWithListings(runId?: string, profile?: string): BoardWithListings[] {
   const db = getDb();
 
   // Get all boards that have listings in the given run (or latest run)
@@ -660,20 +670,33 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
   }
 
   // Build BoardWithListings with computed scores
+  const effectiveProfile = profile || "intermediate_am_freeride";
+  const boardKeys = [...boardMap.keys()];
+  const precomputed = getProfileScores(boardKeys, effectiveProfile);
+  const criteria = getSpecFitCriteria(effectiveProfile);
+
   const results: BoardWithListings[] = [];
   for (const { board, listings } of boardMap.values()) {
     // Exclude combo listings from price calculations; fall back to all if no board-only listings
     const boardOnlyListings = listings.filter(l => !l.comboContents);
     const priceListings = boardOnlyListings.length > 0 ? boardOnlyListings : listings;
     const bestPrice = Math.min(...priceListings.map(l => l.salePriceUsd));
-    const valueScore = calcValueScoreFromBoardAndPrice(board, bestPrice, priceListings);
-    const finalScore = valueScore;
+    const bestListing = priceListings.reduce((best, l) => l.salePriceUsd < best.salePriceUsd ? l : best, priceListings[0]);
+    const dealScore = calcDealScore(board, bestPrice, bestListing);
+
+    // Use pre-computed scores if available, otherwise compute inline
+    const cached = precomputed.get(board.boardKey);
+    const fitScore = cached?.fitScore ?? calcCoreFitScore(board, criteria);
+    const versatilityScore = cached?.versatilityScore ?? calcVersatilityScore(board, effectiveProfile);
+    const finalScore = calcFinalScore(dealScore, fitScore, versatilityScore, effectiveProfile);
 
     results.push({
       ...board,
       listings,
       bestPrice,
-      valueScore,
+      dealScore,
+      fitScore,
+      versatilityScore,
       finalScore,
     });
   }
@@ -688,11 +711,16 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
 
     for (const row of listinglessBoardRows) {
       const board = mapRowToNewBoard(row);
+      const cached = precomputed.get(board.boardKey);
+      const fitScore = cached?.fitScore ?? calcCoreFitScore(board, criteria);
+      const versatilityScore = cached?.versatilityScore ?? calcVersatilityScore(board, effectiveProfile);
       results.push({
         ...board,
         listings: [],
         bestPrice: 0,
-        valueScore: 0,
+        dealScore: 0,
+        fitScore,
+        versatilityScore,
         finalScore: 0,
       });
     }
@@ -701,59 +729,6 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
   // Sort by finalScore descending
   results.sort((a, b) => b.finalScore - a.finalScore);
   return results;
-}
-
-function calcValueScoreFromBoardAndPrice(board: Board, bestPrice: number, listings: Listing[]): number {
-  let total = 0;
-  let weights = 0;
-
-  // Discount: best listing's discount
-  const bestListing = listings.reduce((best, l) => l.salePriceUsd < best.salePriceUsd ? l : best, listings[0]);
-  const discountPercent = bestListing.discountPercent ??
-    (board.msrpUsd && board.msrpUsd > bestPrice
-      ? Math.round(((board.msrpUsd - bestPrice) / board.msrpUsd) * 100)
-      : null);
-
-  if (discountPercent !== null && discountPercent > 0) {
-    let discountScore: number;
-    if (discountPercent >= 50) discountScore = 1.0;
-    else if (discountPercent >= 40) discountScore = 0.9;
-    else if (discountPercent >= 30) discountScore = 0.75;
-    else if (discountPercent >= 20) discountScore = 0.55;
-    else if (discountPercent >= 10) discountScore = 0.35;
-    else discountScore = 0.2;
-    total += discountScore * 0.5;
-    weights += 0.5;
-  }
-
-  // Premium tier based on MSRP or best price
-  const msrp = board.msrpUsd ?? bestPrice;
-  if (msrp > 0) {
-    let premiumScore: number;
-    if (msrp >= 600) premiumScore = 1.0;
-    else if (msrp >= 500) premiumScore = 0.85;
-    else if (msrp >= 400) premiumScore = 0.65;
-    else if (msrp >= 300) premiumScore = 0.45;
-    else premiumScore = 0.25;
-    total += premiumScore * 0.35;
-    weights += 0.35;
-  }
-
-  // Year
-  if (board.year) {
-    const currentYear = new Date().getFullYear();
-    const age = currentYear - board.year;
-    let yearScore: number;
-    if (age >= 3) yearScore = 0.9;
-    else if (age >= 2) yearScore = 0.8;
-    else if (age >= 1) yearScore = 0.6;
-    else yearScore = 0.4;
-    total += yearScore * 0.15;
-    weights += 0.15;
-  }
-
-  if (weights === 0) return 0.3;
-  return Math.round((total / weights) * 100) / 100;
 }
 
 export function getListingsByRunId(runId: string): Listing[] {
@@ -821,6 +796,10 @@ function mapRowToListing(row: Record<string, unknown>): Listing {
 
 export function deleteOrphanBoards(): number {
   const db = getDb();
+  // Delete profile scores for orphan boards first (FK constraint)
+  db.prepare(
+    "DELETE FROM board_profile_scores WHERE board_key NOT IN (SELECT DISTINCT board_key FROM listings)"
+  ).run();
   const result = db.prepare(
     "DELETE FROM boards WHERE board_key NOT IN (SELECT DISTINCT board_key FROM listings)"
   ).run();
@@ -968,6 +947,47 @@ export function getAllProfiles(): RiderProfile[] {
     genderFilter: r.gender_filter as string,
     ridingProfile: r.riding_profile as string,
   }));
+}
+
+// ===== Board Profile Scores CRUD =====
+
+export function upsertProfileScores(
+  boardKey: string,
+  profile: string,
+  fitScore: number,
+  versatilityScore: number
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO board_profile_scores (board_key, profile, fit_score, versatility_score)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(board_key, profile)
+    DO UPDATE SET fit_score = excluded.fit_score, versatility_score = excluded.versatility_score
+  `).run(boardKey, profile, fitScore, versatilityScore);
+}
+
+export function getProfileScores(
+  boardKeys: string[],
+  profile: string
+): Map<string, { fitScore: number; versatilityScore: number }> {
+  const db = getDb();
+  const result = new Map<string, { fitScore: number; versatilityScore: number }>();
+  if (boardKeys.length === 0) return result;
+
+  const placeholders = boardKeys.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT board_key, fit_score, versatility_score
+    FROM board_profile_scores
+    WHERE board_key IN (${placeholders}) AND profile = ?
+  `).all(...boardKeys, profile) as Record<string, unknown>[];
+
+  for (const row of rows) {
+    result.set(row.board_key as string, {
+      fitScore: row.fit_score as number,
+      versatilityScore: row.versatility_score as number,
+    });
+  }
+  return result;
 }
 
 // ===== Spec Sources CRUD =====

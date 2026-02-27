@@ -28,8 +28,8 @@ describe("profileToFilterDefaults", () => {
     expect(result.abilityLevel).toBe("beginner");
   });
 
-  it("maps intermediate_am to intermediate ability level", () => {
-    const result = profileToFilterDefaults(makeProfile({ ridingProfile: "intermediate_am" }));
+  it("maps intermediate_am_freeride to intermediate ability level", () => {
+    const result = profileToFilterDefaults(makeProfile({ ridingProfile: "intermediate_am_freeride" }));
     expect(result.abilityLevel).toBe("intermediate");
   });
 
@@ -109,7 +109,9 @@ function makeBoard(
     updatedAt: "2025-01-01",
     listings: [makeListing(boardKey)],
     bestPrice: 400,
-    valueScore: 0.5,
+    dealScore: 0.5,
+    fitScore: 0.5,
+    versatilityScore: 0.5,
     finalScore: 0.5,
     ...overrides,
   };

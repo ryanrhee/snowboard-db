@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ run: null, boards: [] });
     }
 
-    let boards = getBoardsWithListings(run.id);
+    let boards = getBoardsWithListings(run.id, searchParams.get("profile") || undefined);
 
     // Attach spec_sources provenance
     for (const board of boards) {
