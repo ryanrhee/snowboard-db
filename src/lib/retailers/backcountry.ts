@@ -7,121 +7,127 @@ import { BrandIdentifier } from "../strategies/brand-identifier";
 
 const BC_BASE_URL = "https://www.backcountry.com";
 
+/** Extract __NEXT_DATA__ JSON from raw HTML without cheerio */
+function extractNextData(html: string): unknown | null {
+  const match = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!match) return null;
+  try { return JSON.parse(match[1]); } catch { return null; }
+}
+
+/** Extract all JSON-LD script blocks from raw HTML without cheerio */
+function extractJsonLd(html: string): unknown[] {
+  const results: unknown[] = [];
+  const re = /<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    try { results.push(JSON.parse(m[1])); } catch { /* skip */ }
+  }
+  return results;
+}
+
 function buildSearchUrl(page?: number): string {
   const base = `${BC_BASE_URL}/snowboards`;
   return page && page > 1 ? `${base}?page=${page}` : base;
 }
 
 function extractTotalPages(html: string): number {
-  const $ = cheerio.load(html);
-  const nextDataScript = $("#__NEXT_DATA__");
-  if (nextDataScript.length > 0) {
-    try {
-      const nextData = JSON.parse(nextDataScript.text());
-      const totalPages = nextData?.props?.pageProps?.totalPages;
-      if (typeof totalPages === "number") return totalPages;
-    } catch { /* fall through */ }
+  const nextData = extractNextData(html) as Record<string, unknown> | null;
+  if (nextData) {
+    const totalPages = (nextData as any)?.props?.pageProps?.totalPages;
+    if (typeof totalPages === "number") return totalPages;
   }
   return 1;
 }
 
 function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
-  const $ = cheerio.load(html);
   const boards: Partial<RawBoard>[] = [];
 
-  // Parse from __NEXT_DATA__ Apollo state (primary method)
-  const nextDataScript = $("#__NEXT_DATA__");
-  if (nextDataScript.length > 0) {
-    try {
-      const nextData = JSON.parse(nextDataScript.text());
-      const pageProps = nextData?.props?.pageProps || {};
+  // Parse from __NEXT_DATA__ (no cheerio needed)
+  const nextData = extractNextData(html) as any;
+  if (nextData) {
+    const pageProps = nextData?.props?.pageProps || {};
 
-      // Products are in the Apollo cache as "Product:ID" keys
-      const apollo = pageProps.__APOLLO_STATE__;
-      if (apollo) {
-        for (const [key, value] of Object.entries(apollo)) {
-          if (!key.startsWith("Product:")) continue;
-          const product = value as Record<string, unknown>;
-          if (product.__typename !== "Product") continue;
+    // Products are in the Apollo cache as "Product:ID" keys
+    const apollo = pageProps.__APOLLO_STATE__;
+    if (apollo) {
+      for (const [key, value] of Object.entries(apollo)) {
+        if (!key.startsWith("Product:")) continue;
+        const product = value as Record<string, unknown>;
+        if (product.__typename !== "Product") continue;
 
-          const aggregates = product.aggregates as Record<string, unknown> | undefined;
-          const brand = product.brand as Record<string, string> | undefined;
-          const url = product.url as string | undefined;
+        const aggregates = product.aggregates as Record<string, unknown> | undefined;
+        const brand = product.brand as Record<string, string> | undefined;
+        const url = product.url as string | undefined;
 
-          boards.push({
-            retailer: "backcountry",
-            region: Region.US,
-            url: url
-              ? (url.startsWith("http") ? url : `${BC_BASE_URL}${url}`)
-              : undefined,
-            brand: BrandIdentifier.from(brand?.name),
-            model: product.name as string,
-            salePrice: (aggregates?.minSalePrice as number | undefined) || (aggregates?.minListPrice as number | undefined),
-            originalPrice: aggregates?.minListPrice as number | undefined,
-            currency: Currency.USD,
-          });
-        }
-      }
-
-      if (boards.length > 0) return boards;
-
-      // Fallback: try older data shapes
-      const products =
-        pageProps.initialState?.products?.items ||
-        pageProps.products ||
-        [];
-
-      for (const product of products) {
-        if (!product) continue;
         boards.push({
           retailer: "backcountry",
           region: Region.US,
-          url: product.url
-            ? (product.url.startsWith("http") ? product.url : `${BC_BASE_URL}${product.url}`)
+          url: url
+            ? (url.startsWith("http") ? url : `${BC_BASE_URL}${url}`)
             : undefined,
-          imageUrl: product.imageUrl || product.image || undefined,
-          brand: BrandIdentifier.from(product.brand?.name, product.brandName, product.brand),
-          model: product.title || product.name,
-          salePrice: product.salePrice || product.price?.sale || product.price?.current,
-          originalPrice: product.originalPrice || product.price?.original || product.price?.regular,
+          brand: BrandIdentifier.from(brand?.name),
+          model: product.name as string,
+          salePrice: (aggregates?.minSalePrice as number | undefined) || (aggregates?.minListPrice as number | undefined),
+          originalPrice: aggregates?.minListPrice as number | undefined,
           currency: Currency.USD,
         });
       }
+    }
 
-      if (boards.length > 0) return boards;
-    } catch {
-      // Fall through to HTML parsing
+    if (boards.length > 0) return boards;
+
+    // Fallback: try older data shapes
+    const products =
+      pageProps.initialState?.products?.items ||
+      pageProps.products ||
+      [];
+
+    for (const product of products) {
+      if (!product) continue;
+      boards.push({
+        retailer: "backcountry",
+        region: Region.US,
+        url: product.url
+          ? (product.url.startsWith("http") ? product.url : `${BC_BASE_URL}${product.url}`)
+          : undefined,
+        imageUrl: product.imageUrl || product.image || undefined,
+        brand: BrandIdentifier.from(product.brand?.name, product.brandName, product.brand),
+        model: product.title || product.name,
+        salePrice: product.salePrice || product.price?.sale || product.price?.current,
+        originalPrice: product.originalPrice || product.price?.original || product.price?.regular,
+        currency: Currency.USD,
+      });
+    }
+
+    if (boards.length > 0) return boards;
+  }
+
+  // Try JSON-LD (no cheerio needed)
+  const jsonLdBlocks = extractJsonLd(html);
+  for (const data of jsonLdBlocks) {
+    const d = data as any;
+    const items = d["@type"] === "ItemList" ? d.itemListElement : [d];
+    for (const item of items) {
+      const product = item.item || item;
+      if (product["@type"] !== "Product") continue;
+      const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
+      boards.push({
+        retailer: "backcountry",
+        region: Region.US,
+        url: product.url,
+        imageUrl: product.image,
+        brand: BrandIdentifier.from(product.brand?.name, product.brand),
+        model: product.name,
+        salePrice: offer?.price ? parseFloat(offer.price) : undefined,
+        currency: Currency.USD,
+      });
     }
   }
 
-  // Try JSON-LD
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const data = JSON.parse($(el).text());
-      const items = data["@type"] === "ItemList" ? data.itemListElement : [data];
-      for (const item of items) {
-        const product = item.item || item;
-        if (product["@type"] !== "Product") continue;
-        const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
-        boards.push({
-          retailer: "backcountry",
-          region: Region.US,
-          url: product.url,
-          imageUrl: product.image,
-          brand: BrandIdentifier.from(product.brand?.name, product.brand),
-          model: product.name,
-          salePrice: offer?.price ? parseFloat(offer.price) : undefined,
-          currency: Currency.USD,
-        });
-      }
-    } catch {
-      // skip
-    }
-  });
-
   if (boards.length > 0) return boards;
 
-  // HTML fallback: product cards
+  // HTML fallback: product cards (needs cheerio — rare for backcountry)
+  const $ = cheerio.load(html);
   const cardSelectors = [
     '[data-id="productCard"]',
     '[class*="product-card"]',
@@ -183,8 +189,6 @@ function parseProductsFromHtml(html: string): Partial<RawBoard>[] {
 
 /** Parse detail page HTML into RawBoard(s). Exported for testing. */
 export function parseDetailHtml(html: string, partial: Partial<RawBoard>): RawBoard | RawBoard[] | null {
-    const $ = cheerio.load(html);
-
     let brand: BrandIdentifier | undefined = partial.brand;
     let model = partial.model;
     let salePrice = partial.salePrice;
@@ -194,120 +198,119 @@ export function parseDetailHtml(html: string, partial: Partial<RawBoard>): RawBo
     const specs: Record<string, string> = {};
     const variants: { size: string; price: number; availability: string }[] = [];
 
-    // JSON-LD on product page — handle both Product and ProductGroup
-    $('script[type="application/ld+json"]').each((_, el) => {
-      try {
-        const data = JSON.parse($(el).text());
-        if (data["@type"] === "Product") {
-          brand = brand ?? BrandIdentifier.from(data.brand?.name, data.brand);
-          model = model || data.name;
-          description = description || data.description;
-          imageUrl = imageUrl || data.image;
-          const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
-          if (offer?.price && !salePrice) salePrice = parseFloat(offer.price);
-          if (offer?.availability) specs["availability"] = offer.availability;
-        } else if (data["@type"] === "ProductGroup") {
-          brand = brand ?? BrandIdentifier.from(data.brand?.name);
-          model = model || data.name;
-          description = description || data.description;
-          if (Array.isArray(data.image)) imageUrl = imageUrl || data.image[0];
+    // JSON-LD on product page — handle both Product and ProductGroup (no cheerio)
+    const jsonLdBlocks = extractJsonLd(html);
+    for (const data of jsonLdBlocks) {
+      const d = data as any;
+      if (d["@type"] === "Product") {
+        brand = brand ?? BrandIdentifier.from(d.brand?.name, d.brand);
+        model = model || d.name;
+        description = description || d.description;
+        imageUrl = imageUrl || d.image;
+        const offer = Array.isArray(d.offers) ? d.offers[0] : d.offers;
+        if (offer?.price && !salePrice) salePrice = parseFloat(offer.price);
+        if (offer?.availability) specs["availability"] = offer.availability;
+      } else if (d["@type"] === "ProductGroup") {
+        brand = brand ?? BrandIdentifier.from(d.brand?.name);
+        model = model || d.name;
+        description = description || d.description;
+        if (Array.isArray(d.image)) imageUrl = imageUrl || d.image[0];
 
-          // Extract size variants
-          if (Array.isArray(data.hasVariant)) {
-            for (const v of data.hasVariant) {
-              if (v["@type"] !== "Product") continue;
-              const offer = Array.isArray(v.offers) ? v.offers[0] : v.offers;
-              const price = offer?.price ? parseFloat(offer.price) : undefined;
-              const avail = offer?.availability?.includes("InStock") ? "in_stock" : "out_of_stock";
-              if (v.size && price) {
-                variants.push({ size: v.size, price, availability: avail });
-              }
+        // Extract size variants
+        if (Array.isArray(d.hasVariant)) {
+          for (const v of d.hasVariant) {
+            if (v["@type"] !== "Product") continue;
+            const offer = Array.isArray(v.offers) ? v.offers[0] : v.offers;
+            const price = offer?.price ? parseFloat(offer.price) : undefined;
+            const avail = offer?.availability?.includes("InStock") ? "in_stock" : "out_of_stock";
+            if (v.size && price) {
+              variants.push({ size: v.size, price, availability: avail });
             }
           }
         }
-      } catch { /* skip */ }
-    });
-
-    // Parse structured specs from __NEXT_DATA__ → pageProps.product
-    const nextDataScript = $("#__NEXT_DATA__");
-    if (nextDataScript.length > 0) {
-      try {
-        const nextData = JSON.parse(nextDataScript.text());
-        const product = nextData?.props?.pageProps?.product;
-        if (product) {
-          brand = brand ?? BrandIdentifier.from(product.brand?.name, product.brand);
-          model = model || product.title;
-          description = description || product.description;
-
-          // attributes: [{name, value}, ...] — e.g. Profile, Shape, Recommended Use
-          // Some attributes have multiple values (e.g. Skill Level: Advanced + Beginner),
-          // so we combine duplicates with ", " to avoid losing data
-          if (Array.isArray(product.attributes)) {
-            for (const attr of product.attributes) {
-              if (attr.name && attr.value) {
-                const key = attr.name.toLowerCase().trim();
-                const val = attr.value.trim();
-                if (!specs[key]) specs[key] = val;
-                else if (!specs[key].toLowerCase().includes(val.toLowerCase())) {
-                  specs[key] = `${specs[key]}, ${val}`;
-                }
-              }
-            }
-          }
-
-          // features: [{name, value}, ...] — e.g. Flex, Profile, Shape, Effective Edge
-          if (Array.isArray(product.features)) {
-            for (const feat of product.features) {
-              if (feat.name && feat.value) {
-                const key = feat.name.toLowerCase().trim();
-                if (!specs[key]) specs[key] = feat.value.trim();
-              }
-            }
-          }
-
-          // Customer reviews
-          const reviews = product.customerReviews;
-          if (reviews) {
-            if (reviews.average != null) specs["rating"] = String(reviews.average);
-            if (reviews.count != null) specs["review count"] = String(reviews.count);
-          }
-
-          // Combo/package deals: use the snowboard component name instead of
-          // the package title so gender and model are correctly detected.
-          // e.g. "Paradice Snowboard + Union Juliet Binding - 2026" →
-          //      "Paradise Snowboard - 2026 - Women's"
-          if (Array.isArray(product.packageComponents)) {
-            for (const comp of product.packageComponents) {
-              const name = comp.componentName as string | undefined;
-              if (name && /snowboard/i.test(name) && !/binding/i.test(name)) {
-                model = name;
-                break;
-              }
-            }
-          }
-        }
-      } catch { /* skip */ }
+      }
     }
 
-    // Fallback: parse specs from HTML elements
-    $('[class*="spec"] li, [class*="Spec"] li, [class*="detail"] li').each((_, el) => {
-      const text = $(el).text().trim();
-      const parts = text.split(/:\s*/);
-      if (parts.length === 2) {
-        const key = parts[0].toLowerCase().trim();
-        if (!specs[key]) specs[key] = parts[1].trim();
-      }
-    });
+    // Parse structured specs from __NEXT_DATA__ → pageProps.product (no cheerio)
+    const nextData = extractNextData(html) as any;
+    if (nextData) {
+      const product = nextData?.props?.pageProps?.product;
+      if (product) {
+        brand = brand ?? BrandIdentifier.from(product.brand?.name, product.brand);
+        model = model || product.title;
+        description = description || product.description;
 
-    // Also try table rows
-    $("table tr").each((_, row) => {
-      const cells = $(row).find("td, th");
-      if (cells.length >= 2) {
-        const key = $(cells[0]).text().trim().toLowerCase();
-        const val = $(cells[1]).text().trim();
-        if (key && val && !specs[key]) specs[key] = val;
+        // attributes: [{name, value}, ...] — e.g. Profile, Shape, Recommended Use
+        // Some attributes have multiple values (e.g. Skill Level: Advanced + Beginner),
+        // so we combine duplicates with ", " to avoid losing data
+        if (Array.isArray(product.attributes)) {
+          for (const attr of product.attributes) {
+            if (attr.name && attr.value) {
+              const key = attr.name.toLowerCase().trim();
+              const val = attr.value.trim();
+              if (!specs[key]) specs[key] = val;
+              else if (!specs[key].toLowerCase().includes(val.toLowerCase())) {
+                specs[key] = `${specs[key]}, ${val}`;
+              }
+            }
+          }
+        }
+
+        // features: [{name, value}, ...] — e.g. Flex, Profile, Shape, Effective Edge
+        if (Array.isArray(product.features)) {
+          for (const feat of product.features) {
+            if (feat.name && feat.value) {
+              const key = feat.name.toLowerCase().trim();
+              if (!specs[key]) specs[key] = feat.value.trim();
+            }
+          }
+        }
+
+        // Customer reviews
+        const reviews = product.customerReviews;
+        if (reviews) {
+          if (reviews.average != null) specs["rating"] = String(reviews.average);
+          if (reviews.count != null) specs["review count"] = String(reviews.count);
+        }
+
+        // Combo/package deals: use the snowboard component name instead of
+        // the package title so gender and model are correctly detected.
+        // e.g. "Paradice Snowboard + Union Juliet Binding - 2026" →
+        //      "Paradise Snowboard - 2026 - Women's"
+        if (Array.isArray(product.packageComponents)) {
+          for (const comp of product.packageComponents) {
+            const name = comp.componentName as string | undefined;
+            if (name && /snowboard/i.test(name) && !/binding/i.test(name)) {
+              model = name;
+              break;
+            }
+          }
+        }
       }
-    });
+    }
+
+    // Fallback: parse specs from HTML elements (only if we have no specs yet — needs cheerio)
+    if (Object.keys(specs).filter(k => k !== "availability").length === 0) {
+      const $ = cheerio.load(html);
+      $('[class*="spec"] li, [class*="Spec"] li, [class*="detail"] li').each((_, el) => {
+        const text = $(el).text().trim();
+        const parts = text.split(/:\s*/);
+        if (parts.length === 2) {
+          const key = parts[0].toLowerCase().trim();
+          if (!specs[key]) specs[key] = parts[1].trim();
+        }
+      });
+
+      // Also try table rows
+      $("table tr").each((_, row) => {
+        const cells = $(row).find("td, th");
+        if (cells.length >= 2) {
+          const key = $(cells[0]).text().trim().toLowerCase();
+          const val = $(cells[1]).text().trim();
+          if (key && val && !specs[key]) specs[key] = val;
+        }
+      });
+    }
 
     const flex = specs["flex rating"] || specs["flex"] || specs["stiffness"];
     const profile = specs["profile"] || specs["bend"] || specs["camber type"];

@@ -1,4 +1,22 @@
-# Task 46: Investigate backcountry scraper performance (130s vs ~10s for similar scrapers)
+# Task 46: Fix backcountry scraper performance (130s → ~10s target)
+
+**Completed:** 2026-02-27
+
+## What was done
+
+Replaced `cheerio.load()` with regex-based JSON extraction in `src/lib/retailers/backcountry.ts`. Added two helpers (`extractNextData`, `extractJsonLd`) that extract `__NEXT_DATA__` and JSON-LD blobs via regex + `JSON.parse()`, avoiding full DOM construction.
+
+### Functions modified
+- **`extractTotalPages()`** — now uses `extractNextData()` instead of cheerio
+- **`parseProductsFromHtml()`** — tiers 1-3 (Apollo, older NEXT_DATA, JSON-LD) use regex helpers; cheerio only loaded for tier 4 HTML card fallback (rare)
+- **`parseDetailHtml()`** — JSON-LD and `__NEXT_DATA__` extraction via regex helpers; cheerio only loaded when no specs found from JSON (HTML spec fallback)
+
+### Profiling results (289 cached pages, 236 MB HTML)
+- Regex extraction: **0.22s** (0.8ms/page)
+- cheerio.load(): **6.18s** (21.4ms/page)
+- **Speedup: 27.8x** for the JSON extraction portion
+
+All 1014 tests pass.
 
 ## Problem
 
