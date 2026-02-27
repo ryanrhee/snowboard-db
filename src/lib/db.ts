@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { createHash } from "crypto";
 import path from "path";
 import { config } from "./config";
-import { SearchRun, Board, Listing, BoardWithListings, TerrainScores } from "./types";
+import { SearchRun, Board, Listing, BoardWithListings, TerrainScores, RiderProfile } from "./types";
 import { BrandIdentifier } from "./strategies/brand-identifier";
 import { getStrategy } from "./strategies";
 import type { BoardSignal } from "./strategies/types";
@@ -94,6 +94,18 @@ function initSchema(db: Database.Database): void {
 
   // ===== Migration: old listing-shaped boards → new board-centric model =====
   migrateToNewModel(db);
+
+  // ===== Rider profiles =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rider_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      gender_filter TEXT NOT NULL DEFAULT 'unisex',
+      riding_profile TEXT NOT NULL DEFAULT 'beginner',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 
   // ===== Raw scrapes (immutable scrape archive) =====
   db.exec(`
@@ -941,6 +953,21 @@ export function setReviewUrlMap(brandModel: string, reviewUrl: string | null): v
   db.prepare(
     "INSERT OR REPLACE INTO review_url_map (brand_model, review_url, resolved_at) VALUES (?, ?, ?)"
   ).run(brandModel, reviewUrl, new Date().toISOString());
+}
+
+// ===== Rider Profiles CRUD =====
+
+export function getAllProfiles(): RiderProfile[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT id, name, gender_filter, riding_profile FROM rider_profiles ORDER BY id")
+    .all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: r.id as number,
+    name: r.name as string,
+    genderFilter: r.gender_filter as string,
+    ridingProfile: r.riding_profile as string,
+  }));
 }
 
 // ===== Spec Sources CRUD =====

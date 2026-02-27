@@ -195,3 +195,10 @@ export interface RetailerError {
   error: string;
   timestamp: string;
 }
+
+export interface RiderProfile {
+  id: number;
+  name: string;
+  genderFilter: string;
+  ridingProfile: string;
+}

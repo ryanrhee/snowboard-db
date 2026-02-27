@@ -14,11 +14,24 @@ interface SearchRunData {
   durationMs: number;
 }
 
+interface ProfileData {
+  id: number;
+  name: string;
+  genderFilter: string;
+  ridingProfile: string;
+  filterDefaults: {
+    gender: string;
+    abilityLevel: string;
+  };
+}
+
 export default function Home() {
   const [boards, setBoards] = useState<BoardData[]>([]);
   const [currentRun, setCurrentRun] = useState<SearchRunData | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [profiles, setProfiles] = useState<ProfileData[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,9 +76,20 @@ export default function Home() {
     }
   };
 
+  const loadProfiles = async () => {
+    try {
+      const res = await fetch("/api/profiles");
+      const data = await res.json();
+      setProfiles(data.profiles || []);
+    } catch {
+      // silent fail for profiles
+    }
+  };
+
   useEffect(() => {
     loadResults();
     loadRuns();
+    loadProfiles();
   }, [loadResults]);
 
   const handleSearch = async () => {
@@ -133,6 +157,21 @@ export default function Home() {
 
   const handleFilterChange = (newFilters: FilterState) => {
     setFilters(newFilters);
+    setActiveProfileId(null);
+  };
+
+  const handleSelectProfile = (profile: ProfileData) => {
+    setActiveProfileId(profile.id);
+    setFilters({
+      ...filters,
+      gender: profile.filterDefaults.gender,
+      abilityLevel: profile.filterDefaults.abilityLevel,
+    });
+  };
+
+  const handleClearProfile = () => {
+    setActiveProfileId(null);
+    setFilters(DEFAULT_FILTERS);
   };
 
   return (
@@ -178,8 +217,37 @@ export default function Home() {
         )}
       </div>
 
+      {profiles.length > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs text-gray-400">Rider:</span>
+          <button
+            onClick={handleClearProfile}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              activeProfileId === null
+                ? "bg-blue-600 text-white"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }`}
+          >
+            All
+          </button>
+          {profiles.map((profile) => (
+            <button
+              key={profile.id}
+              onClick={() => handleSelectProfile(profile)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                activeProfileId === profile.id
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              {profile.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="mb-4">
-        <Filters onFilterChange={handleFilterChange} />
+        <Filters filters={filters} onFilterChange={handleFilterChange} />
       </div>
 
       {error && (

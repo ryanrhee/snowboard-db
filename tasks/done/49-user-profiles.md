@@ -1,4 +1,10 @@
-# Task 49: User profiles with pre-filled search queries and profile-aware scoring
+# Task 49: User profiles with filter pre-fill
+
+**Completed:** 2026-02-27
+
+## Summary
+
+Added rider profiles with filter pre-fill. Profiles are stored server-side in SQLite (`rider_profiles` table) with gender filter and riding profile fields. A `GET /api/profiles` endpoint returns profiles with computed filter defaults. The UI shows profile chips above the filters bar — clicking one pre-fills gender and ability level filters. The Filters component was converted to a controlled component. Added `unisex+womens` gender filter support in both the UI and constraints logic. Seeded Ryan (unisex/beginner) and Josie (womens/intermediate_am) profiles. No pipeline changes — profiles only affect UI filter pre-fill.
 
 ## Concept
 

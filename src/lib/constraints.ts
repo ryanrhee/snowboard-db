@@ -64,8 +64,12 @@ export function filterBoardsWithListings(
     .filter((board) => {
       const boardGender = genderFromKey(board.boardKey);
       // Gender filter
-      if (filters.gender && boardGender !== filters.gender && boardGender !== "unisex") {
-        return false;
+      if (filters.gender) {
+        if (filters.gender === "unisex+womens") {
+          if (boardGender !== "unisex" && boardGender !== "womens") return false;
+        } else if (boardGender !== filters.gender && boardGender !== "unisex") {
+          return false;
+        }
       }
 
       // Exclude kids boards

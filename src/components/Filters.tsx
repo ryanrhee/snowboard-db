@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-
 interface FiltersProps {
+  filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
 }
 
@@ -24,17 +23,13 @@ export const DEFAULT_FILTERS: FilterState = {
   abilityLevel: "",
 };
 
-export function Filters({ onFilterChange }: FiltersProps) {
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-
+export function Filters({ filters, onFilterChange }: FiltersProps) {
   const updateFilter = (key: keyof FilterState, value: string) => {
     const newFilters = { ...filters, [key]: value };
-    setFilters(newFilters);
     onFilterChange(newFilters);
   };
 
   const resetFilters = () => {
-    setFilters(DEFAULT_FILTERS);
     onFilterChange(DEFAULT_FILTERS);
   };
 
@@ -96,6 +91,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
           className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
         >
           <option value="">All Genders</option>
+          <option value="unisex+womens">Unisex + Women&apos;s</option>
           <option value="womens">Women&apos;s</option>
           <option value="kids">Kids&apos;</option>
         </select>
