@@ -13,10 +13,28 @@ interface RiderProfile {
   name: string;              // "Me", "Sarah", etc.
   heightCm: number;          // Used for board length recommendation
   weightKg: number;          // Used for board length + flex recommendation
-  gender: "mens" | "womens" | "kids" | "any";  // Filter preference, not identity
+  genderFilter: "unisex" | "womens" | "unisex+womens" | "kids";  // Which boards to show (see below)
   ridingProfile: RidingProfile;  // One of the 5 profiles below
 }
 ```
+
+### Gender filter semantics
+
+Boards in the database are tagged as `unisex` (the default/mens), `womens`, or `kids`. The gender filter controls which boards appear in results:
+
+| Filter value | Shows | Typical use |
+|-------------|-------|-------------|
+| `"unisex"` | Unisex boards only | Men (default) |
+| `"womens"` | Womens boards only | Women who specifically want womens boards |
+| `"unisex+womens"` | Unisex + womens | Women open to either; the common recommendation |
+| `"kids"` | Kids boards only | Children |
+
+Notes:
+- "Mens" boards don't exist as a category — they're unisex. The industry labels them "mens" but they're the default sizing.
+- Women riding unisex boards is standard and recommended. `"unisex+womens"` is the right default for women.
+- `"womens"` as a filter is for women who specifically prefer the narrower waist width and softer flex of womens-specific boards.
+- Men riding womens boards is physically fine but uncommon (sizing/flex is designed for lighter riders). The UI doesn't prevent it, but it's not a default recommendation.
+- Kids boards are a separate category entirely — different sizing, different flex, different price range. Never mixed with adult results.
 
 ### The 5 riding profiles
 
@@ -50,7 +68,7 @@ When a profile is selected, the search filters auto-populate:
 
 | Filter | Beginner (me) | Intermediate (Sarah) |
 |--------|--------------|---------------------|
-| Gender | Any | Womens |
+| Gender | Unisex | Unisex + womens |
 | Ability level | Beginner | Intermediate |
 | Board length | 155-160cm (from height/weight) | 145-150cm (from height/weight) |
 | Flex range | 1-4 | 4-6 |
