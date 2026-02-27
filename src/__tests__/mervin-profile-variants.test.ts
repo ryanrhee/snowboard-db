@@ -1,15 +1,15 @@
 /**
  * Integration tests for Mervin (GNU + Lib Tech) profile variant board identification.
  *
- * These tests read actual cached HTML from data/http-cache.db and run it through
- * the real scraper parsing and adapter pipeline, then verify that identifyBoards()
- * correctly groups and splits profile variants.
+ * These tests verify that different profile variants get different model names
+ * naturally — no Phase 3 splitting needed. Variant markers ("Camber", "C Money",
+ * "Gloss C") are retained in model names, producing distinct board keys.
  *
  * Each test case corresponds to a known bug from task 39's data audit:
- *   1. GNU Ladies Choice — C2X vs Camber/C3
- *   2. Lib Tech Skunk Ape — C2X vs C3 (+ Twin as separate board)
- *   3. GNU Money — C2E (/money) vs C3 (/c-money)
- *   4. GNU Gloss — C2E (/gloss) vs C3 (/gloss-c)
+ *   1. GNU Ladies Choice — /ladies-choice vs /ladies-choice-camber
+ *   2. Lib Tech Skunk Ape — /skunk-ape vs /skunk-ape-camber (+ Twin as separate board)
+ *   3. GNU Money — /money vs /c-money
+ *   4. GNU Gloss — /gloss vs /gloss-c
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import Database from "better-sqlite3";
@@ -20,6 +20,7 @@ import type { ManufacturerSpec } from "../lib/scrapers/adapters";
 import type { ScrapedBoard } from "../lib/scrapers/types";
 import type { RawBoard } from "../lib/types";
 import { Currency } from "../lib/types";
+import { BrandIdentifier } from "../lib/strategies/brand-identifier";
 
 // Manufacturer scraper parseDetailHtml exports
 import { parseDetailHtml as parseGnuDetailHtml } from "../lib/manufacturers/gnu";
@@ -114,10 +115,10 @@ describe("Mervin profile variant integration (cached HTML)", () => {
   });
 
   // =======================================================================
-  // 1. GNU Ladies Choice — C2X vs C3
+  // 1. GNU Ladies Choice — /ladies-choice vs /ladies-choice-camber
   // =======================================================================
   describe("GNU Ladies Choice", () => {
-    it("splits C2X and C3 variants from manufacturer + retailer sources", async () => {
+    it("manufacturer /ladies-choice and /ladies-choice-camber produce different board keys", async () => {
       const scraped: ScrapedBoard[] = [
         ...(await parseMfr("https://www.gnu.com/ladies-choice", "GNU", "womens")),
         ...(await parseMfr("https://www.gnu.com/ladies-choice-camber", "GNU", "womens")),
@@ -130,33 +131,18 @@ describe("Mervin profile variant integration (cached HTML)", () => {
       const groups = identifyBoards(scraped);
       const keys = [...groups.keys()].sort();
 
-      expect(keys).toContain("gnu|ladies choice c2x|womens");
-      expect(keys).toContain("gnu|ladies choice c3|womens");
-
-      const c2xGroup = groups.get("gnu|ladies choice c2x|womens")!;
-      expect(c2xGroup).toBeDefined();
-      expect(
-        c2xGroup.scraped.some((s) =>
-          s.sourceUrl.includes("gnu.com/ladies-choice") &&
-          !s.sourceUrl.includes("camber")
-        )
-      ).toBe(true);
-
-      const c3Group = groups.get("gnu|ladies choice c3|womens")!;
-      expect(c3Group).toBeDefined();
-      expect(
-        c3Group.scraped.some((s) =>
-          s.sourceUrl.includes("ladies-choice-camber")
-        )
-      ).toBe(true);
+      // "Ladies Choice" (from mfr /ladies-choice, evo C2X stripped, backcountry)
+      expect(keys).toContain("gnu|ladies choice|womens");
+      // "Ladies Choice Camber" (from mfr /ladies-choice-camber)
+      expect(keys).toContain("gnu|ladies choice camber|womens");
     });
   });
 
   // =======================================================================
-  // 2. Lib Tech Skunk Ape — C2X vs C3 (+ Twin as separate board)
+  // 2. Lib Tech Skunk Ape — /skunk-ape vs /skunk-ape-camber (+ Twin)
   // =======================================================================
   describe("Lib Tech Skunk Ape", () => {
-    it("splits C2X and C3 variants, with Twin as a separate board", async () => {
+    it("different variants get separate board keys naturally", async () => {
       const scraped: ScrapedBoard[] = [
         ...(await parseMfr("https://www.lib-tech.com/skunk-ape", "Lib Tech")),
         ...(await parseMfr("https://www.lib-tech.com/skunk-ape-camber", "Lib Tech")),
@@ -173,36 +159,20 @@ describe("Mervin profile variant integration (cached HTML)", () => {
       const groups = identifyBoards(scraped);
       const keys = [...groups.keys()].sort();
 
-      expect(keys).toContain("lib tech|skunk ape c2x|unisex");
-      expect(keys).toContain("lib tech|skunk ape c3|unisex");
+      // "Skunk Ape" (from mfr /skunk-ape, evo C2X/C3 stripped, backcountry generic)
+      expect(keys).toContain("lib tech|skunk ape|unisex");
+      // "Skunk Ape Camber" (from mfr /skunk-ape-camber, backcountry camber, tactics camber)
+      expect(keys).toContain("lib tech|skunk ape camber|unisex");
+      // "Skunk Ape Twin" separate board
       expect(keys.some((k) => k.includes("skunk ape twin"))).toBe(true);
-
-      const c2xGroup = groups.get("lib tech|skunk ape c2x|unisex")!;
-      expect(c2xGroup).toBeDefined();
-      expect(
-        c2xGroup.scraped.some(
-          (s) =>
-            s.sourceUrl.includes("lib-tech.com/skunk-ape") &&
-            !s.sourceUrl.includes("camber") &&
-            !s.sourceUrl.includes("twin")
-        )
-      ).toBe(true);
-
-      const c3Group = groups.get("lib tech|skunk ape c3|unisex")!;
-      expect(c3Group).toBeDefined();
-      expect(
-        c3Group.scraped.some((s) =>
-          s.sourceUrl.includes("skunk-ape-camber")
-        )
-      ).toBe(true);
     });
   });
 
   // =======================================================================
-  // 3. GNU Money — C2E (/money) vs C3 (/c-money)
+  // 3. GNU Money — /money vs /c-money
   // =======================================================================
   describe("GNU Money", () => {
-    it("splits /money (C2E) and /c-money (C3) into separate boards", async () => {
+    it("Money and C Money produce separate board keys naturally", async () => {
       const scraped: ScrapedBoard[] = [
         ...(await parseMfr("https://www.gnu.com/money", "GNU")),
         ...(await parseMfr("https://www.gnu.com/c-money", "GNU")),
@@ -216,28 +186,30 @@ describe("Mervin profile variant integration (cached HTML)", () => {
       const groups = identifyBoards(scraped);
       const keys = [...groups.keys()].sort();
 
-      expect(keys).toContain("gnu|money c2e|unisex");
-      expect(keys).toContain("gnu|money c3|unisex");
+      // "Money" (from mfr /money, evo C2E stripped, backcountry)
+      expect(keys).toContain("gnu|money|unisex");
+      // "C Money" (from mfr /c-money, tactics C3 stripped → "C Money")
+      expect(keys).toContain("gnu|c money|unisex");
 
-      const c2eGroup = groups.get("gnu|money c2e|unisex")!;
-      expect(c2eGroup).toBeDefined();
+      const moneyGroup = groups.get("gnu|money|unisex")!;
+      expect(moneyGroup).toBeDefined();
       expect(
-        c2eGroup.scraped.some((s) => s.sourceUrl === "https://www.gnu.com/money")
+        moneyGroup.scraped.some((s) => s.sourceUrl === "https://www.gnu.com/money")
       ).toBe(true);
 
-      const c3Group = groups.get("gnu|money c3|unisex")!;
-      expect(c3Group).toBeDefined();
+      const cMoneyGroup = groups.get("gnu|c money|unisex")!;
+      expect(cMoneyGroup).toBeDefined();
       expect(
-        c3Group.scraped.some((s) => s.sourceUrl === "https://www.gnu.com/c-money")
+        cMoneyGroup.scraped.some((s) => s.sourceUrl === "https://www.gnu.com/c-money")
       ).toBe(true);
     });
   });
 
   // =======================================================================
-  // 4. GNU Gloss — C2E (/gloss) vs C3 (/gloss-c)
+  // 4. GNU Gloss — /gloss vs /gloss-c
   // =======================================================================
   describe("GNU Gloss", () => {
-    it("splits /gloss (C2E) and /gloss-c (C3) into separate boards", async () => {
+    it("Gloss and Gloss C produce separate board keys naturally", async () => {
       const scraped: ScrapedBoard[] = [
         ...(await parseMfr("https://www.gnu.com/gloss", "GNU", "womens")),
         ...(await parseMfr("https://www.gnu.com/gloss-c", "GNU", "womens")),
@@ -251,24 +223,165 @@ describe("Mervin profile variant integration (cached HTML)", () => {
       const groups = identifyBoards(scraped);
       const keys = [...groups.keys()].sort();
 
-      expect(keys).toContain("gnu|gloss c2e|womens");
-      expect(keys).toContain("gnu|gloss c3|womens");
+      // "Gloss" (from mfr /gloss, backcountry generic)
+      expect(keys).toContain("gnu|gloss|womens");
+      // "Gloss C" (from mfr /gloss-c, evo C3 stripped → "Gloss C", backcountry "Gloss C")
+      expect(keys).toContain("gnu|gloss c|womens");
 
-      const c2eGroup = groups.get("gnu|gloss c2e|womens")!;
-      expect(c2eGroup).toBeDefined();
+      const glossGroup = groups.get("gnu|gloss|womens")!;
+      expect(glossGroup).toBeDefined();
       expect(
-        c2eGroup.scraped.some((s) =>
+        glossGroup.scraped.some((s) =>
           s.sourceUrl === "https://www.gnu.com/gloss"
         )
       ).toBe(true);
 
-      const c3Group = groups.get("gnu|gloss c3|womens")!;
-      expect(c3Group).toBeDefined();
+      const glossCGroup = groups.get("gnu|gloss c|womens")!;
+      expect(glossCGroup).toBeDefined();
       expect(
-        c3Group.scraped.some((s) =>
+        glossCGroup.scraped.some((s) =>
           s.sourceUrl === "https://www.gnu.com/gloss-c"
         )
       ).toBe(true);
+    });
+  });
+
+  // =======================================================================
+  // 5. Lib Tech T. Rice Pro — /t-rice-pro vs /t-rice-pro-camber
+  // =======================================================================
+  describe("Lib Tech T. Rice Pro", () => {
+    it("Pro and Pro Camber naturally produce different board keys", async () => {
+      const scraped: ScrapedBoard[] = [
+        ...(await parseMfr("https://www.lib-tech.com/t-rice-pro", "Lib Tech")),
+        ...(await parseMfr("https://www.lib-tech.com/t-rice-pro-camber", "Lib Tech")),
+        ...parseRetailer("https://www.backcountry.com/lib-technologies-t.rice-pro-snowboard-2026", "backcountry"),
+      ];
+
+      expect(scraped.length).toBeGreaterThanOrEqual(2);
+
+      const groups = identifyBoards(scraped);
+      const keys = [...groups.keys()].sort();
+
+      const proKeys = keys.filter(k => k.includes("|pro"));
+      expect(proKeys.length).toBeGreaterThanOrEqual(1);
+
+      // Backcountry listing must land in one of the groups
+      const bcInSomeGroup = proKeys.some(k => {
+        const group = groups.get(k)!;
+        return group.scraped.some(s => s.sourceUrl.includes("backcountry.com"));
+      });
+      expect(bcInSomeGroup).toBe(true);
+    });
+  });
+
+  // =======================================================================
+  // 6. Synthetic tests: variant markers produce different keys naturally
+  // =======================================================================
+  describe("Synthetic variant marker tests", () => {
+    function makeSb(overrides: Partial<ScrapedBoard> & { brand: string }): ScrapedBoard {
+      const brandId = new BrandIdentifier(overrides.brand);
+      return {
+        source: overrides.source ?? "manufacturer:gnu",
+        brandId,
+        model: overrides.model ?? "Test Board",
+        rawModel: overrides.rawModel ?? overrides.model ?? "Test Board",
+        sourceUrl: overrides.sourceUrl ?? "https://example.com",
+        profile: overrides.profile,
+        gender: overrides.gender,
+        extras: overrides.extras ?? {},
+        listings: overrides.listings ?? [],
+      };
+    }
+
+    it("Skunk Ape and Skunk Ape Camber get separate keys without Phase 3", () => {
+      const scraped: ScrapedBoard[] = [
+        makeSb({
+          brand: "Lib Tech",
+          source: "manufacturer:lib tech",
+          model: "Skunk Ape",
+          rawModel: "Skunk Ape",
+          profile: "C2X",
+          sourceUrl: "https://www.lib-tech.com/skunk-ape",
+        }),
+        makeSb({
+          brand: "Lib Tech",
+          source: "manufacturer:lib tech",
+          model: "Skunk Ape Camber",
+          rawModel: "Skunk Ape Camber",
+          profile: "C3",
+          sourceUrl: "https://www.lib-tech.com/skunk-ape-camber",
+        }),
+        makeSb({
+          brand: "Lib Tech",
+          source: "retailer:backcountry",
+          model: "Skunk Ape Camber",
+          rawModel: "Lib Tech Skunk Ape Camber Snowboard 2026",
+          profile: "Camber",
+          sourceUrl: "https://www.backcountry.com/lib-tech-skunk-ape-camber-2026",
+          listings: [{
+            url: "https://www.backcountry.com/lib-tech-skunk-ape-camber-2026",
+            salePrice: 599,
+            currency: Currency.USD,
+            scrapedAt: new Date().toISOString(),
+          }],
+        }),
+      ];
+
+      const groups = identifyBoards(scraped);
+      const keys = [...groups.keys()].sort();
+
+      expect(keys).toContain("lib tech|skunk ape|unisex");
+      expect(keys).toContain("lib tech|skunk ape camber|unisex");
+
+      // Backcountry "Skunk Ape Camber" goes to the camber group
+      const camberGroup = groups.get("lib tech|skunk ape camber|unisex")!;
+      expect(camberGroup.scraped.some(s => s.sourceUrl.includes("backcountry.com"))).toBe(true);
+    });
+
+    it("Money and C Money get separate keys without Phase 3", () => {
+      const scraped: ScrapedBoard[] = [
+        makeSb({
+          brand: "GNU",
+          source: "manufacturer:gnu",
+          model: "Money",
+          rawModel: "Money",
+          profile: "C2E",
+          sourceUrl: "https://www.gnu.com/money",
+        }),
+        makeSb({
+          brand: "GNU",
+          source: "manufacturer:gnu",
+          model: "C Money",
+          rawModel: "C Money",
+          profile: "C3",
+          sourceUrl: "https://www.gnu.com/c-money",
+        }),
+        makeSb({
+          brand: "GNU",
+          source: "retailer:backcountry",
+          model: "Money",
+          rawModel: "GNU Money Snowboard 2026",
+          profile: "Hybrid Camber",
+          sourceUrl: "https://www.backcountry.com/gnu-money-2026",
+          listings: [{
+            url: "https://www.backcountry.com/gnu-money-2026",
+            salePrice: 499,
+            currency: Currency.USD,
+            scrapedAt: new Date().toISOString(),
+          }],
+        }),
+      ];
+
+      const groups = identifyBoards(scraped);
+      const keys = [...groups.keys()].sort();
+
+      expect(keys).toContain("gnu|money|unisex");
+      expect(keys).toContain("gnu|c money|unisex");
+      expect(keys).toHaveLength(2);
+
+      // Backcountry "Money" merges with manufacturer "Money"
+      const moneyGroup = groups.get("gnu|money|unisex")!;
+      expect(moneyGroup.scraped.some(s => s.sourceUrl.includes("backcountry.com"))).toBe(true);
     });
   });
 });

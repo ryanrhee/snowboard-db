@@ -6,7 +6,6 @@ function signal(overrides: Partial<BoardSignal> = {}): BoardSignal {
   return {
     rawModel: "DOA",
     brand: "CAPiTA",
-    manufacturer: "default",
     source: "retailer:tactics",
     sourceUrl: "https://tactics.com/doa",
     ...overrides,
@@ -124,14 +123,14 @@ describe("DefaultStrategy", () => {
     });
   });
 
-  describe("no profile variant", () => {
-    it("always returns null profileVariant", () => {
+  describe("no profile variant field", () => {
+    it("returns only model in identity", () => {
       const result = strategy.identify(signal({
         rawModel: "DOA Snowboard 2026",
         brand: "CAPiTA",
       }));
       expect(result.model).toBe("DOA");
-      expect(result.profileVariant).toBeNull();
+      expect(result).not.toHaveProperty("profileVariant");
     });
   });
 
@@ -160,7 +159,6 @@ describe("DefaultStrategy", () => {
       const result = strategy.identify(signal({
         rawModel: "After School Special Package",
         brand: "Burton",
-        manufacturer: "default",
       }));
       expect(result.model).toBe("After School Special");
     });
@@ -169,7 +167,6 @@ describe("DefaultStrategy", () => {
       const result = strategy.identify(signal({
         rawModel: "Poppy & Bindings Snowboard",
         brand: "Burton",
-        manufacturer: "default",
       }));
       expect(result.model).toBe("Poppy");
     });

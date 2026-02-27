@@ -51,7 +51,6 @@ export class BoardIdentifier {
       const signal: BoardSignal = {
         rawModel: this.rawModel,
         brand: this.brand,
-        manufacturer: this.brandId.manufacturer,
         source: "",
         sourceUrl: this.url || "",
       };

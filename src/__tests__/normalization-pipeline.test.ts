@@ -311,6 +311,14 @@ describe("pipeline step: apply-model-aliases", () => {
     expect(step.transform("Fish 3D", undefined)).toBe("3d fish directional");
   });
 
+  it("aliases Fish 3D Directional Flat Top → 3d fish directional Flat Top (prefix match)", () => {
+    expect(step.transform("Fish 3D Directional Flat Top", undefined)).toBe("3d fish directional Flat Top");
+  });
+
+  it("aliases Fish 3D Flat Top → 3d fish directional Flat Top (prefix match)", () => {
+    expect(step.transform("Fish 3D Flat Top", undefined)).toBe("3d fish directional Flat Top");
+  });
+
   it("aliases 3D Family Tree Channel Surfer → family tree 3d channel surfer", () => {
     expect(step.transform("3D Family Tree Channel Surfer", undefined)).toBe("family tree 3d channel surfer");
   });
@@ -349,22 +357,6 @@ describe("pipeline step: strip-rider-names", () => {
 
   it("no-ops for non-matching brand", () => {
     expect(step.transform("Forest Bailey Head Space", "Burton")).toBe("Forest Bailey Head Space");
-  });
-});
-
-describe("pipeline step: strip-gnu-profile-letter", () => {
-  const step = findStep("strip-gnu-profile-letter");
-
-  it("strips leading C prefix", () => {
-    expect(step.transform("C Money", "GNU")).toBe("Money");
-  });
-
-  it("strips trailing C suffix", () => {
-    expect(step.transform("Gloss C", "GNU")).toBe("Gloss");
-  });
-
-  it("has brand scope of GNU", () => {
-    expect(step.brands).toEqual(["GNU"]);
   });
 });
 
@@ -431,11 +423,20 @@ describe("normalizeModelDebug", () => {
     expect(trace).toEqual([{ step: "early-return", result: "" }]);
   });
 
-  it("includes strip-profile step when keepProfile is not set", () => {
-    const trace = normalizeModelDebug("Custom Camber", "Burton");
+  it("includes strip-profile step for contour codes", () => {
+    const trace = normalizeModelDebug("Legitimizer C3", "Lib Tech");
     const profileStep = trace.find((t) => t.step === "strip-profile");
     expect(profileStep).toBeDefined();
-    expect(profileStep!.result).toBe("Custom");
+    expect(profileStep!.result).toBe("Legitimizer");
+  });
+
+  it("strip-profile does NOT strip Camber (it is a model variant, not a contour code)", () => {
+    const trace = normalizeModelDebug("Custom Camber", "Burton");
+    const profileStep = trace.find((t) => t.step === "strip-profile");
+    // strip-profile only matches contour codes now, not "Camber"
+    if (profileStep) {
+      expect(profileStep.result).toBe("Custom Camber");
+    }
   });
 
   it("omits strip-profile step when keepProfile is true", () => {

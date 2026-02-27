@@ -27,7 +27,7 @@ const MODEL_PREFIX_ALIASES: [string, string][] = [
 export class DefaultStrategy implements BoardIdentificationStrategy {
   identify(signal: BoardSignal): BoardIdentity {
     let m = signal.rawModel;
-    if (!m || m === "Unknown") return { model: m, profileVariant: null };
+    if (!m || m === "Unknown") return { model: m };
 
     // Shared pre-normalization
     m = sharedNormalize(m, signal.brand);
@@ -55,7 +55,7 @@ export class DefaultStrategy implements BoardIdentificationStrategy {
     // Model aliases
     m = applyDefaultAliases(m);
 
-    return { model: m || signal.rawModel, profileVariant: null };
+    return { model: m || signal.rawModel };
   }
 }
 

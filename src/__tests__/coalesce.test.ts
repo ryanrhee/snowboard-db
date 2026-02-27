@@ -261,8 +261,8 @@ describe("coalesce", () => {
     expect(keys).toEqual(["jones|flagship|unisex", "jones|flagship|womens"]);
   });
 
-  describe("profile variant splitting", () => {
-    it("splits manufacturer boards with different profiles into separate board keys", () => {
+  describe("profile variant grouping (natural, no Phase 3)", () => {
+    it("boards with different profile suffixes get separate board keys", () => {
       const scraped: ScrapedBoard[] = [
         makeScrapedBoard({
           source: "manufacturer:burton",
@@ -292,7 +292,7 @@ describe("coalesce", () => {
       ]);
     });
 
-    it("assigns retailer with profile suffix to correct variant", () => {
+    it("assigns retailer with profile suffix to correct variant naturally", () => {
       const scraped: ScrapedBoard[] = [
         makeScrapedBoard({
           source: "manufacturer:burton",
@@ -337,53 +337,7 @@ describe("coalesce", () => {
       expect(fvListings).toHaveLength(1);
     });
 
-    it("assigns retailer without suffix but with profile spec to correct variant", () => {
-      const scraped: ScrapedBoard[] = [
-        makeScrapedBoard({
-          source: "manufacturer:burton",
-          brand: "Burton",
-          model: "Custom Camber",
-          rawModel: "Custom Camber",
-          profile: "camber",
-          sourceUrl: "https://burton.com/custom-camber",
-        }),
-        makeScrapedBoard({
-          source: "manufacturer:burton",
-          brand: "Burton",
-          model: "Custom Flying V",
-          rawModel: "Custom Flying V",
-          profile: "flying v",
-          sourceUrl: "https://burton.com/custom-flying-v",
-        }),
-        makeScrapedBoard({
-          source: "retailer:evo",
-          brand: "Burton",
-          model: "Custom",
-          rawModel: "Custom",
-          profile: "Hybrid Rocker",
-          sourceUrl: "https://evo.com/custom",
-          listings: [
-            {
-              url: "https://evo.com/custom/155",
-              salePrice: 479,
-              currency: Currency.USD,
-              scrapedAt: "2025-01-01T00:00:00Z",
-            },
-          ],
-        }),
-      ];
-
-      const { boards, listings } = coalesce(scraped, "run-1");
-
-      expect(boards).toHaveLength(2);
-      // Flying V normalizes to hybrid_rocker, so the retailer should match that variant
-      const fvBoard = boards.find((b) => b.boardKey.includes("flying v"));
-      expect(fvBoard).toBeDefined();
-      const fvListings = listings.filter((l) => l.boardKey === fvBoard!.boardKey);
-      expect(fvListings).toHaveLength(1);
-    });
-
-    it("assigns retailer without suffix or profile to default (camber) variant", () => {
+    it("retailer without suffix gets its own board key (no Phase 3 merging)", () => {
       const scraped: ScrapedBoard[] = [
         makeScrapedBoard({
           source: "manufacturer:burton",
@@ -418,62 +372,13 @@ describe("coalesce", () => {
         }),
       ];
 
-      const { boards, listings } = coalesce(scraped, "run-1");
+      const { boards } = coalesce(scraped, "run-1");
 
-      expect(boards).toHaveLength(2);
-      // No suffix, no profile → defaults to camber for Burton
-      const camberBoard = boards.find((b) => b.boardKey.includes("camber"));
-      expect(camberBoard).toBeDefined();
-      const camberListings = listings.filter((l) => l.boardKey === camberBoard!.boardKey);
-      expect(camberListings).toHaveLength(1);
+      // Without Phase 3, "Custom" is its own board (separate from "Custom Camber" and "Custom Flying V")
+      expect(boards).toHaveLength(3);
     });
 
-    it("uses c2 as default for Lib Tech profile variants", () => {
-      const scraped: ScrapedBoard[] = [
-        makeScrapedBoard({
-          source: "manufacturer:lib-tech",
-          brand: "Lib Tech",
-          model: "Skunk Ape C2",
-          rawModel: "Skunk Ape C2",
-          profile: "hybrid rocker",
-          sourceUrl: "https://lib-tech.com/skunk-ape-c2",
-        }),
-        makeScrapedBoard({
-          source: "manufacturer:lib-tech",
-          brand: "Lib Tech",
-          model: "Skunk Ape Camber",
-          rawModel: "Skunk Ape Camber",
-          profile: "camber",
-          sourceUrl: "https://lib-tech.com/skunk-ape-camber",
-        }),
-        makeScrapedBoard({
-          source: "retailer:evo",
-          brand: "Lib Tech",
-          model: "Skunk Ape",
-          rawModel: "Skunk Ape",
-          sourceUrl: "https://evo.com/skunk-ape",
-          listings: [
-            {
-              url: "https://evo.com/skunk-ape/161",
-              salePrice: 599,
-              currency: Currency.USD,
-              scrapedAt: "2025-01-01T00:00:00Z",
-            },
-          ],
-        }),
-      ];
-
-      const { boards, listings } = coalesce(scraped, "run-1");
-
-      expect(boards).toHaveLength(2);
-      // No suffix, no profile → defaults to c2 for Lib Tech
-      const c2Board = boards.find((b) => b.boardKey.includes("c2"));
-      expect(c2Board).toBeDefined();
-      const c2Listings = listings.filter((l) => l.boardKey === c2Board!.boardKey);
-      expect(c2Listings).toHaveLength(1);
-    });
-
-    it("does not split when only one manufacturer source URL exists", () => {
+    it("does not split when only one source has the model", () => {
       const scraped: ScrapedBoard[] = [
         makeScrapedBoard({
           source: "manufacturer:burton",

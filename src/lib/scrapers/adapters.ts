@@ -40,7 +40,6 @@ export function adaptRetailerOutput(
     const signal: BoardSignal = {
       rawModel,
       brand: brandId.canonical,
-      manufacturer: brandId.manufacturer,
       source: `retailer:${retailerName}`,
       sourceUrl: raw.url,
       profile: raw.profile,

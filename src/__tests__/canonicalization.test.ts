@@ -832,7 +832,7 @@ describe("normalizeModel", () => {
 
   describe("strips binding/package info", () => {
     it.each([
-      ["Instigator Camber Snowboard + Malavita Re:Flex Binding", "Burton", "Instigator"],
+      ["Instigator Camber Snowboard + Malavita Re:Flex Binding", "Burton", "Instigator Camber"],
       ["Birds Of A Feather Snowboard + Union Ultra Binding - 2026", "CAPiTA", "Birds Of A Feather"],
       ["Kazu Kokubo Pro Snowboard + Union Atlas Pro Binding - 2026", "CAPiTA", "Kazu Kokubo Pro"],
       ["Feelgood Snowboard + Step On Package - Women's", "Burton", "Feelgood"],
@@ -871,7 +871,7 @@ describe("normalizeModel", () => {
   describe("handles models that need no cleanup", () => {
     it.each([
       ["Custom", undefined, "Custom"],
-      ["Process Flying V", "Burton", "Process"],
+      ["Process Flying V", "Burton", "Process Flying V"],
       ["Halldor", undefined, "Halldor"],
       ["Flagship Pro", undefined, "Flagship Pro"],
     ])('%s → %s', (input, brand, expected) => {
@@ -925,24 +925,25 @@ describe("normalizeModel", () => {
   });
 
   describe("strips trailing profile designators", () => {
-    // Burton profile stripping
+    // Burton profile suffixes are now RETAINED in model names
     it.each([
-      ["Custom Camber", "Burton", "Custom"],
-      ["Custom Flying V", "Burton", "Custom"],
-      ["Feelgood Camber", "Burton", "Feelgood"],
-      ["Hideaway Flat Top", "Burton", "Hideaway"],
-      ["Instigator PurePop Camber", "Burton", "Instigator"],
+      ["Custom Camber", "Burton", "Custom Camber"],
+      ["Custom Flying V", "Burton", "Custom Flying V"],
+      ["Feelgood Camber", "Burton", "Feelgood Camber"],
+      ["Hideaway Flat Top", "Burton", "Hideaway Flat Top"],
+      ["Instigator PurePop Camber", "Burton", "Instigator PurePop Camber"],
     ])('Burton: %s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
     });
 
-    // Lib Tech / GNU profile code stripping
+    // Lib Tech / GNU contour code stripping (C2X, C2E, C2, C3, BTX still stripped)
+    // but "Camber" and GNU "C" prefix/suffix are RETAINED
     it.each([
       ["Legitimizer C3", "Lib Tech", "Legitimizer"],
       ["Rasman C2X", "Lib Tech", "Rasman"],
       ["Frosting C2", "GNU", "Frosting"],
-      ["Gloss-C C3", "GNU", "Gloss"],
-      ["C Money C3", "GNU", "Money"],
+      ["Gloss-C C3", "GNU", "Gloss C"],
+      ["C Money C3", "GNU", "C Money"],
       ["T. Rice Pro C2", "Lib Tech", "Pro"],
     ])('Lib Tech/GNU: %s → %s', (input, brand, expected) => {
       expect(normalizeModel(input, brand)).toBe(expected);
@@ -1014,7 +1015,7 @@ describe("normalizeModel", () => {
     });
 
     it("REI: Process Camber Snowboard - 2025/2026", () => {
-      expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process");
+      expect(normalizeModel("Process Camber Snowboard - 2025/2026", "Burton")).toBe("Process Camber");
     });
   });
 });
@@ -1371,15 +1372,14 @@ describe("specKey — deduplication of variant names", () => {
 // =============================================================================
 
 describe("specKey — GNU model deduplication", () => {
-  it("C Money and Money produce the same key", () => {
-    // Evo/backcountry list as "Money", Tactics/GNU list as "C Money"
-    // "C" is a profile designation (C3 camber line), not part of the model name
-    expect(specKey("GNU", "C Money", "unisex")).toBe(specKey("GNU", "Money", "unisex"));
+  it("C Money and Money produce DIFFERENT keys (C is a model variant, not stripped)", () => {
+    // "C Money" and "Money" are now distinct model names
+    expect(specKey("GNU", "C Money", "unisex")).not.toBe(specKey("GNU", "Money", "unisex"));
   });
 
-  it("Gloss C and Gloss produce the same key", () => {
-    // "C" suffix is a profile designation that should be stripped
-    expect(specKey("GNU", "Gloss C", "womens")).toBe(specKey("GNU", "Gloss", "womens"));
+  it("Gloss C and Gloss produce DIFFERENT keys (C is a model variant, not stripped)", () => {
+    // "Gloss C" and "Gloss" are now distinct model names
+    expect(specKey("GNU", "Gloss C", "womens")).not.toBe(specKey("GNU", "Gloss", "womens"));
   });
 
   it("Forest Bailey Head Space and Head Space produce the same key", () => {

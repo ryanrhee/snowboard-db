@@ -6,7 +6,6 @@ function signal(overrides: Partial<BoardSignal> = {}): BoardSignal {
   return {
     rawModel: "Skunk Ape",
     brand: "Lib Tech",
-    manufacturer: "mervin",
     source: "retailer:evo",
     sourceUrl: "https://evo.com/skunk-ape",
     ...overrides,
@@ -16,94 +15,58 @@ function signal(overrides: Partial<BoardSignal> = {}): BoardSignal {
 const strategy = new MervinStrategy();
 
 describe("MervinStrategy", () => {
-  describe("contour code extraction from rawModel", () => {
-    it("extracts C2 contour code", () => {
+  describe("contour code stripping from rawModel", () => {
+    it("strips C2 contour code", () => {
       const result = strategy.identify(signal({ rawModel: "Skunk Ape C2" }));
       expect(result.model).toBe("Skunk Ape");
-      expect(result.profileVariant).toBe("c2");
     });
 
-    it("extracts C2X contour code", () => {
+    it("strips C2X contour code", () => {
       const result = strategy.identify(signal({ rawModel: "Skunk Ape C2X" }));
       expect(result.model).toBe("Skunk Ape");
-      expect(result.profileVariant).toBe("c2x");
     });
 
-    it("extracts C3 contour code", () => {
+    it("strips C3 contour code", () => {
       const result = strategy.identify(signal({ rawModel: "Legitimizer C3" }));
       expect(result.model).toBe("Legitimizer");
-      expect(result.profileVariant).toBe("c3");
     });
 
-    it("maps Camber suffix to c3 for Mervin", () => {
+    it("retains Camber suffix as model name variant", () => {
       const result = strategy.identify(signal({ rawModel: "Skunk Ape Camber" }));
-      expect(result.model).toBe("Skunk Ape");
-      expect(result.profileVariant).toBe("c3");
+      expect(result.model).toBe("Skunk Ape Camber");
     });
 
-    it("extracts BTX contour code", () => {
+    it("strips BTX contour code", () => {
       const result = strategy.identify(signal({ rawModel: "Skate Banana BTX" }));
       expect(result.model).toBe("Skate Banana");
-      expect(result.profileVariant).toBe("btx");
-    });
-  });
-
-  describe("contour code derivation from profile spec", () => {
-    it("derives c2x from profile when no code in model", () => {
-      const result = strategy.identify(signal({
-        rawModel: "Ladies Choice",
-        brand: "GNU",
-        profile: "C2X",
-      }));
-      expect(result.model).toBe("Ladies Choice");
-      expect(result.profileVariant).toBe("c2x");
     });
 
-    it("derives c3 from camber profile", () => {
-      const result = strategy.identify(signal({
-        rawModel: "Skunk Ape",
-        profile: "Camber",
-      }));
-      expect(result.model).toBe("Skunk Ape");
-      expect(result.profileVariant).toBe("c3");
+    it("strips C2E contour code", () => {
+      const result = strategy.identify(signal({ rawModel: "Money C2E" }));
+      expect(result.model).toBe("Money");
     });
 
-    it("derives c2 from hybrid camber profile", () => {
-      const result = strategy.identify(signal({
-        rawModel: "Skunk Ape",
-        profile: "Hybrid Camber",
-      }));
-      expect(result.model).toBe("Skunk Ape");
-      expect(result.profileVariant).toBe("c2");
-    });
-
-    it("derives btx from hybrid rocker profile", () => {
-      const result = strategy.identify(signal({
-        rawModel: "Skate Banana",
-        profile: "Hybrid Rocker",
-      }));
-      expect(result.model).toBe("Skate Banana");
-      expect(result.profileVariant).toBe("btx");
+    it("strips C3 BTX contour code", () => {
+      const result = strategy.identify(signal({ rawModel: "Legitimizer C3 BTX" }));
+      expect(result.model).toBe("Legitimizer");
     });
   });
 
   describe("GNU-specific transforms", () => {
-    it("strips C prefix from GNU models", () => {
+    it("retains C prefix in GNU models (C Money stays C Money)", () => {
       const result = strategy.identify(signal({
         rawModel: "C Money C3",
         brand: "GNU",
       }));
-      expect(result.model).toBe("Money");
-      expect(result.profileVariant).toBe("c3");
+      expect(result.model).toBe("C Money");
     });
 
-    it("strips C suffix from GNU models", () => {
+    it("retains C suffix in GNU models (Gloss C stays Gloss C)", () => {
       const result = strategy.identify(signal({
         rawModel: "Gloss C",
         brand: "GNU",
       }));
-      // Gloss-C → Gloss C (hyphen replaced) → C stripped → Gloss
-      expect(result.model).toBe("Gloss");
+      expect(result.model).toBe("Gloss C");
     });
 
     it("strips Asym prefix", () => {
@@ -112,7 +75,6 @@ describe("MervinStrategy", () => {
         brand: "GNU",
       }));
       expect(result.model).toBe("Ladies Choice");
-      expect(result.profileVariant).toBe("c2x");
     });
 
     it("strips rider names for GNU", () => {
@@ -121,7 +83,6 @@ describe("MervinStrategy", () => {
         brand: "GNU",
       }));
       expect(result.model).toBe("Head Space");
-      expect(result.profileVariant).toBe("c3");
     });
 
     it("handles full GNU retailer model string", () => {
@@ -130,7 +91,6 @@ describe("MervinStrategy", () => {
         brand: "GNU",
       }));
       expect(result.model).toBe("Ladies Choice");
-      expect(result.profileVariant).toBe("c2x");
     });
   });
 
@@ -141,7 +101,6 @@ describe("MervinStrategy", () => {
         brand: "Lib Tech",
       }));
       expect(result.model).toBe("Legitimizer");
-      expect(result.profileVariant).toBe("c3");
     });
 
     it("normalizes T.Rice and strips rider name", () => {
@@ -150,7 +109,6 @@ describe("MervinStrategy", () => {
         brand: "Lib Tech",
       }));
       expect(result.model).toBe("Pro");
-      expect(result.profileVariant).toBe("c2");
     });
 
     it("strips Travis Rice rider name", () => {
@@ -172,15 +130,13 @@ describe("MervinStrategy", () => {
     });
   });
 
-  describe("no profileVariant when no code and no profile spec", () => {
-    it("returns null profileVariant for plain model", () => {
+  describe("non-trailing contour codes are preserved", () => {
+    it("preserves C2 when not at end of model", () => {
       const result = strategy.identify(signal({
         rawModel: "Cold Brew C2 LTD",
         brand: "Lib Tech",
       }));
-      // "C2 LTD" — C2 is not at end (LTD follows), so no contour extraction
       expect(result.model).toBe("Cold Brew C2 LTD");
-      expect(result.profileVariant).toBeNull();
     });
   });
 });

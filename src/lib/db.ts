@@ -287,7 +287,6 @@ export function specKey(brand: string, model: string, gender?: string, manufactu
   const signal: BoardSignal = {
     rawModel: model,
     brand: cb,
-    manufacturer: mfr,
     source: "",
     sourceUrl: "",
   };

@@ -168,7 +168,7 @@ export function extractComboContents(raw: string): string | null {
 }
 
 export const PROFILE_SUFFIX_RE =
-  /\s+(?:PurePop\s+Camber|C3\s+BTX|Flying\s+V|Flat\s+Top|PurePop|Camber|C2X|C2E|C2|C3|BTX)$/i;
+  /\s+(?:C3\s+BTX|C2X|C2E|C2|C3|BTX)$/i;
 
 // ---------------------------------------------------------------------------
 // Normalization pipeline — structured, composable, testable
@@ -198,6 +198,8 @@ const MODEL_ALIASES: Record<string, string> = {
 const MODEL_PREFIX_ALIASES: [string, string][] = [
   ["sb ", "spring break "],
   ["snowboards ", ""],
+  ["fish 3d directional ", "3d fish directional "],
+  ["fish 3d ", "3d fish directional "],
   ["darkhorse ", "dark horse "],
 ];
 
@@ -365,15 +367,6 @@ export const NORMALIZATION_PIPELINE: NormalizationStep[] = [
     },
   },
   {
-    name: "strip-gnu-profile-letter",
-    brands: ["GNU"],
-    transform: (m) => {
-      m = m.replace(/^C\s+/i, "");
-      m = m.replace(/\s+C$/i, "");
-      return m;
-    },
-  },
-  {
     name: "strip-gnu-asym",
     brands: ["GNU"],
     transform: (m) => {
@@ -421,11 +414,11 @@ export function normalizeModel(raw: string, brand?: string, manufacturer?: strin
   const signal: BoardSignal = {
     rawModel: raw,
     brand: brandId?.canonical ?? (brand || ""),
-    manufacturer: manufacturer ?? brandId?.manufacturer ?? "default",
     source: "",
     sourceUrl: "",
   };
-  const strategy = getStrategy(signal.manufacturer);
+  const mfr = manufacturer ?? brandId?.manufacturer ?? "default";
+  const strategy = getStrategy(mfr);
   return strategy.identify(signal).model || raw;
 }
 

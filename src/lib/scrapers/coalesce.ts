@@ -41,17 +41,6 @@ export function identifyBoards(
 ): Map<string, BoardGroup> {
   const boardGroups = new Map<string, BoardGroup>();
 
-  // Phase 1: identify each board via strategy, collecting profile variants
-  interface AnnotatedBoard {
-    sb: ScrapedBoard;
-    brand: string;
-    model: string;
-    profileVariant: string | null;
-    key: string;
-  }
-
-  const annotated: AnnotatedBoard[] = [];
-
   for (const sb of allScrapedBoards) {
     const brandId = sb.brandId;
     const brand = brandId.canonical;
@@ -60,7 +49,6 @@ export function identifyBoards(
     const signal: BoardSignal = {
       rawModel: sb.rawModel ?? sb.model,
       brand,
-      manufacturer: brandId.manufacturer,
       source: sb.source,
       sourceUrl: sb.sourceUrl,
       profile: sb.profile,
@@ -71,101 +59,17 @@ export function identifyBoards(
 
     const key = specKey(brand, identity.model, gender, brandId.manufacturer);
 
-    annotated.push({
-      sb,
-      brand,
-      model: identity.model,
-      profileVariant: identity.profileVariant,
-      key,
-    });
-  }
-
-  // Phase 2: group by key (brand|model|gender)
-  const groupedAnnotated = new Map<string, AnnotatedBoard[]>();
-  for (const a of annotated) {
-    if (!groupedAnnotated.has(a.key)) groupedAnnotated.set(a.key, []);
-    groupedAnnotated.get(a.key)!.push(a);
-  }
-
-  // Phase 3: split profile variants within each group
-  for (const [key, entries] of groupedAnnotated) {
-    // Collect distinct profile variants
-    const variants = new Set<string | null>();
-    for (const e of entries) {
-      variants.add(e.profileVariant);
-    }
-
-    // Check if there are multiple DISTINCT non-null variants
-    const nonNullVariants = new Set([...variants].filter(v => v !== null));
-
-    if (nonNullVariants.size <= 1) {
-      // No splitting needed — single variant or all null
-      const model = entries[0].model;
-      const brand = entries[0].brand;
+    if (!boardGroups.has(key)) {
       boardGroups.set(key, {
-        scraped: entries.map(e => e.sb),
+        scraped: [],
         brand,
-        model,
-        rawModels: entries.map(e => e.sb.rawModel).filter(Boolean) as string[],
+        model: identity.model,
+        rawModels: [],
       });
-      continue;
     }
-
-    // Multiple variants — split into separate groups
-    // Build a profile value → variant lookup from entries that have profile specs
-    const profileToVariant = new Map<string, string>();
-    for (const e of entries) {
-      if (e.profileVariant && e.sb.profile) {
-        const normalizedProfile = normalizeProfile(e.sb.profile);
-        if (normalizedProfile) {
-          profileToVariant.set(normalizedProfile, e.profileVariant);
-        }
-      }
-    }
-
-    // Determine default variant: pick the most common non-null variant, or first
-    const variantCounts = new Map<string, number>();
-    for (const e of entries) {
-      if (e.profileVariant) {
-        variantCounts.set(e.profileVariant, (variantCounts.get(e.profileVariant) || 0) + 1);
-      }
-    }
-    // Default for unresolved entries: use first variant alphabetically as fallback
-    const sortedVariants = [...nonNullVariants].sort();
-    const defaultVariant = sortedVariants[0];
-
-    for (const e of entries) {
-      let variant = e.profileVariant;
-
-      // If no variant, try matching via profile spec
-      if (!variant && e.sb.profile) {
-        const normalizedProfile = normalizeProfile(e.sb.profile);
-        if (normalizedProfile && profileToVariant.has(normalizedProfile)) {
-          variant = profileToVariant.get(normalizedProfile)!;
-        }
-      }
-
-      // Last resort: use default variant
-      if (!variant) {
-        variant = defaultVariant;
-      }
-
-      const variantModel = `${e.model} ${variant.replace(/\b\w/g, c => c.toUpperCase())}`;
-      const keyParts = key.split("|");
-      const variantKey = `${keyParts[0]}|${variantModel.toLowerCase()}|${keyParts[keyParts.length - 1]}`;
-
-      if (!boardGroups.has(variantKey)) {
-        boardGroups.set(variantKey, {
-          scraped: [],
-          brand: e.brand,
-          model: variantModel,
-          rawModels: [],
-        });
-      }
-      const variantGroup = boardGroups.get(variantKey)!;
-      variantGroup.scraped.push(e.sb);
-      if (e.sb.rawModel) variantGroup.rawModels.push(e.sb.rawModel);
-    }
+    const group = boardGroups.get(key)!;
+    group.scraped.push(sb);
+    if (sb.rawModel) group.rawModels.push(sb.rawModel);
   }
 
   return boardGroups;

@@ -6,7 +6,6 @@ function signal(overrides: Partial<BoardSignal> = {}): BoardSignal {
   return {
     rawModel: "Custom",
     brand: "Burton",
-    manufacturer: "burton",
     source: "retailer:tactics",
     sourceUrl: "https://tactics.com/custom",
     ...overrides,
@@ -16,35 +15,30 @@ function signal(overrides: Partial<BoardSignal> = {}): BoardSignal {
 const strategy = new BurtonStrategy();
 
 describe("BurtonStrategy", () => {
-  describe("profile variant extraction", () => {
-    it("extracts Camber profile variant", () => {
+  describe("profile suffixes retained in model name", () => {
+    it("retains Camber suffix", () => {
       const result = strategy.identify(signal({ rawModel: "Custom Camber" }));
-      expect(result.model).toBe("Custom");
-      expect(result.profileVariant).toBe("camber");
+      expect(result.model).toBe("Custom Camber");
     });
 
-    it("extracts Flying V profile variant", () => {
+    it("retains Flying V suffix", () => {
       const result = strategy.identify(signal({ rawModel: "Custom Flying V" }));
-      expect(result.model).toBe("Custom");
-      expect(result.profileVariant).toBe("flying v");
+      expect(result.model).toBe("Custom Flying V");
     });
 
-    it("extracts Flat Top profile variant", () => {
+    it("retains Flat Top suffix", () => {
       const result = strategy.identify(signal({ rawModel: "Hideaway Flat Top" }));
-      expect(result.model).toBe("Hideaway");
-      expect(result.profileVariant).toBe("flat top");
+      expect(result.model).toBe("Hideaway Flat Top");
     });
 
-    it("extracts PurePop Camber profile variant", () => {
+    it("retains PurePop Camber suffix", () => {
       const result = strategy.identify(signal({ rawModel: "Instigator PurePop Camber" }));
-      expect(result.model).toBe("Instigator");
-      expect(result.profileVariant).toBe("purepop camber");
+      expect(result.model).toBe("Instigator PurePop Camber");
     });
 
-    it("returns null profileVariant for no-profile model", () => {
+    it("handles model with no profile suffix", () => {
       const result = strategy.identify(signal({ rawModel: "Custom" }));
       expect(result.model).toBe("Custom");
-      expect(result.profileVariant).toBeNull();
     });
   });
 
@@ -56,28 +50,26 @@ describe("BurtonStrategy", () => {
       expect(result.model).toBe("Custom");
     });
 
-    it("strips brand prefix", () => {
+    it("strips brand prefix but retains profile suffix", () => {
       const result = strategy.identify(signal({
         rawModel: "Burton Custom Camber",
       }));
-      expect(result.model).toBe("Custom");
-      expect(result.profileVariant).toBe("camber");
+      expect(result.model).toBe("Custom Camber");
     });
 
-    it("strips combo info", () => {
+    it("strips combo info but retains profile suffix", () => {
       const result = strategy.identify(signal({
         rawModel: "Instigator Camber Snowboard + Malavita Re:Flex Binding",
       }));
-      expect(result.model).toBe("Instigator");
-      expect(result.profileVariant).toBe("camber");
+      expect(result.model).toBe("Instigator Camber");
     });
 
-    it("applies Burton-specific aliases", () => {
+    it("applies Burton-specific prefix aliases with profile suffix retained", () => {
       const result = strategy.identify(signal({
         rawModel: "Fish 3D Directional Flat Top Snowboard 2026",
       }));
-      expect(result.model).toBe("3d fish directional");
-      expect(result.profileVariant).toBe("flat top");
+      // "Fish 3D Directional " prefix matches → "3d fish directional " + "Flat Top"
+      expect(result.model).toBe("3d fish directional Flat Top");
     });
   });
 });

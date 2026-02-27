@@ -3,9 +3,11 @@ import { sharedNormalize, sharedPostNormalize } from "./shared";
 
 /**
  * Mervin contour codes (ordered longest-first for regex).
- * These appear as suffixes in GNU and Lib Tech model names.
+ * These appear as suffixes in retailer model names (e.g., evo "Skunk Ape C2X").
+ * Note: "camber" is NOT a contour code — it's a model name variant marker
+ * (e.g., "Skunk Ape Camber", "Ladies Choice Camber").
  */
-const MERVIN_CONTOUR_CODES = ["c3 btx", "c2x", "c2e", "c2", "c3", "btx", "camber"];
+const MERVIN_CONTOUR_CODES = ["c3 btx", "c2x", "c2e", "c2", "c3", "btx"];
 
 const MERVIN_CONTOUR_RE = new RegExp(
   `\\s+(?:${MERVIN_CONTOUR_CODES.map(s => s.replace(/\s+/g, "\\s+")).join("|")})$`,
@@ -18,7 +20,7 @@ const LIBTECH_RIDER_NAMES = ["T. Rice", "Travis Rice"];
 export class MervinStrategy implements BoardIdentificationStrategy {
   identify(signal: BoardSignal): BoardIdentity {
     let m = signal.rawModel;
-    if (!m || m === "Unknown") return { model: m, profileVariant: null };
+    if (!m || m === "Unknown") return { model: m };
 
     const isGnu = signal.brand === "GNU";
 
@@ -33,20 +35,8 @@ export class MervinStrategy implements BoardIdentificationStrategy {
     // Normalize T.Rice → T. Rice
     m = m.replace(/T\.Rice/g, "T. Rice");
 
-    // Extract contour code BEFORE stripping it
-    const contourMatch = m.match(MERVIN_CONTOUR_RE);
-    let profileVariant: string | null = null;
-    if (contourMatch) {
-      const raw = contourMatch[0].trim().toLowerCase();
-      // Map generic "camber" → "c3" for Mervin brands
-      profileVariant = raw === "camber" ? "c3" : raw;
-      m = m.replace(MERVIN_CONTOUR_RE, "");
-    }
-
-    // If no contour code in model name, try to derive from profile spec
-    if (!profileVariant && signal.profile) {
-      profileVariant = deriveContourFromProfile(signal.profile);
-    }
+    // Strip contour codes from model name (retailer suffixes like C2X, C2E, C3, BTX)
+    m = m.replace(MERVIN_CONTOUR_RE, "");
 
     // Strip rider names (before GNU-specific transforms)
     const riders = isGnu ? GNU_RIDER_NAMES : LIBTECH_RIDER_NAMES;
@@ -61,45 +51,14 @@ export class MervinStrategy implements BoardIdentificationStrategy {
       m = m.replace(/\s+Asym\b/i, "");
     }
 
-    // GNU-specific: strip "C " prefix and " C" suffix
-    // Replace hyphens first so "Gloss-C" becomes "Gloss C" before C-stripping
-    if (isGnu) {
-      m = m.replace(/-/g, " ");
-      m = m.replace(/^C\s+/i, "");
-      m = m.replace(/\s+C$/i, "");
-    }
-
     // Shared post-normalization
     m = sharedPostNormalize(m);
 
     // Model aliases
     m = applyMervinAliases(m);
 
-    return { model: m || signal.rawModel, profileVariant };
+    return { model: m || signal.rawModel };
   }
-}
-
-/**
- * Derive a Mervin contour code from a raw profile spec string.
- */
-function deriveContourFromProfile(profile: string): string | null {
-  const lower = profile.toLowerCase().trim();
-
-  // Direct contour code matches
-  if (/\bc2x\b/.test(lower)) return "c2x";
-  if (/\bc2e\b/.test(lower)) return "c2e";
-  if (/\bc2\b/.test(lower)) return "c2";
-  if (/\bc3\s*btx\b/.test(lower)) return "c3 btx";
-  if (/\bc3\b/.test(lower)) return "c3";
-  if (/\bbtx\b/.test(lower)) return "btx";
-
-  // Map normalized profile types to contour codes
-  if (/\bcamber\b/.test(lower) && !/rocker|hybrid|flying/i.test(lower)) return "c3";
-  if (/\bhybrid.?camber\b/.test(lower) || /\bcamrock\b/.test(lower)) return "c2";
-  if (/\bhybrid.?rocker\b/.test(lower) || /\bflying\s*v\b/.test(lower)) return "btx";
-  if (/\brocker\b/.test(lower) && !/camber|hybrid/i.test(lower)) return "btx";
-
-  return null;
 }
 
 function stripRiderNames(m: string, riders: string[]): string {

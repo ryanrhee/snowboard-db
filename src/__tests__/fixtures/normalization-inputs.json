@@ -147,7 +147,7 @@
   {
     "raw": "Process Flying V",
     "brand": "Burton",
-    "expected": "Process"
+    "expected": "Process Flying V"
   },
   {
     "raw": "Psychocandy Snowboard (Closeout) 2025",
@@ -252,12 +252,12 @@
   {
     "raw": "Custom Camber",
     "brand": "Burton",
-    "expected": "Custom"
+    "expected": "Custom Camber"
   },
   {
     "raw": "Custom Flying V",
     "brand": "Burton",
-    "expected": "Custom"
+    "expected": "Custom Flying V"
   },
   {
     "raw": "Custom Snowboard 2026",
@@ -267,7 +267,7 @@
   {
     "raw": "Feelgood Camber",
     "brand": "Burton",
-    "expected": "Feelgood"
+    "expected": "Feelgood Camber"
   },
   {
     "raw": "Feelgood Snowboard + Step On Package - Women's",
@@ -277,22 +277,22 @@
   {
     "raw": "Hideaway Flat Top",
     "brand": "Burton",
-    "expected": "Hideaway"
+    "expected": "Hideaway Flat Top"
   },
   {
     "raw": "Instigator Camber Snowboard + Malavita Re:Flex Binding",
     "brand": "Burton",
-    "expected": "Instigator"
+    "expected": "Instigator Camber"
   },
   {
     "raw": "Instigator PurePop Camber",
     "brand": "Burton",
-    "expected": "Instigator"
+    "expected": "Instigator PurePop Camber"
   },
   {
     "raw": "Process Camber Snowboard - 2025/2026",
     "brand": "Burton",
-    "expected": "Process"
+    "expected": "Process Camber"
   },
   {
     "raw": "Tech Something Snowboard 2026",
@@ -387,12 +387,12 @@
   {
     "raw": "C Money",
     "brand": "GNU",
-    "expected": "Money"
+    "expected": "C Money"
   },
   {
     "raw": "C Money C3",
     "brand": "GNU",
-    "expected": "Money"
+    "expected": "C Money"
   },
   {
     "raw": "Cummins' Banked Country",
@@ -427,12 +427,12 @@
   {
     "raw": "Gloss C",
     "brand": "GNU",
-    "expected": "Gloss"
+    "expected": "Gloss C"
   },
   {
     "raw": "Gloss-C C3",
     "brand": "GNU",
-    "expected": "Gloss"
+    "expected": "Gloss C"
   },
   {
     "raw": "GNU Asym Ladies Choice C2X Snowboard - Women's 2025",
@@ -732,12 +732,12 @@
   {
     "raw": "Fish 3D Directional Flat Top Snowboard 2026",
     "brand": "Burton",
-    "expected": "3d fish directional"
+    "expected": "3d fish directional Flat Top"
   },
   {
     "raw": "Fish 3D Flat Top Snowboard 2026",
     "brand": "Burton",
-    "expected": "3d fish directional"
+    "expected": "3d fish directional Flat Top"
   },
   {
     "raw": "3D Family Tree Channel Surfer Snowboard",
