@@ -6,6 +6,7 @@ import { SearchRun, Board, Listing, BoardWithListings, TerrainScores } from "./t
 import { BrandIdentifier } from "./strategies/brand-identifier";
 import { getStrategy } from "./strategies";
 import type { BoardSignal } from "./strategies/types";
+import type { ScrapedBoard } from "./scrapers/types";
 
 let db: Database.Database | null = null;
 let cacheDb: Database.Database | null = null;
@@ -93,6 +94,33 @@ function initSchema(db: Database.Database): void {
 
   // ===== Migration: old listing-shaped boards → new board-centric model =====
   migrateToNewModel(db);
+
+  // ===== Raw scrapes (immutable scrape archive) =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS raw_scrapes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL REFERENCES search_runs(id),
+      source TEXT NOT NULL,
+      brand TEXT NOT NULL,
+      manufacturer TEXT,
+      model TEXT NOT NULL,
+      raw_model TEXT,
+      source_url TEXT NOT NULL,
+      gender TEXT,
+      year INTEGER,
+      flex TEXT,
+      profile TEXT,
+      shape TEXT,
+      category TEXT,
+      ability_level TEXT,
+      description TEXT,
+      msrp_usd REAL,
+      extras_json TEXT,
+      scraped_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_raw_scrapes_run ON raw_scrapes(run_id);
+    CREATE INDEX IF NOT EXISTS idx_raw_scrapes_brand ON raw_scrapes(brand, model);
+  `);
 }
 
 function initCacheSchema(db: Database.Database): void {
@@ -444,6 +472,44 @@ export function insertListings(listings: Listing[]): void {
         l.originalPriceUsd, l.salePriceUsd, l.discountPercent,
         l.availability, l.scrapedAt,
         l.condition, l.gender, l.stockCount, l.comboContents
+      );
+    }
+  })();
+}
+
+export function insertRawScrapes(scrapes: ScrapedBoard[], runId: string): void {
+  if (scrapes.length === 0) return;
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO raw_scrapes (
+      run_id, source, brand, manufacturer, model, raw_model, source_url,
+      gender, year, flex, profile, shape, category, ability_level,
+      description, msrp_usd, extras_json, scraped_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    for (const sb of scrapes) {
+      stmt.run(
+        runId,
+        sb.source,
+        sb.brandId.canonical,
+        sb.brandId.manufacturer,
+        sb.model,
+        sb.rawModel ?? null,
+        sb.sourceUrl,
+        sb.gender ?? null,
+        sb.year ?? null,
+        sb.flex ?? null,
+        sb.profile ?? null,
+        sb.shape ?? null,
+        sb.category ?? null,
+        sb.abilityLevel ?? null,
+        sb.description ?? null,
+        sb.msrpUsd ?? null,
+        Object.keys(sb.extras).length > 0 ? JSON.stringify(sb.extras) : null,
+        now
       );
     }
   })();

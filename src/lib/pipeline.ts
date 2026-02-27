@@ -14,6 +14,7 @@ import {
   getRunById,
   upsertBoards,
   insertListings,
+  insertRawScrapes,
   getBoardsWithListings,
   getListingsByRunId,
   updateListingPriceAndStock,
@@ -113,6 +114,7 @@ export async function runSearchPipeline(
       durationMs,
     };
     insertSearchRun(run);
+    insertRawScrapes(reviewBoards, runId);
 
     console.log(
       `[pipeline] from=review-sites complete: ${resolvedBoards.length} boards, ${reviewBoards.length} review lookups in ${durationMs}ms`
@@ -261,6 +263,7 @@ export async function runSearchPipeline(
   // Insert search run before listings (listings.run_id FK → search_runs.id)
   profiler.start("pipeline:db-write");
   profiler.timeSync("db:insert-search-run", () => insertSearchRun(run));
+  profiler.timeSync("db:insert-raw-scrapes", () => insertRawScrapes(allScrapedBoards, runId), { count: allScrapedBoards.length });
   profiler.timeSync("db:upsert-boards", () => upsertBoards(resolvedBoards), { count: resolvedBoards.length });
   profiler.timeSync("db:insert-listings", () => insertListings(listings), { count: listings.length });
   const orphansDeleted = profiler.timeSync("db:delete-orphans", () => deleteOrphanBoards());

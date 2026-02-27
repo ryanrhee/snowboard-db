@@ -26,9 +26,16 @@ Note: `from:resolve` is insufficient — it only re-resolves specs, doesn't re-r
 
 ---
 
-## Increment 2 — TODO: Persist raw scrape inputs immutably
+## Increment 2 — DONE (2026-02-27): Persist raw scrape inputs immutably
 
-Raw scrape inputs must be stored unmodified so downstream identification strategies can use all available signals. Currently these are lost:
+### What was done
+
+1. **`raw_scrapes` table** added to `src/lib/db.ts` schema (`initSchema()`). Autoincrement PK, FK to `search_runs(id)`, indexes on `run_id` and `(brand, model)`. Stores all `ScrapedBoard` fields verbatim — no normalization.
+2. **`insertRawScrapes()`** function in `src/lib/db.ts` — bulk inserts `ScrapedBoard[]` + `runId` in a transaction. Maps `brandId.canonical` → `brand`, `brandId.manufacturer` → `manufacturer`, `extras` → `extras_json` (JSON blob, null when empty).
+3. **Pipeline integration** in `src/lib/pipeline.ts`:
+   - `from: "scrape"` path: calls `insertRawScrapes(allScrapedBoards, runId)` right after `insertSearchRun()`, before `upsertBoards()`.
+   - `from: "review-sites"` path: calls `insertRawScrapes(reviewBoards, runId)` after `insertSearchRun()`.
+4. **Tests**: 6 new tests in `src/__tests__/raw-scrapes.test.ts` — field mapping, bulk insert, empty extras, null optionals, FK constraint, autoincrement IDs. All 1014 tests pass.
 
 ### What's lost today
 
