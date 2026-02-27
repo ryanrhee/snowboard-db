@@ -33,6 +33,7 @@ export default function Home() {
         if (filters.minLength) params.set("minLength", filters.minLength);
         if (filters.maxLength) params.set("maxLength", filters.maxLength);
         if (filters.gender) params.set("gender", filters.gender);
+        if (filters.abilityLevel) params.set("abilityLevel", filters.abilityLevel);
 
         const res = await fetch(`/api/boards?${params}`);
         const data = await res.json();

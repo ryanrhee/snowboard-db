@@ -8,7 +8,6 @@ import {
   Region,
 } from "./types";
 import { convertToUsd } from "./normalization";
-import { calcBeginnerScoreForBoard } from "./scoring";
 import {
   insertSearchRun,
   getRunById,
@@ -58,9 +57,6 @@ export async function runSearchPipeline(
     console.log(`[pipeline] from=resolve: re-resolving ${existingBoards.length} boards`);
 
     const resolvedBoards = await resolveSpecSources(existingBoards);
-    for (const board of resolvedBoards) {
-      board.beginnerScore = calcBeginnerScoreForBoard(board);
-    }
     upsertBoards(resolvedBoards);
 
     const durationMs = Date.now() - startTime;
@@ -99,9 +95,6 @@ export async function runSearchPipeline(
     }
 
     const resolvedBoards = await resolveSpecSources(existingBoards);
-    for (const board of resolvedBoards) {
-      board.beginnerScore = calcBeginnerScoreForBoard(board);
-    }
     upsertBoards(resolvedBoards);
 
     const durationMs = Date.now() - startTime;
@@ -216,13 +209,6 @@ export async function runSearchPipeline(
   const resolvedBoards = await profiler.time("pipeline:resolve", () =>
     resolveSpecSources(boards)
   , { boards: boards.length });
-
-  // Calculate beginner scores now that specs are resolved
-  profiler.start("pipeline:scoring");
-  for (const board of resolvedBoards) {
-    board.beginnerScore = calcBeginnerScoreForBoard(board);
-  }
-  profiler.stop("pipeline:scoring", { boards: resolvedBoards.length });
 
   // Fill in discount percent for listings that got MSRP from manufacturer
   profiler.start("pipeline:discounts");

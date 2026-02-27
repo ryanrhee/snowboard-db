@@ -27,6 +27,7 @@ export function filterBoardsWithListings(
     minLength?: number;
     maxLength?: number;
     gender?: string;
+    abilityLevel?: string;
     excludeKids?: boolean;
     excludeWomens?: boolean;
   }
@@ -98,5 +99,45 @@ export function filterBoardsWithListings(
       }
 
       return true;
+    })
+    .filter((board) => {
+      // Ability level filter: show boards whose range includes the selected level
+      if (filters.abilityLevel) {
+        return abilityRangeIncludes(
+          board.abilityLevelMin,
+          board.abilityLevelMax,
+          filters.abilityLevel
+        );
+      }
+      return true;
     });
+}
+
+const ABILITY_ORDER = ["beginner", "intermediate", "advanced", "expert"];
+
+/**
+ * Check if a board's ability range includes the target level.
+ * "advanced" filter matches both "advanced" and "expert".
+ * Boards with no ability data pass through (shown as unknown).
+ */
+function abilityRangeIncludes(
+  min: string | null,
+  max: string | null,
+  target: string
+): boolean {
+  if (!min) return true; // no data = don't filter out
+
+  const minIdx = ABILITY_ORDER.indexOf(min);
+  const maxIdx = ABILITY_ORDER.indexOf(max ?? min);
+  if (minIdx === -1) return true; // unrecognized value = don't filter out
+
+  if (target === "advanced") {
+    // "advanced" filter includes both advanced and expert
+    const advIdx = ABILITY_ORDER.indexOf("advanced");
+    return minIdx <= advIdx + 1 && maxIdx >= advIdx;
+  }
+
+  const targetIdx = ABILITY_ORDER.indexOf(target);
+  if (targetIdx === -1) return true;
+  return minIdx <= targetIdx && maxIdx >= targetIdx;
 }

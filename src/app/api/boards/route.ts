@@ -37,10 +37,11 @@ export async function GET(request: NextRequest) {
     const minLength = searchParams.get("minLength");
     const maxLength = searchParams.get("maxLength");
     const gender = searchParams.get("gender") || undefined;
+    const abilityLevel = searchParams.get("abilityLevel") || undefined;
     const excludeKids = searchParams.get("excludeKids");
     const excludeWomens = searchParams.get("excludeWomens");
 
-    const hasFilters = region || maxPrice || minPrice || minLength || maxLength || gender || excludeKids || excludeWomens;
+    const hasFilters = region || maxPrice || minPrice || minLength || maxLength || gender || abilityLevel || excludeKids || excludeWomens;
     if (hasFilters) {
       boards = filterBoardsWithListings(boards, {
         region,
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
         minLength: minLength ? parseFloat(minLength) : undefined,
         maxLength: maxLength ? parseFloat(maxLength) : undefined,
         gender,
+        abilityLevel,
         excludeKids: excludeKids === "true",
         excludeWomens: excludeWomens === "true",
       });

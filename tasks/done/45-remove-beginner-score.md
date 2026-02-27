@@ -1,5 +1,21 @@
 # Task 45: Remove beginner score, use extracted ability level instead
 
+**Completed: 2026-02-27**
+
+## Summary
+
+Removed the synthetic `beginnerScore` computation and `beginner_score` DB column. `finalScore` now equals `valueScore` directly. Ability level from spec_sources (`abilityLevelMin`/`abilityLevelMax`) is the primary indicator of who a board is for.
+
+### Changes made
+- Deleted `src/lib/scoring.ts` and `src/components/ScoreExplanation.tsx`
+- Removed `beginnerScore` from `Board` type in `types.ts`
+- Removed scoring import and 3 scoring loops from `pipeline.ts`
+- Removed scoring import and `beginnerScore: 0` default from `coalesce.ts`
+- Updated `db.ts`: dropped `beginner_score` from schema, upsert SQL, row mappings; simplified `finalScore = valueScore`; added migration to drop column from existing DBs
+- Updated `SearchResults.tsx`: removed Beginner and Score columns, kept Value column
+- Updated `BoardDetail.tsx`: removed Bgn and Tot score bars, kept Val
+- Updated `coalesce.test.ts`: removed `scoring` mock
+
 ## Problem
 
 The pipeline computes a `beginnerScore` for each board via `calcBeginnerScoreForBoard()` in `src/lib/scoring.ts`. This is a synthetic score derived from specs (flex, profile, shape, category) using hardcoded heuristics — e.g. softer flex = more beginner-friendly, twin shape = more beginner-friendly, park category = bonus.

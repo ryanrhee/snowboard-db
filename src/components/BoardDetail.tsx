@@ -46,7 +46,6 @@ export interface BoardData {
   msrpUsd: number | null;
   manufacturerUrl: string | null;
   description: string | null;
-  beginnerScore: number;
   listings: Listing[];
   bestPrice: number;
   valueScore: number;
@@ -431,9 +430,7 @@ export function BoardDetail({ board, onClose }: BoardDetailProps) {
 
           <div className="border-t border-gray-800 pt-3 space-y-2">
             <h3 className="text-sm font-medium text-gray-300">Scores</h3>
-            <ScoreBar score={board.beginnerScore} label="Bgn" size="md" />
             <ScoreBar score={board.valueScore} label="Val" size="md" />
-            <ScoreBar score={board.finalScore} label="Tot" size="md" />
           </div>
 
           {board.description && (

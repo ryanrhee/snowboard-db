@@ -113,7 +113,6 @@ export interface Board {
   msrpUsd: number | null;
   manufacturerUrl: string | null;
   description: string | null;
-  beginnerScore: number;
   createdAt: string;
   updatedAt: string;
 }

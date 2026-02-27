@@ -229,7 +229,6 @@ function migrateToNewModel(db: Database.Database): void {
       msrp_usd          REAL,
       manufacturer_url  TEXT,
       description       TEXT,
-      beginner_score    REAL NOT NULL DEFAULT 0,
       created_at        TEXT NOT NULL,
       updated_at        TEXT NOT NULL
     );
@@ -283,6 +282,11 @@ function createListingsTable(db: Database.Database): void {
   for (const col of ["terrain_piste", "terrain_powder", "terrain_park", "terrain_freeride", "terrain_freestyle"]) {
     if (!boardColNames2.has(col))
       db.exec(`ALTER TABLE boards ADD COLUMN ${col} INTEGER`);
+  }
+
+  // Drop beginner_score column if it still exists
+  if (boardColNames2.has("beginner_score")) {
+    db.exec("ALTER TABLE boards DROP COLUMN beginner_score");
   }
 }
 
@@ -405,9 +409,9 @@ export function upsertBoard(board: Board): void {
     INSERT INTO boards (
       board_key, brand, model, gender, year, flex, profile, shape, category,
       ability_level_min, ability_level_max, msrp_usd, manufacturer_url,
-      description, beginner_score, created_at, updated_at,
+      description, created_at, updated_at,
       terrain_piste, terrain_powder, terrain_park, terrain_freeride, terrain_freestyle
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(board_key) DO UPDATE SET
       gender = excluded.gender,
       year = COALESCE(excluded.year, boards.year),
@@ -420,7 +424,6 @@ export function upsertBoard(board: Board): void {
       msrp_usd = COALESCE(excluded.msrp_usd, boards.msrp_usd),
       manufacturer_url = COALESCE(excluded.manufacturer_url, boards.manufacturer_url),
       description = COALESCE(excluded.description, boards.description),
-      beginner_score = excluded.beginner_score,
       updated_at = excluded.updated_at,
       terrain_piste = COALESCE(excluded.terrain_piste, boards.terrain_piste),
       terrain_powder = COALESCE(excluded.terrain_powder, boards.terrain_powder),
@@ -432,7 +435,7 @@ export function upsertBoard(board: Board): void {
     board.flex, board.profile, board.shape, board.category,
     board.abilityLevelMin, board.abilityLevelMax,
     board.msrpUsd, board.manufacturerUrl,
-    board.description, board.beginnerScore,
+    board.description,
     board.createdAt, board.updatedAt,
     board.terrainScores.piste, board.terrainScores.powder,
     board.terrainScores.park, board.terrainScores.freeride,
@@ -560,7 +563,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at,
+             b.description, b.created_at, b.updated_at,
              b.terrain_piste, b.terrain_powder, b.terrain_park, b.terrain_freeride, b.terrain_freestyle
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
@@ -574,7 +577,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     listingRows = db.prepare(`
       SELECT l.*, b.brand, b.model, b.year, b.flex, b.profile, b.shape, b.category,
              b.ability_level_min, b.ability_level_max, b.msrp_usd, b.manufacturer_url,
-             b.description, b.beginner_score, b.created_at, b.updated_at,
+             b.description, b.created_at, b.updated_at,
              b.terrain_piste, b.terrain_powder, b.terrain_park, b.terrain_freeride, b.terrain_freestyle
       FROM listings l
       JOIN boards b ON l.board_key = b.board_key
@@ -612,7 +615,6 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
           msrpUsd: (row.msrp_usd as number) || null,
           manufacturerUrl: (row.manufacturer_url as string) || null,
           description: (row.description as string) || null,
-          beginnerScore: (row.beginner_score as number) || 0,
           createdAt: row.created_at as string,
           updatedAt: row.updated_at as string,
         },
@@ -653,7 +655,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
     const priceListings = boardOnlyListings.length > 0 ? boardOnlyListings : listings;
     const bestPrice = Math.min(...priceListings.map(l => l.salePriceUsd));
     const valueScore = calcValueScoreFromBoardAndPrice(board, bestPrice, priceListings);
-    const finalScore = Math.round((0.6 * board.beginnerScore + 0.4 * valueScore) * 100) / 100;
+    const finalScore = valueScore;
 
     results.push({
       ...board,
@@ -679,7 +681,7 @@ export function getBoardsWithListings(runId?: string): BoardWithListings[] {
         listings: [],
         bestPrice: 0,
         valueScore: 0,
-        finalScore: Math.round(0.6 * board.beginnerScore * 100) / 100,
+        finalScore: 0,
       });
     }
   }
@@ -772,7 +774,6 @@ function mapRowToNewBoard(row: Record<string, unknown>): Board {
     msrpUsd: (row.msrp_usd as number) || null,
     manufacturerUrl: (row.manufacturer_url as string) || null,
     description: (row.description as string) || null,
-    beginnerScore: (row.beginner_score as number) || 0,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

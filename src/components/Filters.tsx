@@ -12,6 +12,7 @@ export interface FilterState {
   minLength: string;
   maxLength: string;
   gender: string;
+  abilityLevel: string;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -20,6 +21,7 @@ export const DEFAULT_FILTERS: FilterState = {
   minLength: "",
   maxLength: "",
   gender: "",
+  abilityLevel: "",
 };
 
 export function Filters({ onFilterChange }: FiltersProps) {
@@ -96,6 +98,20 @@ export function Filters({ onFilterChange }: FiltersProps) {
           <option value="">All Genders</option>
           <option value="womens">Women&apos;s</option>
           <option value="kids">Kids&apos;</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">Ability Level</label>
+        <select
+          value={filters.abilityLevel}
+          onChange={(e) => updateFilter("abilityLevel", e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">All Levels</option>
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced / Expert</option>
         </select>
       </div>
 

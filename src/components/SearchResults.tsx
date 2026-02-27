@@ -10,7 +10,6 @@ interface SearchResultsProps {
 
 type SortKey =
   | "finalScore"
-  | "beginnerScore"
   | "valueScore"
   | "bestPrice"
   | "brand";
@@ -151,9 +150,7 @@ export function SearchResults({ boards }: SearchResultsProps) {
                 Profile
               </th>
               <SortHeader label="Best Price" sortKeyVal="bestPrice" />
-              <SortHeader label="Beginner" sortKeyVal="beginnerScore" className="min-w-[100px]" />
               <SortHeader label="Value" sortKeyVal="valueScore" className="min-w-[100px]" />
-              <SortHeader label="Score" sortKeyVal="finalScore" className="min-w-[100px]" />
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Retailers
               </th>
@@ -252,18 +249,8 @@ export function SearchResults({ boards }: SearchResultsProps) {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <ScoreBar score={board.beginnerScore} />
-                  </td>
-                  <td className="px-3 py-2">
                     {hasListings ? (
                       <ScoreBar score={board.valueScore} />
-                    ) : (
-                      <span className="text-gray-500">&mdash;</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {hasListings ? (
-                      <ScoreBar score={board.finalScore} />
                     ) : (
                       <span className="text-gray-500">&mdash;</span>
                     )}

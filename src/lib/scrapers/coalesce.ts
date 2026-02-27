@@ -20,7 +20,6 @@ import {
 } from "../normalization";
 import { getStrategy } from "../strategies";
 import type { BoardSignal } from "../strategies/types";
-import { calcBeginnerScoreForBoard } from "../scoring";
 import { categoryToTerrain } from "../terrain";
 import { profiler } from "../profiler";
 
@@ -298,7 +297,6 @@ export function coalesce(
       msrpUsd,
       manufacturerUrl,
       description,
-      beginnerScore: 0,
       createdAt: now,
       updatedAt: now,
     };

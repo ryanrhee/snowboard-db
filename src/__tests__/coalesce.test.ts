@@ -50,10 +50,6 @@ vi.mock("../lib/scraping/utils", () => ({
   canonicalizeBrand: vi.fn((b: string) => b),
 }));
 
-vi.mock("../lib/scoring", () => ({
-  calcBeginnerScoreForBoard: vi.fn(() => 0.5),
-}));
-
 function makeScrapedBoard(
   overrides: Partial<ScrapedBoard> & { brand?: string } = {}
 ): ScrapedBoard {
