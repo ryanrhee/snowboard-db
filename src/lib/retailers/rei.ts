@@ -1,10 +1,9 @@
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPageWithBrowser, delay } from "../scraping/utils";
+import { fetchPageWithBrowser } from "../scraping/utils";
 import { BrandIdentifier } from "../strategies/brand-identifier";
 import { fetchPage } from "../scraping/utils";
-import { config } from "../config";
 import * as cheerio from "cheerio";
 
 const REI_BASE_URL = "https://www.rei.com";
@@ -206,7 +205,6 @@ export async function scrapeRei(
   let allProducts = extractProductsFromHtml(page1Html);
 
   for (let page = 2; page <= totalPages; page++) {
-    await delay(config.scrapeDelayMs);
     const pageUrl = buildSearchUrl(page);
     console.log(`[rei] Fetching page ${page} from ${pageUrl}`);
     const html = await fetchListingPage(pageUrl);

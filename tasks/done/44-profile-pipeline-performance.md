@@ -1,6 +1,53 @@
 # Task 44: Profile pipeline performance and cache slow operations
 
-## Problem
+**Status:** Done (2026-02-27)
+
+## What was done
+
+### 1. Moved politeness delay into `fetchPage` and `fetchPageWithBrowser` (biggest win)
+
+Both `fetchPage` (`src/lib/scraping/utils.ts`) and `fetchPageWithBrowser` (`src/lib/scraping/browser.ts`) now accept a `politeDelayMs` option (defaults to `config.scrapeDelayMs` = 1000ms). The delay fires **only on real network requests** — cache hits return immediately with zero delay.
+
+Removed 8 `await delay(config.scrapeDelayMs)` calls from:
+- `src/lib/retailers/tactics.ts` (2 calls)
+- `src/lib/retailers/evo.ts` (2 calls)
+- `src/lib/retailers/backcountry.ts` (2 calls)
+- `src/lib/retailers/rei.ts` (1 call)
+- `src/lib/scrapers/review-site-scraper.ts` (1 call)
+
+Also cleaned up now-unused `delay` and `config` imports from all those files.
+
+**Impact:** A full cached run hitting ~140 pages at 1s each was wasting ~2+ minutes of idle sleep. Those delays are now skipped entirely on cache hits.
+
+### 2. Added pipeline timing instrumentation
+
+Created `src/lib/profiler.ts` — a lightweight `PipelineProfiler` class with `start/stop/time/timeSync` methods. Instrumented phases in `pipeline.ts`, `coalesce.ts`, and `spec-resolution.ts`:
+
+- **Pipeline-level:** `pipeline:total`, `pipeline:scrape`, `pipeline:review-enrich`, `pipeline:coalesce`, `pipeline:resolve`, `pipeline:scoring`, `pipeline:discounts`, `pipeline:db-write`, `pipeline:prune-cache`
+- **Per-scraper:** `scraper:<name>:total` (timed in parallel via `Promise.allSettled`)
+- **Coalesce sub-phases:** `coalesce:identify`, `coalesce:write-spec-sources`
+- **Spec resolution:** `resolve:db-read+sort`, `resolve:apply`
+- **DB writes:** `db:insert-search-run`, `db:upsert-boards`, `db:insert-listings`, `db:delete-orphans`
+
+Prints a sorted summary table at the end of each pipeline run.
+
+### 3. Tests
+
+Added `src/__tests__/fetch-delay.test.ts` with 3 tests:
+- Cache hits return immediately (no delay)
+- Real fetches incur the polite delay
+- `politeDelayMs: 0` skips the delay
+
+All 1008 tests pass.
+
+### Not done (deferred)
+
+- Per-scraper sub-phase instrumentation (listing-pages, detail-pages, adapt, per-page fetch/parse) — requires changes inside each scraper's `scrape()` function. Can be added later once top-level profiling reveals which scrapers are bottlenecks.
+- Review-site per-board instrumentation (`review:per-board:<brand-model>`) — deferred, low priority.
+- Additional caching (HTML parse results, normalization memoization, spec resolution short-circuiting) — requires profiling data first to know if worthwhile.
+- `--fast`/`--only` mode — already achievable via debug route params (`retailers: ["evo"]`, `manufacturers: ["burton"]`).
+
+## Original problem
 
 A full pipeline run (all retailers + manufacturers from cache) takes longer than it should for iterative development. When working on normalization, spec resolution, or UI changes, re-running the pipeline to see results is a slow feedback loop. Many operations likely produce identical output run after run when only a small part of the code has changed.
 

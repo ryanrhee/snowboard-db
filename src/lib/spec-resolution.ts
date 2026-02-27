@@ -2,6 +2,7 @@ import { BoardProfile, BoardShape, BoardCategory, TerrainScores } from "./types"
 import { specKey, getSpecSources, SpecSourceEntry } from "./db";
 import { normalizeAbilityRange } from "./normalization";
 import { terrainToCategory, TERRAIN_KEYS } from "./terrain";
+import { profiler } from "./profiler";
 
 // Priority: manufacturer > review-site > retailer
 const SOURCE_PRIORITY: Record<string, number> = {
@@ -104,6 +105,7 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
   ] as const;
 
   // Resolve by priority
+  profiler.start("resolve:db-read+sort");
   const resolvedMap = new Map<string, Record<string, SpecFieldInfo>>();
 
   for (const [key, groupBoards] of keyToBoards) {
@@ -144,9 +146,11 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
 
     resolvedMap.set(key, fieldInfoMap);
   }
+  profiler.stop("resolve:db-read+sort", { keys: keyToBoards.size });
 
   // Apply resolved values to boards
-  return boards.map((board) => {
+  profiler.start("resolve:apply");
+  const result = boards.map((board) => {
     const key = resolvableKey(board);
     const fieldInfoMap = resolvedMap.get(key);
     if (!fieldInfoMap) return board;
@@ -210,4 +214,6 @@ export async function resolveSpecSources<T extends Resolvable>(boards: T[]): Pro
 
     return updated;
   });
+  profiler.stop("resolve:apply", { boards: boards.length });
+  return result;
 }

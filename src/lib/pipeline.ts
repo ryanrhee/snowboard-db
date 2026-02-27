@@ -31,6 +31,7 @@ import { identifyBoards, coalesce, writeSpecSources } from "./scrapers/coalesce"
 import { createReviewSiteScraper } from "./scrapers/review-site-scraper";
 import { adaptRetailerOutput } from "./scrapers/adapters";
 import { ScrapedBoard } from "./scrapers/types";
+import { profiler } from "./profiler";
 import * as cheerio from "cheerio";
 
 const DEFAULT_SCOPE: ScrapeScope = {
@@ -121,6 +122,9 @@ export async function runSearchPipeline(
   }
 
   // ---- from: "scrape" (default) — full pipeline ----
+  profiler.reset();
+  profiler.start("pipeline:total");
+
   const scrapers = getScrapers({
     regions: mergedScope.regions,
     retailers: mergedScope.retailers,
@@ -129,14 +133,20 @@ export async function runSearchPipeline(
   });
 
   // Run all scrapers in parallel
+  profiler.start("pipeline:scrape");
   const results = await Promise.allSettled(
-    scrapers.map((scraper) =>
-      scraper.scrape(mergedScope).then((boards) => ({
-        name: scraper.name,
-        boards,
-      }))
-    )
+    scrapers.map((scraper) => {
+      profiler.start(`scraper:${scraper.name}:total`);
+      return scraper.scrape(mergedScope).then((boards) => {
+        profiler.stop(`scraper:${scraper.name}:total`, { boards: boards.length });
+        return { name: scraper.name, boards };
+      }).catch((err) => {
+        profiler.stop(`scraper:${scraper.name}:total`, { error: "failed" });
+        throw err;
+      });
+    })
   );
+  profiler.stop("pipeline:scrape");
 
   // Collect all ScrapedBoards and errors
   const allScrapedBoards: ScrapedBoard[] = [
@@ -190,21 +200,30 @@ export async function runSearchPipeline(
     model,
   }));
   const reviewScraper = createReviewSiteScraper(uniqueTargets);
-  const reviewBoards = await reviewScraper.scrape();
+  const reviewBoards = await profiler.time("pipeline:review-enrich", () =>
+    reviewScraper.scrape()
+  , { targets: uniqueTargets.length });
   allScrapedBoards.push(...reviewBoards);
 
   // Coalesce ALL sources (retailer + manufacturer + review-site) uniformly
-  const { boards, listings } = coalesce(allScrapedBoards, runId);
+  const { boards, listings } = profiler.timeSync("pipeline:coalesce", () =>
+    coalesce(allScrapedBoards, runId)
+  , { boards: allScrapedBoards.length });
 
   // Resolve spec sources: priority-based resolution
-  const resolvedBoards = await resolveSpecSources(boards);
+  const resolvedBoards = await profiler.time("pipeline:resolve", () =>
+    resolveSpecSources(boards)
+  , { boards: boards.length });
 
   // Calculate beginner scores now that specs are resolved
+  profiler.start("pipeline:scoring");
   for (const board of resolvedBoards) {
     board.beginnerScore = calcBeginnerScoreForBoard(board);
   }
+  profiler.stop("pipeline:scoring", { boards: resolvedBoards.length });
 
   // Fill in discount percent for listings that got MSRP from manufacturer
+  profiler.start("pipeline:discounts");
   for (const listing of listings) {
     if (listing.discountPercent === null) {
       const board = resolvedBoards.find(
@@ -222,6 +241,7 @@ export async function runSearchPipeline(
       }
     }
   }
+  profiler.stop("pipeline:discounts", { listings: listings.length });
 
   // Get retailer names for the search run record
   const retailerNames = scrapers
@@ -239,20 +259,24 @@ export async function runSearchPipeline(
   };
 
   // Insert search run before listings (listings.run_id FK → search_runs.id)
-  insertSearchRun(run);
-  upsertBoards(resolvedBoards);
-  insertListings(listings);
+  profiler.start("pipeline:db-write");
+  profiler.timeSync("db:insert-search-run", () => insertSearchRun(run));
+  profiler.timeSync("db:upsert-boards", () => upsertBoards(resolvedBoards), { count: resolvedBoards.length });
+  profiler.timeSync("db:insert-listings", () => insertListings(listings), { count: listings.length });
+  const orphansDeleted = profiler.timeSync("db:delete-orphans", () => deleteOrphanBoards());
+  profiler.stop("pipeline:db-write");
 
-  // Clean up orphan boards (boards with no listings)
-  const orphansDeleted = deleteOrphanBoards();
   if (orphansDeleted > 0) {
     console.log(`[pipeline] Deleted ${orphansDeleted} orphan boards with no listings`);
   }
 
-  pruneHttpCache();
+  profiler.timeSync("pipeline:prune-cache", () => pruneHttpCache());
 
   // Retrieve the board-centric results
   const boardsWithListings = getBoardsWithListings(runId);
+
+  profiler.stop("pipeline:total");
+  profiler.printSummary();
 
   console.log(
     `[pipeline] Search complete: ${resolvedBoards.length} boards, ${listings.length} listings in ${durationMs}ms`

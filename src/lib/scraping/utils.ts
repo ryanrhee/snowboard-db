@@ -23,13 +23,23 @@ export async function fetchPage(
     retryDelayMs?: number;
     timeoutMs?: number;
     cacheTtlMs?: number;
+    politeDelayMs?: number;
   } = {}
 ): Promise<string> {
-  const { retries = 3, retryDelayMs = 2000, timeoutMs = 15000, cacheTtlMs } = options;
+  const {
+    retries = 3,
+    retryDelayMs = 2000,
+    timeoutMs = 15000,
+    cacheTtlMs,
+    politeDelayMs = config.scrapeDelayMs,
+  } = options;
 
   // Check cache (cacheTtlMs=0 skips, undefined uses default 24h)
   const cached = getHttpCache(url, cacheTtlMs);
   if (cached) return cached;
+
+  // Real fetch — be polite to avoid rate limiting
+  if (politeDelayMs > 0) await delay(politeDelayMs);
 
   const dispatcher = getProxyDispatcher();
 

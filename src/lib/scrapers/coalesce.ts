@@ -22,6 +22,7 @@ import { getStrategy } from "../strategies";
 import type { BoardSignal } from "../strategies/types";
 import { calcBeginnerScoreForBoard } from "../scoring";
 import { categoryToTerrain } from "../terrain";
+import { profiler } from "../profiler";
 
 export type BoardGroup = {
   scraped: ScrapedBoard[];
@@ -184,12 +185,15 @@ export function coalesce(
   allScrapedBoards: ScrapedBoard[],
   runId: string
 ): { boards: Board[]; listings: Listing[] } {
-  const boardGroups = identifyBoards(allScrapedBoards);
+  const boardGroups = profiler.timeSync("coalesce:identify", () =>
+    identifyBoards(allScrapedBoards)
+  );
 
   const boards: Board[] = [];
   const listings: Listing[] = [];
   const now = new Date().toISOString();
 
+  profiler.start("coalesce:write-spec-sources");
   for (const [key, group] of boardGroups) {
     // Write specs from each source to spec_sources
     const { msrpUsd, description } = writeSpecSources(key, group.scraped);
@@ -301,6 +305,7 @@ export function coalesce(
 
     boards.push(board);
   }
+  profiler.stop("coalesce:write-spec-sources", { groups: boardGroups.size });
 
   return { boards, listings };
 }

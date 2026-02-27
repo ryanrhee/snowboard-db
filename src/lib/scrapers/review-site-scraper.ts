@@ -1,7 +1,5 @@
 import { ScrapedBoard, ScraperModule } from "./types";
 import { tryReviewSiteLookup } from "../review-sites/the-good-ride";
-import { delay } from "../scraping/utils";
-import { config } from "../config";
 import { BrandIdentifier } from "../strategies/brand-identifier";
 
 /**
@@ -51,7 +49,7 @@ export function createReviewSiteScraper(
           listings: [],
         });
 
-        await delay(config.scrapeDelayMs);
+
       }
 
       console.log(

@@ -1,9 +1,8 @@
 import * as cheerio from "cheerio";
-import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPage, parsePrice, delay } from "../scraping/utils";
+import { fetchPage, parsePrice } from "../scraping/utils";
 import { BrandIdentifier } from "../strategies/brand-identifier";
 
 const TACTICS_BASE_URL = "https://www.tactics.com";
@@ -299,7 +298,6 @@ async function fetchBoardDetails(
   if (!partial.url) return [];
 
   try {
-    await delay(config.scrapeDelayMs);
     const html = await fetchPage(partial.url);
     return parseDetailHtml(html, partial);
   } catch (error) {
@@ -328,7 +326,6 @@ export const tactics: ScraperModule = {
     let allPartials = parseProductCards(page1Html);
 
     for (let page = 2; page <= totalPages; page++) {
-      await delay(config.scrapeDelayMs);
       const pageUrl = buildSearchUrl(page);
       console.log(`[tactics] Fetching page ${page} from ${pageUrl}`);
       const html = await fetchPage(pageUrl);

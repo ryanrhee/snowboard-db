@@ -1,5 +1,6 @@
 import { chromium, Browser, BrowserContext } from "playwright";
 import { delay } from "./utils";
+import { config } from "../config";
 import { getHttpCache, setHttpCache } from "./http-cache";
 
 // Per-channel browser + context pools
@@ -59,6 +60,7 @@ export async function fetchPageWithBrowser(
     waitUntil?: "load" | "domcontentloaded" | "networkidle";
     cacheTtlMs?: number;
     channel?: string;
+    politeDelayMs?: number;
   } = {}
 ): Promise<string> {
   const {
@@ -68,11 +70,15 @@ export async function fetchPageWithBrowser(
     waitUntil = "load",
     cacheTtlMs,
     channel,
+    politeDelayMs = config.scrapeDelayMs,
   } = options;
 
   // Check SQLite cache
   const cached = getHttpCache(url, cacheTtlMs);
   if (cached) return cached;
+
+  // Real fetch — be polite to avoid rate limiting
+  if (politeDelayMs > 0) await delay(politeDelayMs);
 
   const domain = getDomain(url);
 

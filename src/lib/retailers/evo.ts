@@ -1,9 +1,8 @@
 import * as cheerio from "cheerio";
-import { config } from "../config";
 import { RawBoard, ScrapeScope, Currency, Region } from "../types";
 import { ScraperModule, ScrapedBoard } from "../scrapers/types";
 import { adaptRetailerOutput } from "../scrapers/adapters";
-import { fetchPageWithBrowser, parsePrice, parseLengthCm, delay } from "../scraping/utils";
+import { fetchPageWithBrowser, parsePrice, parseLengthCm } from "../scraping/utils";
 import { BrandIdentifier } from "../strategies/brand-identifier";
 
 const EVO_BASE_URL = "https://www.evo.com";
@@ -324,7 +323,6 @@ async function fetchBoardDetails(partial: Partial<RawBoard>): Promise<RawBoard |
   if (!partial.url) return null;
 
   try {
-    await delay(config.scrapeDelayMs);
     const html = await fetchPageWithBrowser(partial.url);
     return parseDetailHtml(html, partial);
   } catch (error) {
@@ -350,7 +348,6 @@ export const evo: ScraperModule = {
     let allPartials = parseProductCards(page1Html);
 
     for (let page = 2; page <= totalPages; page++) {
-      await delay(config.scrapeDelayMs);
       const pageUrl = buildSearchUrl(page);
       console.log(`[evo] Fetching page ${page} from ${pageUrl}`);
       const html = await fetchPageWithBrowser(pageUrl);
